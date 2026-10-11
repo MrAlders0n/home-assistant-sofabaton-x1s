@@ -2687,9 +2687,10 @@ var TOOLS_CARD_STRINGS_EN = {
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
     powerOffCommand: "Power OFF command",
-    thisDevice: "this device",
     replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot, activities) => `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot, device, activities) => `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
     none: "None",
     commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
@@ -7999,6 +8000,12 @@ function secondsToByte(value) {
   const seconds = parseFloat(String(value));
   if (!Number.isFinite(seconds) || seconds <= 0) return 0;
   return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function buttonTakeover(held, taking) {
+  const wanted = new Set(taking.map(String));
+  const shared = held.activities.filter((id) => wanted.has(String(id)));
+  if (!shared.length) return null;
+  return { shared, whole: held.favorite || shared.length === held.activities.length };
 }
 function hubSupportsPowerInput(hubVersion) {
   const version = String(hubVersion ?? "").toUpperCase();
@@ -17824,11 +17831,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       }
       const hardButton = String(next[idx].hard_button || "").trim();
       if (hardButton) {
+        const activities = next[idx].activities;
         next.forEach((slot, slotIdx) => {
-          if (slotIdx !== idx && String(slot.hard_button || "").trim() === hardButton)
-            next[slotIdx] = this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } });
+          if (slotIdx === idx) return;
+          const takeover = this._buttonTakeoverFrom(slot, hardButton, activities);
+          if (takeover) next[slotIdx] = this._slotAfterTakeover(slot, takeover);
         });
-        if (!await this._clearButtonFromOtherDevices(hardButton, String(this._selectedDeviceKey || ""))) {
+        if (!await this._takeButtonFromOtherDevices(hardButton, activities, String(this._selectedDeviceKey || ""))) {
           this._commandSaveError = TOOLS_CARD_STRINGS.wifiCommands.commandsSaveFailed;
           return;
         }
@@ -19135,7 +19144,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
-                ${this._hardButtonReplacementLabel() ? b2`<div class="button-conflict-hint">${this._hardButtonReplacementLabel()}</div>` : A}
+                ${this._hardButtonReplacementLabels().map((label) => b2`<div class="button-conflict-hint">${label}</div>`)}
                 <button class="checkbox-row nested-control ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
       this._toggleLongPressRow();
     }}>
@@ -19846,47 +19855,47 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const name = String(replacement.slot.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(replacement.index + 1);
     return TOOLS_CARD_STRINGS.wifiCommands.activityInputReplaces(name, this._activityName(activityId));
   }
-  _hardButtonConflictInfo(buttonId) {
-    if (!buttonId || !Number.isInteger(this._activeCommandSlot)) return null;
-    const activeIdx = Number(this._activeCommandSlot);
-    const currentDeviceKey = String(this._selectedDeviceKey || "");
-    const commands = this._commandsList();
-    for (let idx = 0; idx < commands.length; idx += 1) {
-      if (idx === activeIdx) continue;
-      if (String(commands[idx].hard_button || "").trim() === buttonId) {
-        const name = String(commands[idx].name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
-        return {
-          deviceName: this._selectedWifiDevice()?.device_name || TOOLS_CARD_STRINGS.wifiCommands.thisDevice,
-          slotName: name,
-          isSameDevice: true,
-          deviceKey: currentDeviceKey
-        };
-      }
-    }
-    for (const device of this._wifiDevices) {
-      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
-      for (let idx = 0; idx < device.commands.length; idx += 1) {
-        if (String(device.commands[idx]?.hard_button || "").trim() === buttonId) {
-          const name = String(device.commands[idx]?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
-          return { deviceName: device.device_name, slotName: name, isSameDevice: false, deviceKey: device.device_key };
-        }
-      }
-    }
-    return null;
+  /** What saving a slot that binds `button` in `activities` takes from `slot`
+   *  (buttonTakeover), with the activities it keeps the button in; null when
+   *  it takes nothing. Activities the hub no longer has are not counted. */
+  _buttonTakeoverFrom(slot, button, activities) {
+    if (!button || String(slot?.hard_button || "").trim() !== button) return null;
+    const valid = this._validActivityIdSet();
+    const held = (Array.isArray(slot?.activities) ? slot.activities : []).map((id) => String(id)).filter((id) => id !== "" && (!valid || valid.has(id)));
+    const takeover = buttonTakeover({ favorite: Boolean(slot?.add_as_favorite), activities: held }, activities);
+    return takeover ? { ...takeover, kept: held.filter((id) => !takeover.shared.includes(id)) } : null;
   }
-  _hardButtonReplacementLabel() {
+  _slotAfterTakeover(slot, takeover) {
+    return takeover.whole ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : this._cloneCommandSlot({ ...slot, activities: takeover.kept });
+  }
+  /** One line per command the open slot's button would be taken from, on
+   *  this device or another, naming the activities when it keeps the button
+   *  elsewhere (issue #306). */
+  _hardButtonReplacementLabels() {
     const draft = this._activeCommandDraft();
     const buttonId = String(draft?.hard_button || "").trim();
-    if (!buttonId) return "";
-    const conflict = this._hardButtonConflictInfo(buttonId);
-    if (!conflict) return "";
-    if (conflict.isSameDevice) {
-      return TOOLS_CARD_STRINGS.wifiCommands.replacesOnButton(conflict.slotName);
+    if (!draft || !buttonId || !Number.isInteger(this._activeCommandSlot)) return [];
+    const strings = TOOLS_CARD_STRINGS.wifiCommands;
+    const activeIdx = Number(this._activeCommandSlot);
+    const currentDeviceKey = String(this._selectedDeviceKey || "");
+    const slotName = (slot, idx) => String(slot?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
+    const activityNames = (ids) => ids.map((id) => this._activityName(id));
+    const labels = [];
+    this._commandsList().forEach((slot, idx) => {
+      if (idx === activeIdx) return;
+      const takeover = this._buttonTakeoverFrom(slot, buttonId, draft.activities);
+      if (!takeover) return;
+      labels.push(takeover.whole ? strings.replacesOnButton(slotName(slot, idx)) : strings.replacesOnButtonIn(slotName(slot, idx), activityNames(takeover.shared)));
+    });
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      device.commands.forEach((slot, idx) => {
+        const takeover = this._buttonTakeoverFrom(slot, buttonId, draft.activities);
+        if (!takeover) return;
+        labels.push(takeover.whole ? strings.replacesFromDevice(slotName(slot, idx), device.device_name) : strings.replacesFromDeviceIn(slotName(slot, idx), device.device_name, activityNames(takeover.shared)));
+      });
     }
-    return TOOLS_CARD_STRINGS.wifiCommands.replacesFromDevice(
-      conflict.slotName,
-      conflict.deviceName
-    );
+    return labels;
   }
   _toggleLongPressRow() {
     const draft = this._activeCommandDraft();
@@ -20010,23 +20019,27 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._confirmClearSlot = null;
     await this._setCommands(next);
   }
-  /** Free a hard button on the other devices. False when one of them could
-   *  not be stored: the caller must not assign the button then, or two
-   *  devices would claim it. */
-  async _clearButtonFromOtherDevices(buttonId, currentDeviceKey) {
+  /** Take a hard button from the other devices' commands in the activities
+   *  this save binds it in (buttonTakeover). False when one of them could not
+   *  be stored: the caller must not assign the button then, or two devices
+   *  would claim it in the same activity. */
+  async _takeButtonFromOtherDevices(buttonId, activities, currentDeviceKey) {
     if (!buttonId || !this.hass) return true;
     const hubEntryId = String(this.hub?.entry_id || "").trim();
     if (!hubEntryId) return true;
     for (const device of this._wifiDevices) {
       if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
-      const conflictIdx = device.commands.findIndex((cmd) => String(cmd?.hard_button || "").trim() === buttonId);
-      if (conflictIdx === -1) continue;
       const slots = this._normalizeCommandsForStorage(device.commands, device.power_on_command_id, device.power_off_command_id);
-      const cleared = slots.map(
-        (slot, i7) => i7 === conflictIdx ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : slot
-      );
-      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(cleared);
-      const normalized = this._normalizeCommandsForStorage(cleared, powerOnCommandId, powerOffCommandId);
+      let changed = false;
+      const taken = slots.map((slot) => {
+        const takeover = this._buttonTakeoverFrom(slot, buttonId, activities);
+        if (!takeover) return slot;
+        changed = true;
+        return this._slotAfterTakeover(slot, takeover);
+      });
+      if (!changed) continue;
+      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(taken);
+      const normalized = this._normalizeCommandsForStorage(taken, powerOnCommandId, powerOffCommandId);
       try {
         await this.api().setWifiCommandConfig(hubEntryId, device.device_key, normalized, powerOnCommandId, powerOffCommandId);
       } catch (_error) {

@@ -28,7 +28,7 @@ import {
   isSlotConfigured,
   mqttProblem,
   nameProblem,
-  otherDeviceHoldingButton,
+  otherDevicesHoldingButton,
   pressIsFresh,
   pressMatchesDevice,
   pressMatchesSlot,
@@ -179,22 +179,34 @@ test("the tile's meta line is the card's", () => {
   assert.deepEqual(slotMeta(draft, 2, { powerInput: false }), { kind: "activities", count: 0 });
 });
 
-test("a button taken from another Wifi Device is cleared from that device's spec after the sync", () => {
-  const blinds = device({ key: "0badf00d", device_id: 8, spec: spec({ name: "Blinds", power_on_slot: null, input_slots: [] }) });   // its slot 1 holds VOL+ (182)
+test("a button another Wifi Device binds in the same activity is taken there after the sync (issue #306)", () => {
+  const blinds = device({ key: "0badf00d", device_id: 8, spec: spec({ name: "Blinds", power_on_slot: null, input_slots: [] }) });   // its slot 1: a favorite on VOL+ (182) in 101 and 102
+  const louder = { label: "Louder", long_label: "Louder Long", favorite: false, button: 182, long_press: true, activities: [101, 103], input_activity_id: null };
+  const amp = device({ key: "feedface", device_id: 10, spec: spec({ name: "Amp", slots: [louder], power_on_slot: null, input_slots: [] }) });
   const stale = device({ key: "5ca1ab1e", device_id: 9, stale: true, spec: spec({ name: "Gone" }) });
   const mine = device({ key: "a1b2c3d4", spec: spec({ slots: [] }) });
-  const devices = [mine, blinds, stale];
-  assert.deepEqual(otherDeviceHoldingButton(devices, "a1b2c3d4", 182)?.slotLabel, "Lights on");
-  assert.equal(otherDeviceHoldingButton(devices, "a1b2c3d4", 185), null);
-  assert.equal(otherDeviceHoldingButton([mine], "a1b2c3d4", 182), null);
+  const devices = [mine, blinds, amp, stale];
+  const held = (activities: number[], button = 182, list = devices) =>
+    otherDevicesHoldingButton(list, "a1b2c3d4", button, activities).map((h) => [h.device.key, h.slotLabel, h.shared, h.whole]);
+  // A favorite loses the whole button (its activities are the favorite's too); Amp keeps VOL+ in 103.
+  assert.deepEqual(held([101]), [["0badf00d", "Lights on", [101], true], ["feedface", "Louder", [101], false], ["5ca1ab1e", "Lights on", [101], true]]);
+  assert.deepEqual(held([101, 103]).find(([key]) => key === "feedface"), ["feedface", "Louder", [101, 103], true]);   // nothing left to keep
+  assert.deepEqual(held([104]), []);                                                     // another activity takes nothing
+  assert.deepEqual(held([101], 185), []);
+  assert.deepEqual(held([101], 182, [mine]), []);
+
   const blank = slotEditFrom(draftFromSpec(mine.spec), 0);
-  const draft = withSlotSaved(draftFromSpec(mine.spec), 0, { ...blank, label: "Vol", button: 182, activities: [101] }, { powerInput: true });
-  const cleanups = buttonCleanups(devices, "a1b2c3d4", draft);
-  assert.deepEqual(cleanups.map((c) => c.device.key), ["0badf00d"]);                   // a stale device has nothing to write
+  const saved = (activities: number[]) => withSlotSaved(draftFromSpec(mine.spec), 0, { ...blank, label: "Vol", button: 182, activities }, { powerInput: true });
+  const cleanups = buttonCleanups(devices, "a1b2c3d4", saved([101]));
+  assert.deepEqual(cleanups.map((c) => c.device.key), ["0badf00d", "feedface"]);        // a stale device has nothing to write
   const theirs = cleanups[0].spec.slots[0];
   assert.deepEqual([theirs.button, theirs.long_press, theirs.favorite, theirs.activities], [null, false, true, [101, 102]]);
   assert.equal(cleanups[0].spec.name, "Blinds");
+  const amps = cleanups[1].spec.slots[0];
+  assert.deepEqual([amps.button, amps.long_press, amps.activities], [182, true, [103]]);
   assert.deepEqual(buttonCleanups(devices, "a1b2c3d4", draftFromSpec(mine.spec)), []);
+  // The reporter's case: VOL+ on the Amp in Cinema, on the Soundbar in TV. Nothing changes hands.
+  assert.deepEqual(buttonCleanups(devices, "a1b2c3d4", saved([104])), []);
 });
 
 test("names: the card's sanitiser per hub model, 20 wide, and the save checks", () => {

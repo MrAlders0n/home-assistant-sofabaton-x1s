@@ -77,7 +77,7 @@ import {
   isSlotConfigured,
   mqttProblem,
   nameProblem,
-  otherDeviceHoldingButton,
+  otherDevicesHoldingButton,
   pressIsFresh,
   pressMatchesDevice,
   pressMatchesSlot,
@@ -1127,10 +1127,12 @@ export class SbPanelWifiDevices extends LitElement {
       : inputHolder >= 0 ? S.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId))
       : S.activityInputHint;
     const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
-    const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
-    const buttonHint = buttonHolder >= 0 ? S.replacesOnButton(draft.slots[buttonHolder].label)
-      : otherHolder ? S.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name)
-      : "";
+    const buttonHints = [
+      ...(buttonHolder >= 0 ? [S.replacesOnButton(draft.slots[buttonHolder].label)] : []),
+      ...otherDevicesHoldingButton(this._devices, device.key, edit.button, edit.activities).map((holder) => holder.whole
+        ? S.replacesFromDevice(holder.slotLabel, holder.device.spec.name)
+        : S.replacesFromDeviceIn(holder.slotLabel, holder.device.spec.name, holder.shared.map((id) => this._activityName(id)))),
+    ];
     const keyLabels = S.keyLabels as Record<string, string>;
     const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
     return html`
@@ -1175,7 +1177,7 @@ export class SbPanelWifiDevices extends LitElement {
                     ${buttons.map((button) => html`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
                   </select>
                 </label>
-                ${buttonHint ? html`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : nothing}
+                ${buttonHints.length ? html`<div id="wifi-slot-button-hint">${buttonHints.map((hint) => html`<div class="button-conflict-hint">${hint}</div>`)}</div>` : nothing}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
                   <span class="checkbox-icon plain">${icon(mdiTimerSandFull)}</span>
                   <span class="checkbox-copy"><span>${S.enableLongPress}</span></span>

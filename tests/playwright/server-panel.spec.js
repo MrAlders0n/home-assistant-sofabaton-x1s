@@ -3548,26 +3548,52 @@ test.describe("control panel, wifi commands", () => {
     await expect(view(page).locator(".device-card-name")).toHaveText("Lamps");
   });
 
-  test("a button taken from another Wifi Device: the dialog names it, the sync clears it there too", async ({ page }, testInfo) => {
+  test("a button another Wifi Device binds in the same activity: the dialog names it, the sync takes it there (issue #306)", async ({ page }, testInfo) => {
     const blinds = wifiDevice({ key: "0badf00d", device_id: 8, spec: { name: "Blinds", slots: slots({ 1: "Down" }, { 1: { favorite: true, button: 185, long_press: true, activities: [102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
-    const { calls } = await wifiServer(page, [wifiDevice(), blinds]);
+    const amp = wifiDevice({ key: "feedface", device_id: 9, spec: { name: "Amp", slots: slots({ 1: "Softer" }, { 1: { button: 185, activities: [101, 102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-feedface" } });
+    const { calls } = await wifiServer(page, [wifiDevice(), blinds, amp]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    await detail.locator('.slot-btn[data-slot="5"]').click();
+    const dialog = view(page).locator("#wifi-slot-dialog");
+    const hints = dialog.locator("#wifi-slot-button-hint .button-conflict-hint");
+    await dialog.locator("#wifi-slot-name").fill("Quieter");
+    await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
+    // Watch TV (the default): only the Amp binds VOL- there, and keeps it in Listen.
+    await expect(hints).toHaveText(['Replaces "Softer" from Amp in Watch TV']);
+    await dialog.locator('.activity-chip[data-activity="102"]').click();
+    await expect(hints).toHaveText(['Replaces "Down" from Blinds', 'Replaces "Softer" from Amp']);
+    await dialog.locator('.activity-chip[data-activity="101"]').click();
+    // Listen only: the Blinds' favorite takes its whole button with it, the Amp keeps VOL- in Watch TV.
+    await expect(hints).toHaveText(['Replaces "Down" from Blinds', 'Replaces "Softer" from Amp in Listen']);
+    await dialog.locator("#wifi-slot-save").click();
+    // The dock's Sync is the header's (a phone shows the header's only).
+    await (testInfo.project.name.includes("phone") ? detail.locator("#wifi-sync") : page.locator("#dock-sync")).click();
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(3);
+    const updates = calls.filter((c) => c.key === "update");
+    expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d", "feedface"]);  // this device first, then the ones that gave the button up
+    expect(updates[0].body.slots[4]).toMatchObject({ label: "Quieter", button: 185, activities: [102] });
+    expect(updates[1].body.slots[0]).toMatchObject({ label: "Down", favorite: true, button: null, long_press: false, activities: [102] });
+    expect(updates[1].body.name).toBe("Blinds");
+    expect(updates[2].body.slots[0]).toMatchObject({ label: "Softer", button: 185, activities: [101] });
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+  });
+
+  test("a button another Wifi Device binds only in other activities changes no hands", async ({ page }, testInfo) => {
+    const amp = wifiDevice({ key: "feedface", device_id: 9, spec: { name: "Amp", slots: slots({ 1: "Louder" }, { 1: { button: 185, activities: [102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-feedface" } });
+    const { calls } = await wifiServer(page, [wifiDevice(), amp]);
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
     const detail = view(page).locator("#wifi-device-detail");
     await detail.locator('.slot-btn[data-slot="5"]').click();
     const dialog = view(page).locator("#wifi-slot-dialog");
     await dialog.locator("#wifi-slot-name").fill("Quieter");
     await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
-    await expect(dialog.locator("#wifi-slot-button-hint")).toHaveText('Replaces "Down" from Blinds');
+    await expect(dialog.locator("#wifi-slot-button-hint")).toHaveCount(0);
     await dialog.locator("#wifi-slot-save").click();
-    // The dock's Sync is the header's (a phone shows the header's only).
     await (testInfo.project.name.includes("phone") ? detail.locator("#wifi-sync") : page.locator("#dock-sync")).click();
-    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(2);
-    const updates = calls.filter((c) => c.key === "update");
-    expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d"]);             // this device first, then the one that lost the button
-    expect(updates[0].body.slots[4]).toMatchObject({ label: "Quieter", button: 185, activities: [101] });
-    expect(updates[1].body.slots[0]).toMatchObject({ label: "Down", favorite: true, button: null, long_press: false, activities: [102] });
-    expect(updates[1].body.name).toBe("Blinds");
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
     await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    expect(calls.filter((c) => c.key === "update").map((c) => c.device)).toEqual(["a1b2c3d4"]);
   });
 
   test("a press lights the roster row, then the slot tile of the open device, and only the matching one", async ({ page }) => {

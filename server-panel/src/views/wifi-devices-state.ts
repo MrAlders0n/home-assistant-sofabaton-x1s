@@ -9,7 +9,7 @@
 import type { WifiDeviceSpec, WifiDeviceView, WifiSlot } from "../panel-api";
 import type { PressEvent } from "../panel-store";
 import { sanitizeWifiName } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-names";
-import { hubSupportsPowerInput } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
+import { buttonTakeover, hubSupportsPowerInput } from "../../../custom_components/sofabaton_x1s/www/src/shared/hub-rules";
 
 /** The library's `WIFI_SLOT_COUNT`: shorts are commands 1..10, longs 11..20. */
 export const WIFI_SLOT_COUNT = 10;
@@ -210,9 +210,10 @@ export function withActivityToggled(edit: SlotEdit, activityId: number): SlotEdi
   return has ? edit : { ...edit, activities: [...edit.activities, activityId].sort((a, b) => a - b) };
 }
 
-/** The card's save (`_saveActiveCommandModal`): a button belongs to one slot and an
- *  activity has one input, so the saved slot takes them from its neighbours; an
- *  input is never a power command. */
+/** The card's save (`_saveActiveCommandModal`), with the library's rule for a button:
+ *  one slot of a device holds it, whatever the activities (the card shares it per
+ *  activity, the library's spec refuses that). An activity has one input, so the
+ *  saved slot takes both from its neighbours; an input is never a power command. */
 export function withSlotSaved(draft: WifiDraft, index: number, edit: SlotEdit, options: { powerInput: boolean }): WifiDraft {
   const number = index + 1;
   const button = edit.button;
@@ -245,28 +246,47 @@ export function slotHoldingInput(draft: WifiDraft, activityId: number | null, in
   return activityId === null ? -1 : draft.slots.findIndex((slot, i) => i !== index && slot.inputActivityId === activityId);
 }
 
-/** Another of the hub's Wifi Devices whose stored spec claims `button` (the card clears it there on save). */
-export function otherDeviceHoldingButton(devices: WifiDeviceView[], key: string, button: number | null): { device: WifiDeviceView; slotLabel: string } | null {
-  if (button === null) return null;
-  for (const device of devices) {
-    if (device.key === key) continue;
-    const row = (device.spec.slots ?? []).find((slot) => Number(slot.button) === button);
-    if (row) return { device, slotLabel: row.label };
-  }
-  return null;
+/** A slot after another Wifi Device took its button in `takeover.shared` (buttonTakeover). */
+function slotAfterTakeover(slot: WifiDraftSlot, takeover: { shared: number[]; whole: boolean }): WifiDraftSlot {
+  if (takeover.whole) return { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] };
+  return { ...slot, activities: slot.activities.filter((id) => !takeover.shared.includes(id)) };
 }
 
-/** The specs to write after a sync so no other Wifi Device keeps claiming a button this draft took:
- *  left alone, that device's next sync would take the button back. */
+/** The hub's other Wifi Devices whose stored spec binds `button` in one of `activities`: the
+ *  hub keeps one binding per button per activity, so the save takes it there in the
+ *  activities both name (buttonTakeover, issue #306). One row per such slot. */
+export function otherDevicesHoldingButton(devices: WifiDeviceView[], key: string, button: number | null, activities: number[]): { device: WifiDeviceView; slotLabel: string; shared: number[]; whole: boolean }[] {
+  if (button === null) return [];
+  const out: { device: WifiDeviceView; slotLabel: string; shared: number[]; whole: boolean }[] = [];
+  for (const device of devices) {
+    if (device.key === key) continue;
+    for (const slot of draftFromSpec(device.spec).slots) {
+      const takeover = slot.button === button ? buttonTakeover(slot, activities) : null;
+      if (takeover) out.push({ device, slotLabel: slot.label, ...takeover });
+    }
+  }
+  return out;
+}
+
+/** The specs to write after a sync so no other Wifi Device keeps claiming a button this draft took
+ *  in the same activity: left alone, that device's next sync would take the button back there. */
 export function buttonCleanups(devices: WifiDeviceView[], key: string, draft: WifiDraft): { device: WifiDeviceView; spec: Omit<WifiDeviceSpec, "brand"> }[] {
-  const taken = new Set(draft.slots.map((slot) => slot.button).filter((b): b is number => b !== null));
+  // Where this draft binds each of its buttons (one slot per button, the library's rule).
+  const taking = new Map<number, number[]>();
+  for (const slot of draft.slots) if (slot.button !== null) taking.set(slot.button, slot.activities);
   const out: { device: WifiDeviceView; spec: Omit<WifiDeviceSpec, "brand"> }[] = [];
   for (const device of devices) {
     if (device.key === key || device.stale || device.device_id == null) continue;
     const theirs = draftFromSpec(device.spec);
-    if (!theirs.slots.some((slot) => slot.button !== null && taken.has(slot.button))) continue;
-    const cleared: WifiDraft = { ...theirs, slots: theirs.slots.map((slot) => (slot.button !== null && taken.has(slot.button) ? { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] } : slot)) };
-    out.push({ device, spec: specFromDraft(cleared) });
+    let changed = false;
+    const slots = theirs.slots.map((slot) => {
+      const wanted = slot.button === null ? undefined : taking.get(slot.button);
+      const takeover = wanted ? buttonTakeover(slot, wanted) : null;
+      if (!takeover) return slot;
+      changed = true;
+      return slotAfterTakeover(slot, takeover);
+    });
+    if (changed) out.push({ device, spec: specFromDraft({ ...theirs, slots }) });
   }
   return out;
 }

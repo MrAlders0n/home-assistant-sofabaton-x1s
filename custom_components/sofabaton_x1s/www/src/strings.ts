@@ -1005,10 +1005,13 @@ export const TOOLS_CARD_STRINGS_EN = {
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
     powerOffCommand: "Power OFF command",
-    thisDevice: "this device",
     replacesOnButton: (slot: string) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot: string, device: string) =>
       `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot: string, activities: string[]) =>
+      `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot: string, device: string, activities: string[]) =>
+      `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
     none: "None",
     commandSlotDescription:
       "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
