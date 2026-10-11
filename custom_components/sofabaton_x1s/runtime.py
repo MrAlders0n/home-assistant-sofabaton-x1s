@@ -163,7 +163,7 @@ async def _async_persist_hub_cache(hass: HomeAssistant, hub: SofabatonHub) -> bo
     if not store.enabled:
         return False
 
-    await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
+    await store.async_set_hub_cache(hub.entry_id, await hub.async_export_persistent_cache())
     return True
 
 
@@ -175,7 +175,7 @@ async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
 
     for hub in _get_hubs(hass.data.get(DOMAIN, {})):
         try:
-            await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
+            await store.async_set_hub_cache(hub.entry_id, await hub.async_export_persistent_cache())
             persisted += 1
         except Exception:
             _LOGGER.exception("[%s] Failed to persist cache for hub %s during shutdown", DOMAIN, hub.entry_id)

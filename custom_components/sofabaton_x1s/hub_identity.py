@@ -6,7 +6,6 @@ device-registry name and the firmware-floor repair issue.
 
 from __future__ import annotations
 
-from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -27,6 +26,7 @@ from .const import (
     classify_hub_version,
     format_hub_entry_title,
 )
+from .lib.errors import HubBusyError, HubNotConnectedError, HubRejectedError
 
 if TYPE_CHECKING:
     from .hub import SofabatonHub
@@ -357,16 +357,17 @@ class HubIdentityMixin:
         timeout: float = 5.0,
         sync_identity: bool = True,
     ) -> bool:
-        """Persist a new hub name and refresh our cached identity."""
+        """Persist a new hub name (the facade's ``set_hub_name``) and refresh
+        our cached identity. False when the hub refused it."""
 
         next_name = str(name or "").strip()
         if not next_name:
             return False
 
-        ok = await self.hass.async_add_executor_job(
-            partial(self._proxy.set_hub_name, next_name, timeout=timeout)
-        )
-        if not ok:
+        try:
+            await self._facade.set_hub_name(next_name, timeout=timeout)
+        except (ValueError, HubRejectedError, HubBusyError, HubNotConnectedError) as err:
+            self._log.warning("[%s] hub rename refused: %s", self.entry_id, err)
             return False
 
         await self._async_adopt_hub_name(next_name, sync_identity=sync_identity)

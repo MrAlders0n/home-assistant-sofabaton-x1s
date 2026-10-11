@@ -24,6 +24,15 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   the bundle's hub name. Both happen inside the restore's hold, so a
   consumer could not report them itself.
 
+### Fixed
+
+- A catalog refresh (`devices(refresh=True)`, `activities(refresh=True)`
+  and the reads built on them) only counts a catalog the hub committed
+  after the request went out. The end of an earlier catalog read, still
+  queued on the event loop when the refresh was sent, could answer it with
+  the previous catalog while the refresh itself was never answered. A
+  refresh whose own read ends without a reply still fails at once.
+
 ## 0.2.4 (2026-10-10)
 
 Changes since `sofabaton-x-v0.2.3`. Backward-compatible additions and

@@ -10,7 +10,7 @@ from custom_components.sofabaton_x1s.lib.macros import MacroKeyEntry, MacroRecor
 from custom_components.sofabaton_x1s.lib.backup_export import (
     build_hub_code_record_restore_data,
 )
-from tests.hub_fakes import FakeHass
+from tests.hub_fakes import FakeHass, make_controllable
 
 
 def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
@@ -1334,6 +1334,9 @@ def _make_delete_device_hub(monkeypatch, *, proxy_result):
         "custom_components.sofabaton_x1s.hub_proxy_events.async_dispatcher_send", lambda *_: None
     )
     monkeypatch.setattr(hub._proxy, "delete_device", lambda _dev_id: proxy_result)
+    # The delete is the facade's (adoption plan M4): a controllable engine,
+    # and its read-back of the impacted activities recorded below.
+    make_controllable(hub._proxy)
 
     persisted: list[bool] = []
 
@@ -1348,7 +1351,13 @@ def _make_delete_device_hub(monkeypatch, *, proxy_result):
     async def _record_warm(act_id):
         warmed.append(int(act_id))
 
+    async def _record_read_back(devices, activities, **_kwargs):
+        warmed.extend(int(act_id) for act_id in activities)
+
+    # The engine-path delete (refresh_impacted_activities=False) never
+    # re-warms; the facade path reads the impacted activities back.
     monkeypatch.setattr(hub, "_async_fetch_activity_commands", _record_warm)
+    monkeypatch.setattr(hub._facade, "_reread_after_write", _record_read_back)
     return hub, loop, persisted, warmed
 
 
@@ -1424,6 +1433,8 @@ def test_delete_device_rewarms_confirmed_activities(monkeypatch):
         proxy_result={
             "device_id": dev_lo,
             "confirmed_activities": [0x65, 0x66],
+            # The engine's impacted set always covers the confirmed one.
+            "impacted_activities": [0x65, 0x66],
             "status": "success",
         },
     )
@@ -1433,9 +1444,10 @@ def test_delete_device_rewarms_confirmed_activities(monkeypatch):
         result = loop.run_until_complete(hub.async_delete_device(dev_lo))
 
         assert result and result.get("status") == "success"
-        # The proxy delete gutted these activities' cached keymap/favorites/
-        # macros; the hub-level delete must refetch them so the structural
-        # cache stays bundle-grade without a manual full refresh.
+        assert result["confirmed_activities"] == [0x65, 0x66]
+        # The delete gutted these activities' cached keymap/favorites/
+        # macros; the facade reads them back so the structural cache stays
+        # bundle-grade without a manual full refresh.
         assert warmed == [0x65, 0x66]
         assert persisted == [True]
     finally:
@@ -1676,5 +1688,58 @@ def test_a_replacing_restore_erases_rebuilds_and_names_the_hub_in_one_hold(monke
         assert result["hub_name"] == "Den" and result["cache_warmed"] is True
         assert adopted == [("Den", True)]
         assert hub._facade._hub_holds == 0
+    finally:
+        loop.close()
+
+
+# ---------------------------------------------------------------------------
+# Whole-entity writes on the facade (adoption plan M4)
+# ---------------------------------------------------------------------------
+
+
+def test_creates_reorders_and_renames_go_through_the_facade(monkeypatch):
+    """HA keeps its result shapes (the card reads status plus the new id or
+    the order) and its None / False for a refusal; the facade reads back
+    what a create made instead of HA's own re-warm."""
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _facade_hub(loop)
+        proxy = hub._proxy
+        reads: list = []
+
+        async def _read_back(devices, activities, **_kwargs):
+            reads.append((tuple(devices), tuple(activities)))
+
+        async def _no_persist():
+            return False
+
+        monkeypatch.setattr(hub._facade, "_reread_after_write", _read_back)
+        monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _no_persist)
+        monkeypatch.setattr(proxy, "create_device", lambda name, *, device_class: {"status": "success", "device_id": 7})
+        monkeypatch.setattr(proxy, "create_activity", lambda name: {"status": "success", "activity_id": 104})
+        monkeypatch.setattr(proxy, "reorder_devices", lambda ids: {"status": "success", "ordered_ids": ids})
+        proxy.state.devices = {1: {"name": "TV"}, 2: {"name": "Amp"}}
+        proxy._devices_catalog_ready = True
+        run = loop.run_until_complete
+
+        assert run(hub.async_create_device("Lamp", device_class="ir")) == {"status": "success", "device_id": 7}
+        assert run(hub.async_create_activity("Movies")) == {"status": "success", "activity_id": 104}
+        assert reads == [((7,), ()), ((), (104,))]
+
+        # The facade's own order check refuses a partial order before the hub.
+        assert run(hub.async_reorder_devices([2])) is None
+        assert run(hub.async_reorder_devices([2, 1])) == {"status": "success", "ordered_ids": [2, 1]}
+
+        adopted: list = []
+
+        async def _adopt(name, *, sync_identity=True):
+            adopted.append(name)
+
+        monkeypatch.setattr(hub, "_async_adopt_hub_name", _adopt)
+        monkeypatch.setattr(proxy, "set_hub_name", lambda name, timeout=5.0: False)
+        assert run(hub.async_set_hub_name("Den")) is False and adopted == []
+        monkeypatch.setattr(proxy, "set_hub_name", lambda name, timeout=5.0: True)
+        assert run(hub.async_set_hub_name("Den")) is True and adopted == ["Den"]
     finally:
         loop.close()

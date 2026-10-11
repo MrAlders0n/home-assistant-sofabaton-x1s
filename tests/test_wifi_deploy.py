@@ -567,21 +567,16 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
 
     request_calls = {"count": 0}
 
-    def _request_devices():
+    async def _facade_devices(*, refresh=False, timeout=10.0):
+        # The deploy's devices read is the facade's (its commit gate is
+        # tested in tests/lib): play the committed burst it waits for.
         request_calls["count"] += 1
-        loop.call_later(
-            0.05,
-            lambda: (
-                ready.__setitem__("value", True),
-                # A real commit bumps the proxy serial on the frame thread
-                # before the hub's burst listener runs.
-                setattr(hub._proxy, "_devices_commit_serial", hub._proxy._devices_commit_serial + 1),
-                hub._on_devices_burst("devices"),
-            ),
-        )
-        return True
+        assert refresh is True
+        ready["value"] = True
+        hub._proxy.state.devices = dict(snapshot)
+        return []
 
-    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
+    monkeypatch.setattr(hub._facade, "devices", _facade_devices)
 
     deleted: list[int] = []
 

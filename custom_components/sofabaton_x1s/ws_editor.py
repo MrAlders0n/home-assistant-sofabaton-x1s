@@ -528,7 +528,7 @@ async def _run_cache_refresh_operation(
         if store.enabled:
             # The canonical cache now carries everything structural; the
             # editor's bundle is assembled from it on demand.
-            summary = await hub.async_export_cache_state()
+            summary = await hub.async_export_persistent_cache()
             await store.async_set_hub_cache(hub.entry_id, summary)
         registry.update(
             operation_id,

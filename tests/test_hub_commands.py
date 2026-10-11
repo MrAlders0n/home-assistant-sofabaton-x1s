@@ -116,7 +116,9 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
         ("device-1", {"sw_version": "8"}),
     ]
     assert store.saved
-    assert store.saved[-1][1]["banner_info"]["firmware_version"] == 8
+    # Persisted as the facade's state document (adoption plan M3).
+    assert store.saved[-1][1]["kind"] == "sofabaton_state"
+    assert store.saved[-1][1]["state"]["banner_info"]["firmware_version"] == 8
 
     loop.close()
 

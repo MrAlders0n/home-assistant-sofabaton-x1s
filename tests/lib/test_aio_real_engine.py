@@ -1778,3 +1778,58 @@ def test_the_constructor_and_from_config_take_the_busy_gate() -> None:
         assert aio.AsyncXProxy.from_config(config, busy_gate=busy).sync.transport._busy_gate() is True
 
     asyncio.run(main())
+
+
+# ---------------------------------------------------------------------------
+# catalog refresh: only a commit after the request answers it (adoption L2)
+# ---------------------------------------------------------------------------
+
+
+def test_a_stale_burst_end_cannot_answer_a_catalog_refresh() -> None:
+    """The burst-end callback of an earlier read can still be queued on the
+    loop when a refresh goes out (issue #279 on the HA side). It used to
+    resolve the refresh with the old catalog while its own request was
+    still on the wire; now only a commit after the request counts."""
+
+    async def main():
+        engine = _engine("X1S")
+        proxy = aio.AsyncXProxy.wrap(engine)
+        engine.state.devices = {5: {"name": "TV", "brand": "Sony", "device_class": "ir", "raw_body": b""}}
+        engine._devices_catalog_ready = True
+        _hub_link(engine, True)
+        serial = engine.devices_commit_serial
+
+        read = asyncio.ensure_future(proxy.devices(refresh=True, timeout=2.0))
+        await asyncio.sleep(0.05)
+        assert engine._burst.active and engine._burst.kind == "devices"
+
+        proxy._resolve_burst("devices")  # an earlier read's queued callback
+        await asyncio.sleep(0.1)
+        assert not read.done(), "the old catalog answered the refresh"
+
+        engine._device_pending_expected_rows = 0  # the hub answers: no devices
+        engine._burst.finish("devices", can_issue=engine.can_issue_commands, sender=engine._send_cmd_frame)
+        assert await asyncio.wait_for(read, 2.0) == []
+        assert engine.devices_commit_serial == serial + 1
+
+    asyncio.run(main())
+
+
+def test_a_refresh_whose_own_burst_ends_unanswered_still_fails_fast() -> None:
+    async def main():
+        engine = _engine("X1S")
+        proxy = aio.AsyncXProxy.wrap(engine)
+        engine.state.devices = {5: {"name": "TV", "brand": "Sony", "device_class": "ir", "raw_body": b""}}
+        engine._devices_catalog_ready = True
+        _hub_link(engine, True)
+
+        read = asyncio.ensure_future(proxy.devices(refresh=True, timeout=5.0))
+        await asyncio.sleep(0.05)
+        started = time.monotonic()
+        _end_burst_idle(engine)  # nothing landed: nothing of this kind is pending any more
+        with pytest.raises(errors.FetchTimeoutError, match="without a complete reply"):
+            await read
+        assert time.monotonic() - started < 2.0
+        assert [d.name for d in await proxy.devices()] == ["TV"]
+
+    asyncio.run(main())

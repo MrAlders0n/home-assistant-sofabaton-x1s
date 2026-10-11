@@ -84,6 +84,10 @@ class _Hub:
     async def async_export_cache_state(self):
         return {"devices": {"1": {"name": "TV"}}}
 
+    async def async_export_persistent_cache(self):
+        # The facade's state document (adoption plan M3).
+        return {"kind": "sofabaton_state", "schema": 1, "state": {"devices": {"1": {"name": "TV"}}}}
+
     async def async_get_cache_contents(self):
         return {
             "entry_id": self.entry_id,
@@ -154,7 +158,7 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
     # Per-entity refresh is a full structural fetch now (not commands-only).
     assert hub.refreshed == ("device", 17)
     assert hub.fetched is None
-    assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
+    assert saved["entry-1"] == {"kind": "sofabaton_state", "schema": 1, "state": {"devices": {"1": {"name": "TV"}}}}
 
 
 def test_ws_refresh_persistent_cache_entry_while_the_app_holds_the_hub(monkeypatch):
@@ -309,7 +313,7 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
     assert conn.result == (4, {"ok": True})
     assert hub.refreshed == ("activity", 33)
     assert hub.fetched is None
-    assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
+    assert saved["entry-1"] == {"kind": "sofabaton_state", "schema": 1, "state": {"devices": {"1": {"name": "TV"}}}}
 
 
 def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):

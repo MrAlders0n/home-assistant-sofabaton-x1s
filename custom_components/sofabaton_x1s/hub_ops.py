@@ -32,8 +32,13 @@ from .lib.blob_decoders import (
 )
 from .lib.backup_export import PAYLOAD_PROFILE_FULL
 from .lib.commands import hub_command_label, split_play_blob_tail
-from .lib.errors import HubRejectedError
+from .lib.errors import HubBusyError, HubNotConnectedError, HubRejectedError
 from .lib.models import RestoreResult, WriteProgress
+
+
+# A facade write the hub (or the facade's own check) refused: the HA
+# wrappers answer None for these, as the engine did.
+_FACADE_REFUSALS = (ValueError, HubRejectedError, HubBusyError, HubNotConnectedError)
 
 
 # The facade's restore phase words, as the backup tab localizes them.
@@ -677,22 +682,28 @@ class HubOpsMixin:
         *,
         refresh_impacted_activities: bool = True,
     ) -> dict[str, Any] | None:
-        """Delete a device and confirm impacted activities on the selected hub.
+        """Delete a device (or an activity: the hub keys its delete purely by
+        id) and confirm impacted activities on the selected hub.
 
-        The proxy delete clears the cached keymap/favorites/macros of every
+        The delete clears the cached keymap/favorites/macros of every
         activity that referenced the device (its ``impacted_activities`` —
         the hub-flagged confirm set plus the cache scan of power macros,
-        favorites, and bindings), so by default those activities are
-        re-warmed here before the cache is persisted. Callers that run
+        favorites, and bindings). By default it is the facade's
+        ``remove_device`` / ``remove_activity``, which reads those
+        activities back before the cache is persisted. Callers that run
         their own re-warm pass afterwards (the wifi deploy pipeline) pass
-        ``refresh_impacted_activities=False`` and fold the result's
-        ``impacted_activities`` into that pass instead.
+        ``refresh_impacted_activities=False``, get the engine's bare delete
+        and fold the result's ``impacted_activities`` into that pass.
+        Returns the engine's result dict, ``None`` when the hub refused.
         """
 
-        result = await self.hass.async_add_executor_job(
-            self._proxy.delete_device,
-            device_id,
-        )
+        if refresh_impacted_activities:
+            result = await self._async_remove_entity(device_id)
+        else:
+            result = await self.hass.async_add_executor_job(
+                self._proxy.delete_device,
+                device_id,
+            )
         if isinstance(result, dict) and str(result.get("status")) == "success":
             # The proxy evicted the device from its own state, but the
             # hub-level snapshot is unioned into the cache device list, so
@@ -702,71 +713,91 @@ class HubOpsMixin:
             # proxy delete already ran keeps that side current.
             if self.devices.pop(device_id & 0xFF, None) is not None:
                 self._devices_generation += 1
-            if refresh_impacted_activities:
-                impacted = result.get("impacted_activities")
-                if impacted is None:
-                    impacted = result.get("confirmed_activities") or []
-                for act_id in impacted:
-                    try:
-                        await self._async_fetch_activity_commands(int(act_id))
-                    except Exception:  # noqa: BLE001 - the delete itself succeeded
-                        self._log.warning(
-                            "[%s] failed re-warming activity 0x%02X after device delete",
-                            self.entry_id,
-                            int(act_id) & 0xFF,
-                            exc_info=True,
-                        )
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             await self._async_persist_cache_if_enabled()
         return result
 
-    async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
-        """Rewrite the hub's stored activity display order to *ordered_ids*."""
+    async def _async_remove_entity(self, ent_id: int) -> dict[str, Any] | None:
+        """The facade's delete, answered in the engine's result shape."""
 
-        return await self.hass.async_add_executor_job(
-            self._proxy.reorder_activities,
-            list(ordered_ids),
-        )
+        ent_lo = int(ent_id) & 0xFF
+        try:
+            if ent_lo >= 101:  # activity ids start at 101; nothing cascades
+                await self._facade.remove_activity(ent_lo)
+                confirmed: tuple[int, ...] = ()
+                impacted: tuple[int, ...] = ()
+            else:
+                removed = await self._facade.remove_device(ent_lo)
+                confirmed = removed.confirmed_activity_ids
+                impacted = removed.impacted_activity_ids
+        except _FACADE_REFUSALS as err:
+            self._log.warning("[%s] delete of %d refused: %s", self.entry_id, ent_lo, err)
+            return None
+        return {
+            "device_id": ent_lo,
+            "confirmed_activities": list(confirmed),
+            "impacted_activities": list(impacted),
+            "status": "success",
+        }
+
+    async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+        """Rewrite the hub's stored activity display order to *ordered_ids*
+        (the facade's ``reorder_activities``); ``None`` when refused."""
+
+        try:
+            await self._facade.reorder_activities(list(ordered_ids))
+        except _FACADE_REFUSALS as err:
+            self._log.warning("[%s] activity reorder refused: %s", self.entry_id, err)
+            return None
+        return {"status": "success", "ordered_ids": [int(i) & 0xFF for i in ordered_ids]}
 
     async def async_reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
-        """Rewrite the hub's stored device display order to *ordered_ids*."""
+        """Rewrite the hub's stored device display order to *ordered_ids*
+        (the facade's ``reorder_devices``); ``None`` when refused."""
 
-        return await self.hass.async_add_executor_job(
-            self._proxy.reorder_devices,
-            list(ordered_ids),
-        )
+        try:
+            await self._facade.reorder_devices(list(ordered_ids))
+        except _FACADE_REFUSALS as err:
+            self._log.warning("[%s] device reorder refused: %s", self.entry_id, err)
+            return None
+        return {"status": "success", "ordered_ids": [int(i) & 0xFF for i in ordered_ids]}
 
     async def async_create_activity(self, name: str) -> dict[str, Any] | None:
-        """Create a fresh, empty activity named *name* on the selected hub."""
+        """Create a fresh, empty activity named *name* on the selected hub
+        (the facade's ``add_activity``, which reads it back); ``None`` when
+        refused."""
 
-        return await self.hass.async_add_executor_job(
-            self._proxy.create_activity,
-            name,
-        )
+        try:
+            activity_id = await self._facade.add_activity(name)
+        except _FACADE_REFUSALS as err:
+            self._log.warning("[%s] activity create refused: %s", self.entry_id, err)
+            return None
+        return {"status": "success", "activity_id": activity_id}
 
     async def async_create_device(
         self, name: str, *, device_class: str
     ) -> dict[str, Any] | None:
         """Create an empty device of *device_class* named *name* on the hub.
 
-        The proxy wrapper already refreshes the hub-side device catalog
-        (which feeds ``self.devices`` through the normal devices burst)
-        and syncs the remote; the bookkeeping here mirrors
+        The facade's ``add_device``: the engine refreshes the hub-side
+        device catalog (which feeds ``self.devices`` through the normal
+        devices burst) and syncs the remote, and the facade reads the new
+        device back. The bookkeeping here mirrors
         :meth:`async_delete_device` so the Hub tab repaints and the
-        persisted cache picks the new row up without waiting for the
-        frontend's per-entity refresh.
+        persisted cache picks the new row up. ``None`` when refused.
         """
 
-        result = await self.hass.async_add_executor_job(
-            partial(self._proxy.create_device, name, device_class=device_class)
-        )
-        if isinstance(result, dict) and str(result.get("status")) == "success":
-            self._devices_generation += 1
-            self._bump_cache_generation()
-            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
-            await self._async_persist_cache_if_enabled()
-        return result
+        try:
+            device_id = await self._facade.add_device(name, device_class)
+        except _FACADE_REFUSALS as err:
+            self._log.warning("[%s] device create refused: %s", self.entry_id, err)
+            return None
+        self._devices_generation += 1
+        self._bump_cache_generation()
+        async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        await self._async_persist_cache_if_enabled()
+        return {"status": "success", "device_id": device_id}
 
     async def async_command_to_favorite(
         self,

@@ -600,6 +600,14 @@ class BurstScheduler:
     def on_dropped(self, cb: Callable[[str], None]) -> None:
         self.dropped_listeners.append(cb)
 
+    def pending(self, kind: str) -> bool:
+        """Whether a read burst of ``kind`` is on the wire or still queued."""
+
+        with self._lock:
+            if self.active and self.kind == kind:
+                return True
+            return any(burst_kind == kind for _op, _payload, _is_burst, burst_kind in self.queue)
+
     @staticmethod
     def _is_exchange(kind: str | None) -> bool:
         return kind is not None and kind.startswith("exchange:")

@@ -20,8 +20,8 @@ class _Hub:
     def __init__(self, entry_id):
         self.entry_id = entry_id
 
-    async def async_export_cache_state(self):
-        return {"devices": {"1": {"name": "TV"}}}
+    async def async_export_persistent_cache(self):
+        return {"kind": "sofabaton_state", "schema": 1, "state": {"devices": {"1": {"name": "TV"}}}}
 
 
 def test_async_persist_hub_cache_disabled(monkeypatch):
@@ -63,6 +63,7 @@ def test_async_persist_all_hub_cache_saves_each_hub(monkeypatch):
 
     assert persisted == 2
     assert set(store.saved) == {"entry-a", "entry-b"}
+    assert all(payload["kind"] == "sofabaton_state" for payload in store.saved.values())
 
 
 def test_shared_stores_load_once_under_concurrent_setup() -> None:

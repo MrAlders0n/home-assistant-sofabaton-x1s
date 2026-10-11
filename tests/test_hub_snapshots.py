@@ -84,6 +84,16 @@ def test_to_export_view_is_a_noop_when_raw_body_absent() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _landed_without_change(hub, monkeypatch, kind: str) -> None:
+    """The facade's catalog read returns as if a commit landed, leaving the
+    engine state as the test seeded it."""
+
+    async def _read(**_kwargs):
+        return []
+
+    monkeypatch.setattr(hub._facade, kind, _read)
+
+
 def test_refresh_devices_snapshot_carries_raw_body_from_proxy_state(
     monkeypatch,
 ) -> None:
@@ -102,13 +112,9 @@ def test_refresh_devices_snapshot_carries_raw_body_from_proxy_state(
         "raw_body": raw,
     }
 
-    # Bypass the request-devices round-trip: the helper polls the proxy's
-    # commit serial until it advances past the value it saw when the
-    # request went out, so the stub plays the committed burst.
-    def _request_devices(*args, **kwargs):
-        hub._proxy._devices_commit_serial += 1
-
-    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
+    # The facade's read landed (its commit gate is tested in tests/lib);
+    # what matters here is what the helper hands back.
+    _landed_without_change(hub, monkeypatch, "devices")
 
     snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_devices_snapshot(timeout_seconds=1.0)
@@ -135,10 +141,7 @@ def test_refresh_activities_snapshot_carries_raw_body_from_proxy_state(
         "raw_body": raw,
     }
 
-    def _request_activities(*args, **kwargs):
-        hub._proxy._activities_commit_serial += 1
-
-    monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
+    _landed_without_change(hub, monkeypatch, "activities")
 
     snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_activities_snapshot(timeout_seconds=1.0)
@@ -163,14 +166,8 @@ def test_refresh_devices_and_activities_have_identical_shape(monkeypatch) -> Non
     hub._proxy.state.devices[0x01] = {"name": "Dev", "raw_body": raw_dev}
     hub._proxy.state.activities[0x02] = {"name": "Act", "raw_body": raw_act}
 
-    def _request_devices(*a, **kw):
-        hub._proxy._devices_commit_serial += 1
-
-    def _request_activities(*a, **kw):
-        hub._proxy._activities_commit_serial += 1
-
-    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
-    monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
+    _landed_without_change(hub, monkeypatch, "devices")
+    _landed_without_change(hub, monkeypatch, "activities")
 
     dev_snapshot = hub.hass.loop.run_until_complete(
         hub._async_refresh_devices_snapshot(timeout_seconds=1.0)

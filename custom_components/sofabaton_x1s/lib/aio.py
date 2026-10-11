@@ -611,6 +611,9 @@ class AsyncXProxy:
         # Burst keys with a fetch in flight: a second read for the same
         # key joins the pending burst instead of issuing another request.
         self._inflight: set[str] = set()
+        # The engine's catalog commit count when the in-flight request for
+        # a key went out (see _fetch_committed).
+        self._inflight_serial: dict[str, Optional[int]] = {}
         # Open write batch (batch_writes): rebases accumulate here and the
         # single snapshot_changed goes out when the batch closes.
         self._batch: Optional[_FacadeBatch] = None
@@ -3116,31 +3119,44 @@ class AsyncXProxy:
         owner = key not in self._inflight
         if owner:
             self._inflight.add(key)
+            # A catalog read counts only a commit after its request went
+            # out; joiners share the owner's baseline.
+            self._inflight_serial[key] = self._commit_serial(key)
+        baseline = self._inflight_serial.get(key)
+        deadline = self._loop.time() + timeout
         try:
             if owner:
                 await self.run(getter, *args, **{fetch_kw: True})
-            try:
-                await asyncio.wait_for(future, timeout)
-            except TimeoutError:
-                raise FetchTimeoutError(f"timed out after {timeout}s fetching {key!r}") from None
+            while True:
+                try:
+                    await asyncio.wait_for(future, max(0.0, deadline - self._loop.time()))
+                except TimeoutError:
+                    raise FetchTimeoutError(f"timed out after {timeout}s fetching {key!r}") from None
+                if not self._woken_by_an_older_burst(key, baseline):
+                    break
+                # The burst-end callback of an earlier read, still queued on
+                # the loop when this request went out, resolved the waiter;
+                # this read's own burst is still to come.
+                future = self._loop.create_future()
+                self._burst_waiters.setdefault(key, []).append(future)
         except BaseException:
             self._drop_burst_waiter(key, future)
             raise
         finally:
             if owner:
                 self._inflight.discard(key)
+                self._inflight_serial.pop(key, None)
 
         # A burst also ends on the engine's idle timeout without any reply
         # having landed; the getter's ready flag (and, for the catalogs,
-        # the commit flag of the burst that just ended) is what proves the
-        # data is real.
+        # a commit after the request) is what proves the data is real.
         # The engine may notify the burst end a few instructions before it
         # records completeness (an empty-keymap ACK finishes the burst,
         # then marks the entity), so give the flag a short grace window
         # before calling the fetch a failure.
         for attempt in range(5):
             data, ready = await self.run(getter, *args, **{fetch_kw: False})
-            if ready and self._burst_committed(key):
+            if ready and self._fetch_committed(key, baseline):
                 return data
             await asyncio.sleep(0.02 * (attempt + 1))
         raise FetchTimeoutError(
@@ -3162,6 +3178,39 @@ class AsyncXProxy:
         if attr is None:
             return True
         return bool(getattr(self._proxy, attr, True))
+
+    def _commit_serial(self, key: str) -> Optional[int]:
+        """The engine's commit count for a catalog key (None otherwise, or
+        for an engine without one)."""
+
+        attr = {
+            "devices": "devices_commit_serial",
+            "activities": "activities_commit_serial",
+        }.get(key)
+        value = getattr(self._proxy, attr, None) if attr is not None else None
+        return value if isinstance(value, int) else None
+
+    def _fetch_committed(self, key: str, baseline: Optional[int]) -> bool:
+        """A catalog read is real only when a snapshot committed after its
+        request went out; reads without a serial keep the burst's commit
+        flag (always true for the per-entity keys)."""
+
+        if baseline is None:
+            return self._burst_committed(key)
+        serial = self._commit_serial(key)
+        return serial is not None and serial > baseline
+
+    def _woken_by_an_older_burst(self, key: str, baseline: Optional[int]) -> bool:
+        """After a burst-end wake: no commit since the request, and a read
+        of this kind still on the wire or queued, so the end that woke us
+        was an earlier read's (its loop callback was queued when this
+        request went out). The HA integration closed the same hole with
+        its commit-serial wait (issue #279)."""
+
+        if baseline is None or self._fetch_committed(key, baseline):
+            return False
+        pending = getattr(getattr(self._proxy, "_burst", None), "pending", None)
+        return bool(callable(pending) and pending(key))
 
     def _drop_burst_waiter(self, key: str, future: asyncio.Future) -> None:
         pending = self._burst_waiters.get(key)

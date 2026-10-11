@@ -487,7 +487,6 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
         raise AssertionError("catalog refresh must not clear the cached catalog before the read")
 
     hub._proxy.clear_activities_catalog = _clear_must_not_run  # type: ignore[method-assign]
-    hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
 
     cleared: list[tuple[int, str]] = []
 
@@ -503,10 +502,11 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
 
     hub._proxy.get_known_activity_ids = _fake_get_known_activity_ids  # type: ignore[method-assign]
 
-    async def _fake_sleep(_delay):
-        hub._proxy._activities_commit_serial += 1
+    async def _landed(**_kwargs):
+        # The facade's read landed (its commit gate is tested in tests/lib).
+        return []
 
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
+    monkeypatch.setattr(hub._facade, "activities", _landed)
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub_fetch.async_dispatcher_send", lambda *_: None)
 
     loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.2))
@@ -593,7 +593,6 @@ def test_async_request_catalog_never_prunes_a_catalog_device_as_an_activity(monk
     hub._proxy.get_known_activity_ids = lambda: {101, 102}  # type: ignore[method-assign]
     hub._proxy.get_known_device_ids = lambda: {1, 2, 5}  # type: ignore[method-assign]
     hub._proxy.get_cached_activity_detail_ids = lambda: {1, 2, 5, 101, 102, 103}  # type: ignore[method-assign]
-    hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
 
     cleared: list[tuple[int, str]] = []
 
@@ -602,10 +601,11 @@ def test_async_request_catalog_never_prunes_a_catalog_device_as_an_activity(monk
 
     hub._proxy.clear_cached_entity_detail = _clear_cached_entity_detail  # type: ignore[method-assign]
 
-    async def _fake_sleep(_delay):
-        hub._proxy._activities_commit_serial += 1
+    async def _landed(**_kwargs):
+        # The facade's read landed (its commit gate is tested in tests/lib).
+        return []
 
-    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
+    monkeypatch.setattr(hub._facade, "activities", _landed)
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub_fetch.async_dispatcher_send", lambda *_: None)
 
     loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.2))
@@ -614,3 +614,48 @@ def test_async_request_catalog_never_prunes_a_catalog_device_as_an_activity(monk
     assert cleared == [(103, "activity")]
 
     loop.close()
+
+
+def test_the_persistent_cache_is_the_facades_state_document_and_reads_legacy_payloads():
+    """Adoption plan M3: the store holds the facade's versioned document; a
+    store written before the move holds the bare engine export, read as the
+    schema-1 document it is."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        hub = _bare_hub(loop)
+        hub._proxy.state.devices = {5: {"name": "TV", "brand": "Sony", "device_class": "ir"}}
+        hub._proxy._devices_catalog_ready = True
+
+        document = loop.run_until_complete(hub.async_export_persistent_cache())
+        assert document["kind"] == "sofabaton_state" and document["schema"] == 1
+        assert document["library"] and document["exported_at"]
+
+        restored = _bare_hub(loop)
+        loop.run_until_complete(restored.async_restore_persistent_cache(document))
+        assert restored._proxy.state.devices[5]["name"] == "TV"
+        assert restored.devices_ready is True
+
+        legacy = loop.run_until_complete(hub.async_export_cache_state())
+        assert "kind" not in legacy
+        from_legacy = _bare_hub(loop)
+        loop.run_until_complete(from_legacy.async_restore_persistent_cache(legacy))
+        assert from_legacy._proxy.state.devices[5]["name"] == "TV"
+    finally:
+        loop.close()
+
+
+def test_an_unreadable_state_document_starts_cold_instead_of_failing_setup():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        hub = _bare_hub(loop)
+        future = {"kind": "sofabaton_state", "schema": 99, "state": {"devices": {"5": {"name": "TV"}}}}
+
+        loop.run_until_complete(hub.async_restore_persistent_cache(future))
+
+        assert hub._proxy.state.devices == {}
+        assert hub.cache_generation == 0
+    finally:
+        loop.close()

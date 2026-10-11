@@ -22,6 +22,8 @@ from .const import (
 )
 from .cache_store import PersistentCacheStore
 from .lib.devices import parse_device_record
+from .lib.aio import STATE_DOCUMENT_KIND
+from .lib.errors import HubBusyError, HubNotConnectedError, StateDocumentError
 from .shared_stores import async_shared_store
 
 
@@ -49,14 +51,34 @@ class HubFetchMixin:
             return False
 
         try:
-            await store.async_set_hub_cache(self.entry_id, await self.async_export_cache_state())
+            await store.async_set_hub_cache(self.entry_id, await self.async_export_persistent_cache())
         except Exception:
             self._log.exception("[%s] Failed to persist the hub cache", self.entry_id)
             return False
         return True
 
     async def async_restore_persistent_cache(self, payload: dict[str, Any]) -> None:
-        await self.hass.async_add_executor_job(self._proxy.import_cache_state, payload)
+        """Load a persisted cache into the engine before it starts.
+
+        ``payload`` is the facade's state document, or a bare engine export
+        persisted before the integration moved onto the facade (adoption
+        plan M3), which is read as the schema-1 document it is. A document
+        this library cannot read means a cold start, never a setup failure.
+        """
+
+        document = payload
+        if isinstance(payload, dict) and payload.get("kind") != STATE_DOCUMENT_KIND:
+            # Exactly what schema 1 wraps; a later schema refuses it below.
+            document = {"kind": STATE_DOCUMENT_KIND, "schema": 1, "state": payload}
+        try:
+            await self._facade.import_state(document)
+        except StateDocumentError as err:
+            self._log.warning(
+                "[%s] Persisted cache not loaded (%s); starting with a cold cache",
+                self.entry_id,
+                err,
+            )
+            return
         await self._async_sync_authoritative_identity(self._proxy.get_banner_info())
 
         devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
@@ -87,7 +109,16 @@ class HubFetchMixin:
         async_dispatcher_send(self.hass, signal_macros(self.entry_id))
 
     async def async_export_cache_state(self) -> dict[str, Any]:
+        """The engine's raw cache export (the cache view reads it)."""
+
         return await self.hass.async_add_executor_job(self._proxy.export_cache_state)
+
+    async def async_export_persistent_cache(self) -> dict[str, Any]:
+        """The persisted form of the cache: the facade's state document
+        (the engine export under ``state``, with ``kind``, ``schema``, the
+        library version and ``exported_at``)."""
+
+        return await self._facade.export_state()
 
     def _commands_ready_for(self, ent_id: int) -> bool:
         if self._looks_like_activity(ent_id):
@@ -459,22 +490,35 @@ class HubFetchMixin:
         contract is symmetric with :meth:`_async_refresh_activities_snapshot`.
 
         Raises ``TimeoutError`` when no complete devices burst commits
-        before the deadline. The cached catalog is left as it was; it is
-        never cleared ahead of the read (a hub that stays silent is not a
-        hub with no devices).
+        before the deadline, or at once when the hub cannot be read (the
+        app holds it, no session). The cached catalog is left as it was; it
+        is never cleared ahead of the read (a hub that stays silent is not
+        a hub with no devices).
         """
 
-        proxy = self._proxy
-        baseline = proxy.devices_commit_serial
-        await self.hass.async_add_executor_job(proxy.request_devices)
+        return await self._async_refresh_catalog_view(
+            "device", timeout_seconds, "Timed out waiting for a complete device list from the hub"
+        )
 
-        deadline = monotonic() + timeout_seconds
-        while monotonic() < deadline:
-            if proxy.devices_commit_serial > baseline:
-                return dict(proxy.state.entities("device"))
-            await asyncio.sleep(0.1)
+    async def _async_refresh_catalog_view(
+        self, kind: str, timeout_seconds: float, timeout_message: str
+    ) -> dict[int, dict[str, Any]]:
+        """Re-read one catalog through the facade; return the raw state view.
 
-        raise TimeoutError("Timed out waiting for a complete device list from the hub")
+        The facade's ``devices`` / ``activities(refresh=True)``: fetch-then-
+        prune, an in-flight read joined rather than repeated, a running
+        facade hold waited out, and only a snapshot committed after the
+        request answers it (its commit-serial gate, adoption plan L2: a
+        queued completion of an earlier burst cannot). Every failure is this
+        module's ``TimeoutError`` with ``timeout_message``.
+        """
+
+        read = self._facade.devices if kind == "device" else self._facade.activities
+        try:
+            await read(refresh=True, timeout=timeout_seconds)
+        except (TimeoutError, HubBusyError, HubNotConnectedError) as err:
+            raise TimeoutError(timeout_message) from err
+        return dict(self._proxy.state.entities(kind))
 
     async def _async_warm_devices_snapshot(self) -> None:
         """Best-effort devices re-read for post-write epilogues.
@@ -529,31 +573,24 @@ class HubFetchMixin:
         strips it via :func:`to_export_view`.
 
         Raises ``TimeoutError`` when no complete activities burst commits
-        before the deadline. The cached catalog and the current activity
-        are left untouched: they are never cleared ahead of the read, so
-        an unanswered request cannot masquerade as a powered-off hub.
+        before the deadline, or at once when the hub cannot be read. The
+        cached catalog and the current activity are left untouched: they
+        are never cleared ahead of the read, so an unanswered request
+        cannot masquerade as a powered-off hub.
 
-        The wait keys on the proxy's commit serial, not on the HA-side
-        ``_activities_generation``: that counter is bumped by a loop
-        callback which can still be queued from an earlier burst when this
-        request goes out, and would then satisfy an unanswered wait. The
-        returned snapshot is therefore read from proxy state directly and
-        may be ahead of ``self.activities`` until that callback runs;
+        The wait keys on the engine's commit serial (inside the facade), not
+        on the HA-side ``_activities_generation``: that counter is bumped by
+        a loop callback which can still be queued from an earlier burst when
+        this request goes out, and would then satisfy an unanswered wait.
+        The returned snapshot is therefore read from proxy state directly
+        and may be ahead of ``self.activities`` until that callback runs;
         callers that validate against the fresh catalog use the return
         value, not the HA-side dict.
         """
 
-        proxy = self._proxy
-        baseline = proxy.activities_commit_serial
-        await self.hass.async_add_executor_job(proxy.request_activities)
-
-        deadline = monotonic() + timeout_seconds
-        while monotonic() < deadline:
-            if proxy.activities_commit_serial > baseline:
-                return dict(proxy.state.entities("activity"))
-            await asyncio.sleep(0.1)
-
-        raise TimeoutError("Timed out waiting for a complete Activity list from the hub")
+        return await self._async_refresh_catalog_view(
+            "activity", timeout_seconds, "Timed out waiting for a complete Activity list from the hub"
+        )
 
     async def async_request_catalog(
         self, kind: str, timeout_seconds: float = 30.0

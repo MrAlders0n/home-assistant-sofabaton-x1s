@@ -21,6 +21,8 @@ from custom_components.sofabaton_x1s.const import HUB_VERSION_X2
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
+from tests.hub_fakes import make_controllable, read_answered
+
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
 runtime_module = importlib.import_module("custom_components.sofabaton_x1s.runtime")
 
@@ -322,7 +324,7 @@ def test_request_catalog_activities_times_out_without_clearing(hub, monkeypatch)
     hub._proxy.state.activities = {101: {"name": "Watch TV", "active": True, "needs_confirm": False}}
     hub._proxy.state.set_hint(101)
     hub._proxy._activities_catalog_ready = True
-    monkeypatch.setattr(hub._proxy, "request_activities", lambda *a, **kw: None)
+    make_controllable(hub._proxy)  # the read goes out; the hub never answers
 
     def _clear_must_not_run():
         raise AssertionError("clear_activities_catalog must not run before the read")
@@ -348,7 +350,7 @@ def test_request_catalog_devices_times_out_without_clearing(hub, monkeypatch):
     _silence_dispatcher(monkeypatch)
     hub._proxy.state.devices = {0x0B: {"name": "TV"}}
     hub._proxy._devices_catalog_ready = True
-    monkeypatch.setattr(hub._proxy, "request_devices", lambda *a, **kw: None)
+    make_controllable(hub._proxy)  # the read goes out; the hub never answers
 
     def _clear_must_not_run():
         raise AssertionError("clear_devices_catalog must not run before the read")
@@ -373,25 +375,21 @@ def test_request_catalog_devices_prunes_removed_ids_on_success(hub, monkeypatch)
     _silence_dispatcher(monkeypatch)
     hub._proxy.state.devices = {0x0B: {"name": "TV"}, 0x0C: {"name": "Gone"}}
     hub._proxy._devices_catalog_ready = True
-
-    def _request_devices(*_a, **_kw):
-        # Simulate the committed burst: wholesale replace + generation bump.
-        hub._proxy.state.devices = {0x0B: {"name": "TV"}}
-        hub._proxy._devices_commit_serial += 1
-
-    monkeypatch.setattr(hub._proxy, "request_devices", _request_devices)
+    make_controllable(hub._proxy)
     pruned: list = []
     monkeypatch.setattr(
         hub._proxy, "clear_cached_entity_detail", lambda ent_id, *, kind: pruned.append((ent_id, kind))
     )
 
-    hub.hass.loop.run_until_complete(hub.async_request_catalog("devices", timeout_seconds=1.0))
+    # The committed burst replaces the catalog wholesale.
+    hub.hass.loop.run_until_complete(
+        read_answered(hub.async_request_catalog("devices", timeout_seconds=1.0), hub._proxy, "devices", {0x0B: {"name": "TV"}})
+    )
 
     assert pruned == [(0x0C, "device")]
 
 
 def test_device_power_state_returns_none_on_timeout(hub, monkeypatch):
-    monkeypatch.setattr(hub._proxy, "request_devices", lambda *a, **kw: None)
     monkeypatch.setattr(
         SofabatonHub, "_async_refresh_devices_snapshot", _timeout_snapshot
     )
@@ -489,8 +487,9 @@ def test_queued_old_completion_cannot_satisfy_a_new_refresh(hub, monkeypatch):
     generation = hub._activities_generation
     assert hub._proxy.activities_commit_serial == 1
 
-    # Read B goes out and the hub never answers.
-    monkeypatch.setattr(hub._proxy, "request_activities", lambda *a, **kw: True)
+    # Read B goes out and the hub never answers. (The facade's own stale
+    # wake is covered in tests/lib/test_aio_real_engine.py, L2.)
+    make_controllable(hub._proxy)
 
     with pytest.raises(TimeoutError):
         loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.3))
@@ -508,16 +507,21 @@ def test_refresh_returns_proxy_commit_before_ha_callback_runs(hub, monkeypatch):
     _silence_dispatcher(monkeypatch)
     loop = hub.hass.loop
     hub.activities = {101: {"name": "TV", "active": True, "needs_confirm": False}}
+    make_controllable(hub._proxy)
+    # The HA burst callback is not delivered in this test at all.
+    listeners = hub._proxy._burst.listeners
+    monkeypatch.setitem(
+        listeners, "activities", [cb for cb in listeners["activities"] if getattr(cb, "__self__", None) is not hub]
+    )
 
-    def _request_activities(*a, **kw):
-        # Commit lands on the frame thread; the HA callback is not delivered
-        # in this test at all.
-        _commit_activities(hub._proxy, [(101, "Movie Night", True)])
-        return True
-
-    monkeypatch.setattr(hub._proxy, "request_activities", _request_activities)
-
-    snapshot = loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=1.0))
+    snapshot = loop.run_until_complete(
+        read_answered(
+            hub.async_request_catalog("activities", timeout_seconds=1.0),
+            hub._proxy,
+            "activities",
+            {101: {"name": "Movie Night", "active": True}},
+        )
+    )
 
     assert snapshot[101]["name"] == "Movie Night"
     assert hub.activities[101]["name"] == "TV"

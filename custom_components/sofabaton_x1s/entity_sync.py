@@ -597,7 +597,7 @@ async def _run_entity_sync_operation(
                 await hub.async_refresh_activities_referencing_device(entity_id)
         store = await runtime._async_get_persistent_cache_store(hass)
         if store.enabled:
-            payload = await hub.async_export_cache_state()
+            payload = await hub.async_export_persistent_cache()
             await store.async_set_hub_cache(hub.entry_id, payload)
     except Exception:  # pragma: no cover - cache refresh is best-effort
         _LOGGER.exception("[%s_sync] post-sync cache refresh failed", entity_kind)

@@ -508,7 +508,7 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
         # The app holds the hub, or there is no hub session: nothing read.
         connection.send_error(msg["id"], "unavailable", str(err))
         return
-    payload = await hub.async_export_cache_state()
+    payload = await hub.async_export_persistent_cache()
     await store.async_set_hub_cache(hub.entry_id, payload)
     connection.send_result(msg["id"], {"ok": True})
 
@@ -559,6 +559,6 @@ async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, An
         return
     store = await runtime._async_get_persistent_cache_store(hass)
     if store.enabled:
-        payload = await hub.async_export_cache_state()
+        payload = await hub.async_export_persistent_cache()
         await store.async_set_hub_cache(hub.entry_id, payload)
     connection.send_result(msg["id"], {"ok": True})

@@ -280,7 +280,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         # starts from the persisted one: the initial sync below persists
         # right after its banner read, and an empty engine would replace
         # every fetched detail in the store (CR-H1-3).
-        cache_state = await self.async_export_cache_state()
+        cache_state = await self.async_export_persistent_cache()
         await self.async_stop()
         self._proxy = self._create_proxy()
         await self.async_restore_persistent_cache(cache_state)
