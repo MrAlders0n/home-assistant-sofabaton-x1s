@@ -231,12 +231,15 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
     async def async_start(self) -> None:
         self._log.debug("[%s] Starting proxy threads", self.entry_id)
         zc = await async_get_instance(self.hass)
-        self._proxy.set_zeroconf(zc)
-        await self.hass.async_add_executor_job(self._proxy.start)
+        self._facade.set_zeroconf(zc)
+        await self._facade.start()
 
-    async def async_stop(self) -> None:
+    async def async_stop(self, *, release_hub: bool = False) -> None:
+        """Stop the engine; ``release_hub`` also lets the hub go (see
+        :meth:`AsyncXProxy.stop`), for a hub that stays configured but off."""
+
         self._log.debug("[%s] Stopping proxy", self.entry_id)
-        await self.hass.async_add_executor_job(self._proxy.stop)
+        await self._facade.stop(release_hub=release_hub)
 
     async def async_apply_new_settings(
         self,
@@ -412,9 +415,9 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
     async def async_set_proxy_enabled(self, enable: bool) -> None:
         self._log.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)
         if enable:
-            await self.hass.async_add_executor_job(self._proxy.enable_proxy)
+            await self._facade.enable_proxy()
         else:
-            await self.hass.async_add_executor_job(self._proxy.disable_proxy)
+            await self._facade.disable_proxy()
         self.proxy_enabled = enable
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_PROXY_ENABLED, enable
@@ -424,7 +427,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
     def local_address_in_use(self) -> str:
         """The local IPv4 address in use toward the hub (blocking lookup)."""
 
-        return self._proxy.get_routed_local_ip()
+        return self._facade.local_address()
 
     async def async_set_local_address(self, address: str | None) -> None:
         """Set the manual local address; None or blank returns to automatic.
@@ -432,7 +435,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         Raises ValueError for anything but a dotted-decimal IPv4 address.
         """
 
-        await self.hass.async_add_executor_job(self._proxy.set_local_address, address)
+        await self._facade.set_local_address(address)
         self.local_address = self._proxy.local_address
         self._log.debug(
             "[%s] Local address set to %s", self.entry_id, self.local_address or "automatic"
@@ -462,7 +465,7 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
 
     async def async_set_hex_logging_enabled(self, enable: bool) -> None:
         self._log.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
-        await self.hass.async_add_executor_job(self._proxy.set_diag_dump, enable)
+        await self._facade.set_diag_dump(enable)
         self.hex_logging_enabled = enable
         if enable:
             async_enable_hex_logging_capture(self.hass, self.entry_id)

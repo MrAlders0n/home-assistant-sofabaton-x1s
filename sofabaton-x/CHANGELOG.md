@@ -19,6 +19,10 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   work of its own outside the facade. It is combined with the facade's
   own hold. Before, `wrap()` silently replaced a gate the application had
   installed on the engine's transport; pass it here instead.
+- `restore()` progress names its erase and hub-name steps: `erasing`
+  before a replacing restore wipes the hub, `renaming` before it applies
+  the bundle's hub name. Both happen inside the restore's hold, so a
+  consumer could not report them itself.
 
 ## 0.2.4 (2026-10-10)
 

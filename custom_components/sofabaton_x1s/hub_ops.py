@@ -32,6 +32,69 @@ from .lib.blob_decoders import (
 )
 from .lib.backup_export import PAYLOAD_PROFILE_FULL
 from .lib.commands import hub_command_label, split_play_blob_tail
+from .lib.errors import HubRejectedError
+from .lib.models import RestoreResult, WriteProgress
+
+
+# The facade's restore phase words, as the backup tab localizes them.
+_RESTORE_PHASES = {"erasing": "erase", "renaming": "hub", "reading_back": "cache_warm"}
+
+
+def _progress_relay(
+    callback: Any,
+    *,
+    phases: dict[str, str] | None = None,
+    last: list[WriteProgress] | None = None,
+) -> Any:
+    """A facade progress consumer that feeds an engine-style callback.
+
+    The operation registry and the card take the engine's keyword dicts
+    (``status``, ``phase``, ``message``, the step counts and
+    ``current_device_id`` / ``current_activity_id``); the facade hands
+    out :class:`WriteProgress` on the loop. ``phases`` renames phase
+    words; ``last`` collects every report for the caller's final counts.
+    """
+
+    if not callable(callback):
+        return None
+
+    def relay(progress: WriteProgress) -> None:
+        if last is not None:
+            last.append(progress)
+        payload: dict[str, Any] = {
+            "status": "running",
+            "phase": (phases or {}).get(progress.phase, progress.phase),
+            "message": progress.message,
+            "completed_steps": progress.completed_steps,
+            "total_steps": progress.total_steps,
+        }
+        if progress.entity_kind in ("device", "activity") and progress.entity_id is not None:
+            payload[f"current_{progress.entity_kind}_id"] = progress.entity_id
+        if progress.step_kind:
+            payload["step_kind"] = progress.step_kind
+        callback(**payload)
+
+    return relay
+
+
+def _restore_result_dict(outcome: RestoreResult) -> dict[str, Any]:
+    """The engine's restore result dict, which the card and the
+    ``restore_backup`` service response carry, from the facade's result."""
+
+    result: dict[str, Any] = {"status": outcome.status}
+    if outcome.failed_at is not None:
+        result["failed_at"] = list(outcome.failed_at)
+    result["device_id_map"] = {
+        str(source): int(target) for source, target in sorted(outcome.device_id_map.items())
+    }
+    result["restored_devices"] = list(outcome.restored.get("devices") or [])
+    result["restored_activities"] = list(outcome.restored.get("activities") or [])
+    if outcome.partial_device_ids:
+        result["partial_device_ids"] = list(outcome.partial_device_ids)
+    if outcome.hub_name is not None:
+        result["hub_name"] = outcome.hub_name
+        result["hub_name_restored"] = bool(outcome.hub_name_restored)
+    return result
 
 
 class HubOpsMixin:
@@ -160,12 +223,10 @@ class HubOpsMixin:
         """Fetch a restore-oriented device backup payload from the hub.
 
         The export logic lives in the library
-        (:meth:`X1Proxy.backup_device`); this is a thin executor wrapper.
+        (:meth:`X1Proxy.backup_device`); this is a thin wrapper.
         """
 
-        return await self.hass.async_add_executor_job(
-            partial(self._proxy.backup_device, device_id, wait_timeout=wait_timeout)
-        )
+        return await self._facade.backup_device(device_id, wait_timeout=wait_timeout)
 
     async def async_backup_hub(
         self,
@@ -176,26 +237,16 @@ class HubOpsMixin:
     ) -> dict[str, Any]:
         """Build a ``hub_bundle`` payload covering the requested scope.
 
-        The export logic lives in the library
-        (:meth:`X1Proxy.backup_hub_bundle`); this wrapper supplies the
-        integration hub identity and forwards progress. ``progress_callback``
-        runs on the executor thread, so callers must marshal to the loop
-        themselves (see ``_BackupOperationRegistry.update_from_thread``).
+        The facade's :meth:`AsyncXProxy.backup`: the hub is held for the
+        whole read. The bundle's ``hub`` block is the engine's (entry id,
+        banner name, model). ``progress_callback`` receives the engine's
+        keyword progress dicts, on the loop.
         """
 
-        hub_info = {
-            "entry_id": self.entry_id,
-            "name": self.name,
-            "version": self.version,
-        }
-        return await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.backup_hub_bundle,
-                device_ids=device_ids,
-                hub_info=hub_info,
-                wait_timeout=wait_timeout,
-                progress=progress_callback,
-            )
+        return await self._facade.backup(
+            device_ids=device_ids,
+            timeout=wait_timeout,
+            progress=_progress_relay(progress_callback),
         )
 
     async def async_refresh_hub_cache(
@@ -206,23 +257,17 @@ class HubOpsMixin:
         """Refresh the whole hub's structural cache and return a blob-free
         ``hub_bundle``.
 
-        Runs :meth:`X1Proxy.backup_hub_bundle` with ``include_blobs=False`` —
-        it refreshes the device + activity lists and every entity's structure
-        into proxy state, without the multi-minute per-command IR blob dump.
-        The caller persists the returned bundle (the live activity editor's
-        data source) and the summary export. ``progress_callback`` runs on the
-        executor thread (marshal to the loop, as with ``async_backup_hub``).
+        The facade's ``backup(include_blobs=False)``: it refreshes the device
+        + activity lists and every entity's structure into proxy state,
+        without the multi-minute per-command IR blob dump. The caller
+        persists the returned bundle (the live activity editor's data
+        source) and the summary export. ``progress_callback`` as for
+        :meth:`async_backup_hub`.
         """
 
-        hub_info = {"entry_id": self.entry_id, "name": self.name, "version": self.version}
-        bundle = await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.backup_hub_bundle,
-                device_ids=None,
-                hub_info=hub_info,
-                progress=progress_callback,
-                include_blobs=False,
-            )
+        bundle = await self._facade.backup(
+            include_blobs=False,
+            progress=_progress_relay(progress_callback),
         )
         self._bump_cache_generation()
         return bundle
@@ -244,17 +289,14 @@ class HubOpsMixin:
     async def async_refresh_entity_structure(self, *, kind: str, ent_id: int) -> None:
         """Refresh one entity's full structural detail into the proxy cache.
 
-        Runs the blob-free backup fetch for the entity (commands, buttons,
-        macros, inputs, key-sort and idle behavior for devices; keymap,
-        macros and favorites for activities) so structural bundles assembled
-        from state reflect the live hub. The returned payload is discarded
-        -- the fetch's side effect on proxy state is the point.
+        The facade's per-entity :meth:`AsyncXProxy.refresh` (the blob-free
+        backup read: commands, buttons, macros, inputs, key-sort and idle
+        behavior for devices; keymap, macros and favorites for activities),
+        so structural bundles assembled from state reflect the live hub.
         """
 
         if kind == "device":
-            await self.hass.async_add_executor_job(
-                partial(self._proxy.backup_device, ent_id, include_blobs=False)
-            )
+            await self._facade.refresh(device_id=ent_id)
             devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
             self.devices_ready = ready
             if ready:
@@ -263,9 +305,7 @@ class HubOpsMixin:
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         else:
-            await self.hass.async_add_executor_job(
-                partial(self._proxy.backup_activity, ent_id)
-            )
+            await self._facade.refresh(activity_id=ent_id)
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
@@ -286,8 +326,7 @@ class HubOpsMixin:
         issues targeted in-place writes against the existing activity id.
         The engine lives in the library (:meth:`X1Proxy.sync_activity`);
         this wrapper marshals it onto the executor thread. ``progress_callback``
-        runs on that thread — callers marshal to the loop themselves (same
-        contract as :meth:`async_restore_backup`).
+        runs on that thread — callers marshal to the loop themselves.
         """
 
         return await self.hass.async_add_executor_job(
@@ -323,37 +362,6 @@ class HubOpsMixin:
             )
         )
 
-    async def async_erase_configuration(
-        self,
-        *,
-        timeout: float = 120.0,
-        settle_seconds: float = 2.0,
-    ) -> bool:
-        """Erase all hub configuration (devices, activities, favorites, macros).
-
-        Drives opcode ``0x001D`` via the proxy. The opcode is identical
-        across X1, X1S, and X2 -- a single payload-less frame wipes the
-        entire user-visible configuration. See ``docs/protocol/erase.md``
-        for the wire layout and timing notes.
-
-        Returns ``True`` on success (the hub answered within
-        ``timeout``), ``False`` on a pre-ack disconnect or timeout.
-        After a successful erase the proxy's catalog mirrors have
-        been cleared and a brief settle delay has elapsed.
-
-        Used by :meth:`async_restore_backup` in replace mode (when the
-        bundle contains activities) -- erase must succeed before any
-        device or activity rewrites are issued.
-        """
-
-        return await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.erase_configuration,
-                timeout=timeout,
-                settle_seconds=settle_seconds,
-            )
-        )
-
     async def async_restore_backup(
         self,
         payload: dict[str, Any],
@@ -364,23 +372,22 @@ class HubOpsMixin:
     ) -> dict[str, Any] | None:
         """Restore a ``hub_bundle`` payload onto the live hub.
 
-        Walks ``payload['devices']`` first, building an auto
-        ``source_device_id -> new_device_id`` map. Then walks
-        ``payload['activities']`` (if any), threading the auto map
-        plus the bundle's device payloads through so the activity
-        restore can resolve ``0xC5`` input-ordinal macro entries
-        locally instead of needing the source hub to be reachable.
+        The facade's :meth:`AsyncXProxy.restore`: one hub hold over the
+        erase (replace mode), the rebuild, the read-back of what it made and
+        the bundle's hub name, so no other read reaches the hub in between.
+        Devices are restored first, then activities, threaded with the
+        ``source_device_id -> new_device_id`` map.
 
-        Replace mode (``activities`` non-empty) calls
-        :meth:`async_erase_configuration` first, after the bundle has
-        passed the restore's own preflight. A failed erase raises
-        ``HomeAssistantError`` before any wire writes.
+        Replace mode (default: the bundle has activities) erases the hub
+        first, after the bundle passed the restore's preflight. A refused
+        erase raises ``HomeAssistantError`` before any rebuild write.
+        ``wifi_commands_request_port`` is accepted for compatibility; the
+        engine ignores it. ``progress_callback`` receives the engine's
+        keyword progress dicts with the card's restore phase words
+        (``erase``, ``device``, ``activity``, ``cache_warm``, ``hub``).
         """
 
-        def _progress(**progress_payload: Any) -> None:
-            if callable(progress_callback):
-                progress_callback(**progress_payload)
-
+        del wifi_commands_request_port
         if not isinstance(payload, dict):
             raise ValueError("restore_backup expects a hub_bundle object")
         if payload.get("kind") != "hub_bundle":
@@ -394,9 +401,8 @@ class HubOpsMixin:
                 f"(got {payload.get('schema_version')!r}); older bundles are "
                 "rejected -- no migrator is provided"
             )
-        # Must be rejected HERE, before the replace-mode erase below: the lib
-        # repeats this check, but only after this method has already wiped the
-        # destination hub. A missing profile means a legacy full backup.
+        # The lib's preflight repeats this check; this one keeps the message.
+        # A missing profile means a legacy full backup.
         profile = str(payload.get("payload_profile") or PAYLOAD_PROFILE_FULL)
         if profile != PAYLOAD_PROFILE_FULL:
             raise ValueError(
@@ -404,164 +410,59 @@ class HubOpsMixin:
                 "cache bundles carry no command payloads and cannot be "
                 "restored -- export a full backup instead"
             )
-        # Every check the restore itself would fail on runs before the
-        # erase too, so a bundle it refuses never costs the hub its
-        # configuration. Raises ValueError; nothing is written.
-        await self.hass.async_add_executor_job(self._proxy.preflight_restore_bundle, payload)
 
-        devices = list(payload.get("devices") or [])
         activities = list(payload.get("activities") or [])
         use_replace_mode = bool(activities) if replace_mode is None else bool(replace_mode)
-        bundle_hub = payload.get("hub") if isinstance(payload.get("hub"), dict) else {}
-        bundle_hub_name = str(bundle_hub.get("name") or "").strip()
         current_hub_name = str(
             (self._proxy.get_banner_info() or {}).get("name") or self.name or ""
         ).strip()
-        rename_after_replace = bool(use_replace_mode and bundle_hub_name)
-        sync_identity_after_replace = bool(bundle_hub_name and bundle_hub_name != current_hub_name)
-        total_steps = (
-            1
-            + len(devices)
-            + len(activities)
-            + (1 if use_replace_mode else 0)
-            + (1 if rename_after_replace else 0)
-        )
-        completed_steps = 1
-        _progress(
-            status="running",
-            phase="validation",
-            message="Validating restore bundle...",
-            completed_steps=completed_steps,
-            total_steps=total_steps,
-        )
-
-        if use_replace_mode:
-            # Replace mode. Erase the hub first so device ids reset
-            # to a known empty slate before the bundle's devices are
-            # rewritten.
-            _progress(
-                status="running",
-                phase="erase",
-                message="Erasing the destination hub...",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
+        # The facade's preflight runs before its first progress report, so a
+        # bundle it refuses still fails before any progress: nothing was
+        # written, and the operation registry publishes it as transient.
+        last: list[Any] = []
+        relay = _progress_relay(progress_callback, phases=_RESTORE_PHASES, last=last)
+        try:
+            outcome = await self._facade.restore(
+                payload, replace=use_replace_mode, progress=relay
             )
-            erased = await self.async_erase_configuration()
-            if not erased:
-                raise HomeAssistantError(
-                    "Hub erase failed -- restore aborted before any wire writes. "
-                    "Check the hub is reachable and try again; if it persists, "
-                    "inspect the [ERASE] log lines for the specific failure mode."
+        except HubRejectedError as err:
+            # Inside a restore only the erase raises it: the rebuild reports
+            # a failure in its result.
+            raise HomeAssistantError(
+                "Hub erase failed -- restore aborted before any wire writes. "
+                "Check the hub is reachable and try again; if it persists, "
+                "inspect the [ERASE] log lines for the specific failure mode."
+            ) from err
+
+        result = _restore_result_dict(outcome)
+        if outcome.hub_name is not None:
+            if outcome.hub_name_restored:
+                await self._async_adopt_hub_name(
+                    outcome.hub_name, sync_identity=outcome.hub_name != current_hub_name
                 )
-            completed_steps += 1
-            _progress(
-                status="running",
-                phase="erase",
-                message="Destination hub erased.",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-
-        result = await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.restore_hub_bundle,
-                payload=payload,
-                wifi_commands_request_port=wifi_commands_request_port,
-                progress_callback=progress_callback,
-                progress_offset=completed_steps,
-                progress_total_steps=total_steps,
-            )
-        )
-        if isinstance(result, dict) and str(result.get("status") or "") == "success":
-            # ``restore_hub_bundle`` advances progress for each restored device
-            # and activity, but the outer counter still needs to absorb those
-            # completed steps before any replace-mode tail work runs.
-            completed_steps += len(result.get("restored_devices") or [])
-            completed_steps += len(result.get("restored_activities") or [])
-            total_steps = (
-                completed_steps
-                + (1 if rename_after_replace else 0)
-            )
-        if rename_after_replace and isinstance(result, dict) and result.get("status") == "success":
-            _progress(
-                status="running",
-                phase="hub",
-                message="Restoring hub name...",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-            if sync_identity_after_replace:
-                hub_name_restored = await self.async_set_hub_name(bundle_hub_name)
             else:
-                hub_name_restored = await self.async_set_hub_name(
-                    bundle_hub_name,
-                    sync_identity=False,
-                )
-            result = dict(result)
-            result["hub_name"] = bundle_hub_name
-            result["hub_name_restored"] = bool(hub_name_restored)
-            completed_steps += 1
-            _progress(
-                status="running",
-                phase="hub",
-                message=(
-                    "Restored hub name."
-                    if hub_name_restored
-                    else "Hub restore finished, but restoring the hub name failed."
-                ),
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-            if not hub_name_restored:
                 self._log.warning(
                     "[%s] replace-mode restore finished, but restoring hub name %r failed",
                     self.entry_id,
-                    bundle_hub_name,
+                    outcome.hub_name,
                 )
-        if isinstance(result, dict) and result.get("status") == "success":
-            # Restore clears the per-entity structural caches for every
-            # rewritten device and activity and used to leave them cold.
-            # Finish with the blob-free whole-hub structural refresh (the
-            # same fetch as the Hub tab's "Refresh all") so the cache view
-            # and the live activity editor come back warm.
-            total_steps += 1
-            _progress(
-                status="running",
-                phase="cache_warm",
-                message="Restore complete -- warming the hub cache...",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-            cache_warmed = True
-            try:
-                await self.async_refresh_hub_cache()
-                await self._async_persist_cache_if_enabled()
-            except Exception:  # noqa: BLE001 - warm is best-effort tail work
-                cache_warmed = False
-                self._log.warning(
-                    "[%s] restore finished, but the post-restore cache warm failed",
-                    self.entry_id,
-                    exc_info=True,
+        total_steps = last[-1].total_steps if last else 0
+        if outcome.ok:
+            # The facade read back everything the restore made; persist it
+            # so the cache view and the live activity editor start warm.
+            self._bump_cache_generation()
+            await self._async_persist_cache_if_enabled()
+            result["cache_warmed"] = True
+            if callable(progress_callback):
+                progress_callback(
+                    status="running",
+                    phase="cache_warm",
+                    message="Hub cache warmed.",
+                    completed_steps=total_steps,
+                    total_steps=total_steps,
                 )
-            completed_steps += 1
-            result = dict(result)
-            result["cache_warmed"] = cache_warmed
-            _progress(
-                status="running",
-                phase="cache_warm",
-                message=(
-                    "Hub cache warmed."
-                    if cache_warmed
-                    else "Restore finished, but warming the hub cache failed; "
-                    "run Refresh all from the Hub tab to re-warm it."
-                ),
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-        if isinstance(result, dict):
-            result = dict(result)
-            result["_progress_completed_steps"] = completed_steps
-            result["_progress_total_steps"] = total_steps
+        result["_progress_completed_steps"] = total_steps
+        result["_progress_total_steps"] = total_steps
         return result
 
     async def async_play_ir_blob(
@@ -1012,29 +913,21 @@ class HubOpsMixin:
 
     async def async_activate_activity(self, act_id: int) -> None:
         self._log.debug("[%s] Activating activity %s", self.entry_id, act_id)
-        await self.hass.async_add_executor_job(
-            self._proxy.send_command,
-            int(act_id),
-            ButtonName.POWER_ON,
-        )
+        await self._facade.start_activity(int(act_id))
 
     async def async_power_off_current(self) -> None:
         if self.current_activity is None:
             return
         self._log.debug("[%s] Powering off current activity %s", self.entry_id, self.current_activity)
-        await self.hass.async_add_executor_job(
-            self._proxy.send_command,
-            int(self.current_activity),
-            ButtonName.POWER_OFF,
-        )
+        await self._facade.stop_activity(int(self.current_activity))
 
     async def async_find_remote(self) -> None:
         self._log.debug("[%s] Triggering find-remote signal", self.entry_id)
-        await self.hass.async_add_executor_job(self._proxy.find_remote, self.version)
+        await self._facade.find_remote()
 
     async def async_resync_remote(self) -> None:
         self._log.debug("[%s] Triggering remote resync", self.entry_id)
-        await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
+        await self._facade.resync_remote(self.version)
 
     async def async_send_button(self, btn_code: int) -> None:
         if self.current_activity is None:
@@ -1046,11 +939,7 @@ class HubOpsMixin:
             btn_code,
             self.current_activity,
         )
-        await self.hass.async_add_executor_job(
-            self._proxy.send_command,
-            int(self.current_activity),
-            int(btn_code),
-        )
+        await self._facade.send(int(self.current_activity), int(btn_code))
 
     async def async_send_key(self, key: str | int, device: int | None = None) -> None:
         """Send either a Sofabaton ButtonName or a raw command ID.
@@ -1104,8 +993,4 @@ class HubOpsMixin:
 
     async def async_send_raw_command(self, ent_id: int, key_code: int) -> None:
         """Send a command directly to an activity or device."""
-        await self.hass.async_add_executor_job(
-            self._proxy.send_command,
-            int(ent_id),
-            int(key_code),
-        )
+        await self._facade.send(int(ent_id), int(key_code))

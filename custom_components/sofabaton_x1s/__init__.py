@@ -41,7 +41,7 @@ from .diagnostics import (
     async_teardown_diagnostics,
 )
 from .hub import SofabatonHub
-from .lib.hub_listener import bounce_hub_listener
+from .lib.hub_listener import release_hub_from_listener
 from .lib.network import normalize_local_address
 from .roku_listener import async_get_roku_listener
 
@@ -576,14 +576,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await hub.async_stop_activity_state_ingress()
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
-            await hub.async_stop()
             # On a user-disable (not a reload/options change/HA shutdown) with
-            # other hubs still sharing the TCP listener, briefly bounce that
-            # listener so the now-disconnected hub's reconnects are refused at
-            # the SYN level and it gives up — otherwise it loops forever on the
-            # still-open shared port and stays invisible to the Sofabaton app.
-            if getattr(entry, "disabled_by", None) is not None:
-                await hass.async_add_executor_job(bounce_hub_listener)
+            # other hubs still sharing the TCP listener, the stop also releases
+            # this hub: its reconnects are refused at the SYN level until it
+            # gives up — otherwise it loops forever on the still-open shared
+            # port and stays invisible to the Sofabaton app.
+            await hub.async_stop(release_hub=getattr(entry, "disabled_by", None) is not None)
     return unload_ok
 
 
@@ -594,9 +592,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     (neither sets ``disabled_by``), so it gets its own hook. By the time this
     runs the bridge has already been stopped and unregistered by the unload,
     leaving the physical hub looping on the still-open shared listener — a
-    bounce refuses it at the SYN level so it gives up and becomes reachable by
-    the Sofabaton app. The bounce is a no-op if no other hubs keep the shared
-    listener alive (last hub removed → port already closed).
+    release refuses it at the SYN level so it gives up and becomes reachable
+    by the Sofabaton app. The release is a no-op if no other hubs keep the
+    shared listener alive (last hub removed → port already closed).
     """
 
     # The outdated-firmware repair is only cleared by the hub reporting
@@ -612,6 +610,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     except Exception:  # noqa: BLE001 - removal must still release the hub
         _LOGGER.exception("[%s] Failed to clear stored data of removed hub %s", DOMAIN, entry.entry_id)
 
-    await hass.async_add_executor_job(bounce_hub_listener)
+    host = (getattr(entry, "data", None) or {}).get("host")
+    if host:
+        await hass.async_add_executor_job(release_hub_from_listener, str(host))
 
 

@@ -293,12 +293,8 @@ class HubIdentityMixin:
         self.version = next_version
         self.mdns_txt = runtime_txt
         self.mac = runtime_txt.get("MAC") or runtime_txt.get("mac") or None
-        await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.update_discovery_identity,
-                mdns_txt=self.mdns_txt,
-                hub_version=self.version,
-            )
+        await self._facade.update_discovery_identity(
+            mdns_txt=self.mdns_txt, hub_version=self.version
         )
         # A manually-added hub that mDNS just identified gains its REAL
         # MAC here; re-point (or first-establish) the MQTT subscriptions.
@@ -373,6 +369,14 @@ class HubIdentityMixin:
         if not ok:
             return False
 
+        await self._async_adopt_hub_name(next_name, sync_identity=sync_identity)
+        return True
+
+    async def _async_adopt_hub_name(self, next_name: str, *, sync_identity: bool = True) -> None:
+        """HA's side of a hub name the hub has just accepted: the cached
+        identity and, with ``sync_identity``, the entry and discovery
+        identity (a replacing restore names the hub inside the facade)."""
+
         info = dict(self._proxy.get_banner_info() or {})
         info["name"] = next_name
         if not info.get("model"):
@@ -385,4 +389,3 @@ class HubIdentityMixin:
         if sync_identity:
             await self._async_sync_authoritative_identity(info)
         self.name = next_name
-        return True

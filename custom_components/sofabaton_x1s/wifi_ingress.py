@@ -610,9 +610,7 @@ class WifiIngressMixin:
             )
             return
 
-        applied = await self.hass.async_add_executor_job(
-            self._proxy.apply_external_activity_state, new_id
-        )
+        applied = await self._facade.apply_external_activity_state(new_id)
         if applied:
             self._log.info(
                 "[MQTT_ACT] applied activity=%s (from activity_id=%s state=%s)",

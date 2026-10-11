@@ -157,6 +157,54 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
     assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
 
 
+def test_ws_refresh_persistent_cache_entry_while_the_app_holds_the_hub(monkeypatch):
+    """Adoption plan M2: the refresh is the facade's, which refuses at once
+    while the app holds the hub; the card gets its "hub not ready" code and
+    nothing is persisted."""
+
+    from custom_components.sofabaton_x1s.lib.errors import HubBusyError
+
+    conn = _Conn()
+    store = _CacheStore(enabled=True)
+    hub = _Hub()
+
+    async def refused(*, kind, ent_id):
+        raise HubBusyError("cannot fetch 'device:17': an app client is connected and holds the hub")
+
+    hub.async_refresh_entity_structure = refused
+    saved: dict = {}
+
+    async def fake_set_hub_cache(entry_id, payload):
+        saved[entry_id] = payload
+
+    store.async_set_hub_cache = fake_set_hub_cache
+
+    async def fake_store(_hass):
+        return store
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_data", fake_resolve)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_refresh_persistent_cache_entry(
+                SimpleNamespace(data={}),
+                conn,
+                {"id": 3, "entry_id": "entry-1", "kind": "device", "target_id": 17},
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.result is None
+    assert conn.error is not None and conn.error[:2] == (3, "unavailable")
+    assert saved == {}
+
+
 def test_ws_get_persistent_cache_contents_disabled(monkeypatch):
     conn = _Conn()
     store = _CacheStore(enabled=False)

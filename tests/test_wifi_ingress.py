@@ -655,7 +655,7 @@ def _make_activity_ingress_fake(applied):
     async def _executor(func, *args):
         return func(*args)
 
-    def _apply(new_id):
+    async def _apply(new_id):
         applied.append(new_id)
         return True
 
@@ -665,7 +665,7 @@ def _make_activity_ingress_fake(applied):
         hub_connected=True,
         activities_ready=True,
         current_activity=0x68,
-        _proxy=SimpleNamespace(apply_external_activity_state=_apply),
+        _facade=SimpleNamespace(apply_external_activity_state=_apply),
     )
 
 

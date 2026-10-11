@@ -127,7 +127,7 @@ async def _async_handle_restore_backup(call: ServiceCall):
     Accepts a ``hub_bundle`` payload (schema_version 5). Devices in
     the bundle are restored first; activities are restored second,
     after the hub has been erased
-    (see :meth:`SofabatonHub.async_erase_configuration`).
+    (see :meth:`SofabatonHub.async_restore_backup`).
     """
 
     hass = call.hass

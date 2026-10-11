@@ -14,9 +14,10 @@ both halves of the new surface:
   map plus the per-device ``command_id_map`` and the bundle's
   device payloads so 0xC5 ("set input on device") macro rows can
   be re-resolved against the freshly-restored devices.
-- ``async_erase_configuration`` is a ``NotImplementedError`` stub
-  until per-hub-version erase opcodes are researched and
-  implemented; replace-mode bundle restores fail fast on it.
+- ``async_restore_backup`` hands the bundle to the facade's
+  ``restore`` (one hub hold over erase, rebuild, read-back and hub
+  name) and maps its result and progress back to the engine's shapes
+  the card reads.
 """
 
 from __future__ import annotations
@@ -1049,450 +1050,245 @@ def test_erase_configuration_ignored_when_proxy_client_connected(
     assert proxy.state.devices == {0x01: {"name": "TV"}}
 
 
-def test_async_restore_backup_replace_mode_aborts_on_erase_failure() -> None:
-    """If erase fails (timeout/disconnect), restore_hub_bundle is never reached."""
+class _FakeRestoreFacade:
+    """Stands in for ``AsyncXProxy.restore`` (adoption plan M2): records the
+    call, replays the progress a real restore reports and returns a
+    :class:`RestoreResult`. The facade's own restore is covered in
+    tests/lib; these tests cover what HA does around it."""
 
+    def __init__(self, *, status="success", restored_devices=(), restored_activities=(),
+                 failed_at=None, partial_device_ids=(), rename_ok=True, raises=None):
+        self.calls: list[dict[str, Any]] = []
+        self._status = status
+        self._devices = [dict(r) for r in restored_devices]
+        self._activities = [dict(r) for r in restored_activities]
+        self._failed_at = failed_at
+        self._partial = tuple(partial_device_ids)
+        self._rename_ok = rename_ok
+        self._raises = raises
+
+    async def restore(self, bundle, *, replace=False, progress=None):
+        from custom_components.sofabaton_x1s.lib.models import RestoreResult, WriteProgress
+
+        self.calls.append({"bundle": bundle, "replace": replace})
+        if self._raises is not None:
+            raise self._raises
+        total = len(bundle.get("devices") or ()) + len(bundle.get("activities") or ())
+        reports = []
+        if replace:
+            reports.append(WriteProgress("erasing", "Erasing the hub…", 0, total))
+        for done, row in enumerate(self._devices, start=1):
+            reports.append(WriteProgress("device", "Restoring…", done, total,
+                                         entity_kind="device", entity_id=row.get("device_id")))
+        reports.append(WriteProgress("reading_back", "Reading back…", 0, 1))
+        hub_name = str((bundle.get("hub") or {}).get("name") or "").strip()
+        renaming = replace and bool(hub_name) and self._status == "success"
+        if renaming:
+            reports.append(WriteProgress("renaming", "Restoring the hub name…", total, total))
+        for report in reports:
+            if progress is not None:
+                progress(report)
+        return RestoreResult(
+            status=self._status,
+            failed_at=self._failed_at,
+            device_id_map={int(r["source_device_id"]): int(r["device_id"]) for r in self._devices},
+            restored_devices=len(self._devices),
+            restored_activities=len(self._activities),
+            snapshot_id="snap",
+            restored={"devices": self._devices, "activities": self._activities},
+            erased=bool(replace),
+            partial_device_ids=self._partial,
+            hub_name=hub_name if renaming else None,
+            hub_name_restored=self._rename_ok if renaming else None,
+        )
+
+
+def _restore_hub(facade: _FakeRestoreFacade, *, name="Sofabaton", banner_name=None):
     from custom_components.sofabaton_x1s.hub import SofabatonHub
 
     hub = SofabatonHub.__new__(SofabatonHub)
     hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
+    hub.name = name
     hub.version = HUB_VERSION_X1S
+    hub._log = MagicMock()
     hub._proxy = MagicMock()
-    hub._proxy.restore_hub_bundle = MagicMock(
-        side_effect=AssertionError(
-            "restore_hub_bundle must not be reached when erase fails"
-        )
-    )
+    hub._proxy.get_banner_info = MagicMock(return_value={"name": banner_name} if banner_name else {})
+    hub._facade = facade
+    hub._bump_cache_generation = MagicMock(return_value=1)
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+    hub._async_adopt_hub_name = AsyncMock()
+    return hub
 
-    # Replace the executor-job call with a direct fail.
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            # async_erase_configuration uses partial() so func is the
-            # partial; calling it returns False (simulated erase failure).
-            return func(*args, **kwargs)
 
-    hub.hass = _FakeHass()
-    hub._proxy.erase_configuration = MagicMock(return_value=False)
+def _bundle(**extra: Any) -> dict[str, Any]:
+    return {"kind": "hub_bundle", "schema_version": 5, "devices": [],
+            "activities": [{"kind": "activity_backup"}], **extra}
 
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
+
+def test_async_restore_backup_replace_mode_aborts_on_erase_failure() -> None:
+    """A refused erase (the one HubRejectedError a restore raises) is HA's
+    "Hub erase failed" error; the rebuild never ran."""
 
     from homeassistant.exceptions import HomeAssistantError
 
-    with pytest.raises(HomeAssistantError, match="Hub erase failed"):
-        _run(hub.async_restore_backup(bundle))
+    from custom_components.sofabaton_x1s.lib.errors import HubRejectedError
 
-    hub._proxy.restore_hub_bundle.assert_not_called()
-    hub._proxy.erase_configuration.assert_called_once()
+    facade = _FakeRestoreFacade(raises=HubRejectedError("the hub did not accept erase"))
+    hub = _restore_hub(facade)
+
+    with pytest.raises(HomeAssistantError, match="Hub erase failed"):
+        _run(hub.async_restore_backup(_bundle()))
+
+    assert facade.calls[0]["replace"] is True
+    hub._async_persist_cache_if_enabled.assert_not_awaited()
 
 
 def test_async_restore_backup_rejects_structural_before_erase() -> None:
-    """A structural bundle must fail validation before the replace-mode erase
-    wipes the destination hub."""
+    """A structural bundle fails HA's own validation; the facade (erase and
+    rebuild) is never reached."""
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.erase_configuration = MagicMock(
-        side_effect=AssertionError("erase must not run for a structural bundle")
-    )
-    hub._proxy.restore_hub_bundle = MagicMock(
-        side_effect=AssertionError("restore must not run for a structural bundle")
-    )
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "payload_profile": "structural",
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
+    facade = _FakeRestoreFacade()
+    hub = _restore_hub(facade)
 
     with pytest.raises(ValueError, match="structural cache bundles"):
-        _run(hub.async_restore_backup(bundle))
+        _run(hub.async_restore_backup(_bundle(payload_profile="structural")))
 
-    hub._proxy.erase_configuration.assert_not_called()
-    hub._proxy.restore_hub_bundle.assert_not_called()
+    assert facade.calls == []
 
 
 def test_async_restore_backup_runs_the_bundle_preflight_before_erase() -> None:
-    """CR-L4a-1: a bundle the restore would refuse (a chain to a missing
-    activity, an unknown class, ...) fails before the replace-mode erase."""
+    """CR-L4a-1: the facade's preflight refuses before its erase, and before
+    any progress, so the registry publishes the failure as transient."""
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.preflight_restore_bundle = MagicMock(
-        side_effect=ValueError("activity 0x66 chains to an activity missing from the bundle")
+    facade = _FakeRestoreFacade(
+        raises=ValueError("activity 0x66 chains to an activity missing from the bundle")
     )
-    hub._proxy.erase_configuration = MagicMock(
-        side_effect=AssertionError("erase must not run for a bundle the preflight refuses")
-    )
-    hub._proxy.restore_hub_bundle = MagicMock(
-        side_effect=AssertionError("restore must not run for a bundle the preflight refuses")
-    )
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
+    hub = _restore_hub(facade)
+    events: list[dict[str, Any]] = []
 
     with pytest.raises(ValueError, match="missing from the bundle"):
-        _run(hub.async_restore_backup(bundle))
+        _run(hub.async_restore_backup(_bundle(), progress_callback=lambda **p: events.append(p)))
 
-    hub._proxy.preflight_restore_bundle.assert_called_once_with(bundle)
-    hub._proxy.erase_configuration.assert_not_called()
-    hub._proxy.restore_hub_bundle.assert_not_called()
+    assert events == []
 
 
 def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> None:
-    """Successful erase unblocks the bundle orchestrator."""
+    facade = _FakeRestoreFacade()
+    hub = _restore_hub(facade)
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.erase_configuration = MagicMock(return_value=True)
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={
-            "status": "success",
-            "device_id_map": {},
-            "restored_devices": [],
-            "restored_activities": [],
-        }
-    )
-
-    hub.async_refresh_hub_cache = AsyncMock(return_value={})
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
-
-    result = _run(hub.async_restore_backup(bundle))
+    result = _run(hub.async_restore_backup(_bundle()))
 
     assert result["status"] == "success"
     assert result["cache_warmed"] is True
-    hub._proxy.erase_configuration.assert_called_once()
-    hub._proxy.restore_hub_bundle.assert_called_once()
-    hub.async_refresh_hub_cache.assert_awaited_once()
+    assert facade.calls[0]["replace"] is True  # the bundle has activities
+    hub._bump_cache_generation.assert_called_once()
     hub._async_persist_cache_if_enabled.assert_awaited_once()
 
 
 def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> None:
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
+    """The facade names the hub inside its hold; HA adopts the name and
+    syncs its identity when it changed."""
 
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Factory Default"
-    hub.version = HUB_VERSION_X1S
-    hub.async_set_hub_name = AsyncMock(return_value=True)
+    facade = _FakeRestoreFacade()
+    hub = _restore_hub(facade, name="Factory Default")
 
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.erase_configuration = MagicMock(return_value=True)
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={
-            "status": "success",
-            "device_id_map": {},
-            "restored_devices": [],
-            "restored_activities": [],
-        }
-    )
-
-    hub.async_refresh_hub_cache = AsyncMock(return_value={})
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "hub": {"name": "Living Room Hub"},
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
-
-    result = _run(hub.async_restore_backup(bundle))
+    result = _run(hub.async_restore_backup(_bundle(hub={"name": "Living Room Hub"})))
 
     assert result["status"] == "success"
     assert result["hub_name"] == "Living Room Hub"
     assert result["hub_name_restored"] is True
-    hub.async_set_hub_name.assert_awaited_once_with("Living Room Hub")
+    hub._async_adopt_hub_name.assert_awaited_once_with("Living Room Hub", sync_identity=True)
 
 
 def test_async_restore_backup_replace_mode_restores_same_hub_name_without_identity_sync() -> None:
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
+    facade = _FakeRestoreFacade()
+    hub = _restore_hub(facade, name="X1 - test", banner_name="X1 - test")
 
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "X1 - test"
-    hub.version = HUB_VERSION_X1S
-    hub.async_set_hub_name = AsyncMock(return_value=True)
+    result = _run(hub.async_restore_backup(_bundle(hub={"name": "X1 - test"}), replace_mode=True))
 
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
+    assert result["hub_name"] == "X1 - test" and result["hub_name_restored"] is True
+    hub._async_adopt_hub_name.assert_awaited_once_with("X1 - test", sync_identity=False)
 
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.get_banner_info = MagicMock(return_value={"name": "X1 - test"})
-    hub._proxy.erase_configuration = MagicMock(return_value=True)
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={
-            "status": "success",
-            "device_id_map": {},
-            "restored_devices": [],
-            "restored_activities": [],
-        }
-    )
 
-    hub.async_refresh_hub_cache = AsyncMock(return_value={})
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+def test_async_restore_backup_a_refused_hub_name_is_reported_not_adopted() -> None:
+    facade = _FakeRestoreFacade(rename_ok=False)
+    hub = _restore_hub(facade)
 
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "hub": {"name": "X1 - test"},
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
-    progress_events: list[dict[str, Any]] = []
-
-    result = _run(
-        hub.async_restore_backup(
-            bundle,
-            replace_mode=True,
-            progress_callback=lambda **payload: progress_events.append(dict(payload)),
-        )
-    )
+    result = _run(hub.async_restore_backup(_bundle(hub={"name": "Living Room Hub"})))
 
     assert result["status"] == "success"
-    assert result["_progress_completed_steps"] == 4
-    assert result["_progress_total_steps"] == 4
-    assert result["hub_name"] == "X1 - test"
-    assert result["hub_name_restored"] is True
-    hub.async_set_hub_name.assert_awaited_once_with("X1 - test", sync_identity=False)
+    assert result["hub_name_restored"] is False
+    hub._async_adopt_hub_name.assert_not_awaited()
 
 
-def test_async_restore_backup_replace_mode_progress_counts_include_restored_steps() -> None:
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
+def test_async_restore_backup_progress_uses_the_cards_phase_words() -> None:
+    """The backup tab localizes erase / device / cache_warm / hub; the facade
+    says erasing / device / reading_back / renaming."""
 
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Factory Default"
-    hub.version = HUB_VERSION_X1S
-    hub.async_set_hub_name = AsyncMock(return_value=True)
+    facade = _FakeRestoreFacade(restored_devices=[{"source_device_id": 1, "device_id": 11}])
+    hub = _restore_hub(facade)
+    events: list[dict[str, Any]] = []
+    bundle = _bundle(hub={"name": "Living Room Hub"}, devices=[{"device": {"device_id": 1}}], activities=[])
 
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
+    result = _run(hub.async_restore_backup(
+        bundle, replace_mode=True, progress_callback=lambda **p: events.append(dict(p))
+    ))
 
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.erase_configuration = MagicMock(return_value=True)
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={
-            "status": "success",
-            "device_id_map": {"1": 11},
-            "restored_devices": [{"source_device_id": 1, "device_id": 11}],
-            "restored_activities": [],
-        }
+    assert [e["phase"] for e in events] == ["erase", "device", "cache_warm", "hub", "cache_warm"]
+    assert all(e["status"] == "running" for e in events)
+    assert events[1]["current_device_id"] == 11
+    assert events[-1]["message"] == "Hub cache warmed."
+    assert events[-1]["completed_steps"] == events[-1]["total_steps"] == 1
+    assert result["_progress_completed_steps"] == result["_progress_total_steps"] == 1
+
+
+def test_async_restore_backup_a_failed_restore_keeps_the_engine_shape() -> None:
+    """The card and the restore_backup service read the engine's result dict:
+    failed_at as a list, string device-map keys, the per-entity records and
+    the half-made device ids. A failed restore is not persisted."""
+
+    facade = _FakeRestoreFacade(
+        status="failed",
+        failed_at=("device", 3),
+        restored_devices=[{"source_device_id": 2, "device_id": 9}],
+        partial_device_ids=(10,),
     )
+    hub = _restore_hub(facade)
 
-    hub.async_refresh_hub_cache = AsyncMock(return_value={})
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+    result = _run(hub.async_restore_backup(_bundle(), replace_mode=False))
 
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "hub": {"name": "Living Room Hub"},
-        "devices": [{"device": {"device_id": 1}}],
-        "activities": [],
-    }
-    progress_events: list[dict[str, Any]] = []
-
-    result = _run(
-        hub.async_restore_backup(
-            bundle,
-            replace_mode=True,
-            progress_callback=lambda **payload: progress_events.append(dict(payload)),
-        )
-    )
-
-    assert result["status"] == "success"
-    assert result["_progress_completed_steps"] == 5
-    assert result["_progress_total_steps"] == 5
-    rename_event = next(
-        event for event in progress_events if event["message"] == "Restored hub name."
-    )
-    assert rename_event["completed_steps"] == 4
-    assert progress_events[-1]["message"] == "Hub cache warmed."
-    assert progress_events[-1]["completed_steps"] == 5
-    assert progress_events[-1]["total_steps"] == 5
-
-
-def test_async_restore_backup_cache_warm_failure_keeps_restore_success() -> None:
-    """A failed post-restore cache warm must not fail the restore itself."""
-
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-    hub._log = MagicMock()
-
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={
-            "status": "success",
-            "device_id_map": {},
-            "restored_devices": [],
-            "restored_activities": [],
-        }
-    )
-    hub.async_refresh_hub_cache = AsyncMock(side_effect=RuntimeError("hub went away"))
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "devices": [],
-        "activities": [],
-    }
-
-    result = _run(hub.async_restore_backup(bundle, replace_mode=False))
-
-    assert result["status"] == "success"
-    assert result["cache_warmed"] is False
+    assert result["status"] == "failed"
+    assert result["failed_at"] == ["device", 3]
+    assert result["device_id_map"] == {"2": 9}
+    assert result["restored_devices"] == [{"source_device_id": 2, "device_id": 9}]
+    assert result["restored_activities"] == []
+    assert result["partial_device_ids"] == [10]
+    assert "cache_warmed" not in result and "hub_name" not in result
     hub._async_persist_cache_if_enabled.assert_not_awaited()
 
 
 def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
+    facade = _FakeRestoreFacade()
+    hub = _restore_hub(facade, name="Factory Default")
 
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Factory Default"
-    hub.version = HUB_VERSION_X1S
-    hub.async_set_hub_name = AsyncMock(return_value=True)
-
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.erase_configuration = MagicMock(return_value=True)
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={
-            "status": "success",
-            "device_id_map": {},
-            "restored_devices": [],
-            "restored_activities": [],
-        }
-    )
-    hub.async_refresh_hub_cache = AsyncMock(return_value={})
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "hub": {"name": "Living Room Hub"},
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
-
-    result = _run(hub.async_restore_backup(bundle, replace_mode=False))
+    result = _run(hub.async_restore_backup(_bundle(hub={"name": "Living Room Hub"}), replace_mode=False))
 
     assert result["status"] == "success"
     assert result["cache_warmed"] is True
     assert "hub_name_restored" not in result
-    hub.async_set_hub_name.assert_not_awaited()
+    hub._async_adopt_hub_name.assert_not_awaited()
 
 
 def test_async_restore_backup_merge_mode_skips_erase_even_with_activities() -> None:
-    """Explicit merge mode bypasses erase and restores the bundle additively."""
+    """Explicit merge mode restores the bundle additively (no erase)."""
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
+    facade = _FakeRestoreFacade()
+    hub = _restore_hub(facade)
 
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
-    class _FakeHass:
-        async def async_add_executor_job(self, func, *args, **kwargs):
-            return func(*args, **kwargs)
-
-    hub.hass = _FakeHass()
-    hub._proxy = MagicMock()
-    hub._proxy.erase_configuration = MagicMock(return_value=True)
-    hub._proxy.restore_hub_bundle = MagicMock(
-        return_value={"status": "success", "device_id_map": {}, "restored_devices": [], "restored_activities": []}
-    )
-    hub.async_refresh_hub_cache = AsyncMock(return_value={})
-    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
-
-    bundle = {
-        "kind": "hub_bundle",
-        "schema_version": 5,
-        "devices": [],
-        "activities": [{"kind": "activity_backup"}],
-    }
-
-    result = _run(hub.async_restore_backup(bundle, replace_mode=False))
+    result = _run(hub.async_restore_backup(_bundle(), replace_mode=False))
 
     assert result["status"] == "success"
-    hub._proxy.erase_configuration.assert_not_called()
-    hub._proxy.restore_hub_bundle.assert_called_once()
+    assert facade.calls[0]["replace"] is False
 
 
 # ---------------------------------------------------------------------------

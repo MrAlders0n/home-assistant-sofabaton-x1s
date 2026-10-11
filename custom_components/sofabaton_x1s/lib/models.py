@@ -353,7 +353,7 @@ class WriteProgress:
 
     ``phase`` is the operation's own phase word (``preparing``, ``device``,
     ``activity``, ``stale_check``, ``writing``, ``reading_back``,
-    ``finalizing`` ...);
+    ``finalizing``; a restore adds ``erasing`` and ``renaming`` ...);
     ``entity_kind`` / ``entity_id`` name the entity being worked on when
     there is one; ``step_kind`` is the sync step kind while writing.
     """

@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from homeassistant.components import frontend
 from custom_components.sofabaton_x1s.__init__ import (
     _reconcile_version_metadata,
@@ -728,18 +730,54 @@ def test_async_unload_entry_unregisters_frontend_resources_when_last_hub_is_remo
     assert hass.data["sofabaton_x1s"]["storage_resources_registered"] is False
 
 
-def test_async_remove_entry_bounces_shared_listener(monkeypatch) -> None:
-    calls: list[bool] = []
+def test_async_remove_entry_releases_the_hub_from_the_shared_listener(monkeypatch) -> None:
+    calls: list[str] = []
     monkeypatch.setattr(
-        "custom_components.sofabaton_x1s.__init__.bounce_hub_listener",
-        lambda *args, **kwargs: calls.append(True),
+        "custom_components.sofabaton_x1s.__init__.release_hub_from_listener",
+        lambda host, *args, **kwargs: calls.append(host),
     )
     hass = _FakeHass()
-    entry = SimpleNamespace(entry_id="entry-1")
+    entry = SimpleNamespace(entry_id="entry-1", data={"host": "192.168.1.50"})
 
     asyncio.run(async_remove_entry(hass, entry))
 
-    assert calls == [True]
+    assert calls == ["192.168.1.50"]
+
+
+@pytest.mark.parametrize(("disabled_by", "released"), [(None, False), ("user", True)])
+def test_async_unload_entry_releases_the_hub_only_when_disabled(monkeypatch, disabled_by, released) -> None:
+    """Adoption plan M1: the facade's stop(release_hub=True) replaced the
+    whole-listener bounce on a user disable; a reload only stops."""
+
+    stops: list[dict] = []
+
+    async def _stop(**kwargs):
+        stops.append(kwargs)
+
+    hass = _FakeHass(lovelace=_FakeLovelace(_FakeResources([]), resource_mode="storage"))
+    hass.data["sofabaton_x1s"] = {
+        "entry-1": SimpleNamespace(
+            entry_id="entry-1",
+            async_stop=_stop,
+            async_stop_wifi_mqtt_ingress=_async_noop,
+            async_stop_activity_state_ingress=_async_noop,
+        ),
+    }
+    entry = SimpleNamespace(entry_id="entry-1", disabled_by=disabled_by)
+    listener = SimpleNamespace(async_remove_hub=_async_noop)
+    monkeypatch.setattr("custom_components.sofabaton_x1s.runtime._get_hubs", lambda domain_data: [])
+    monkeypatch.setattr("custom_components.sofabaton_x1s.__init__.async_teardown_diagnostics", lambda hass: None)
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.__init__.async_disable_hex_logging_capture", lambda hass, entry_id: None
+    )
+    monkeypatch.setattr("custom_components.sofabaton_x1s.runtime._async_persist_hub_cache", _async_true)
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.__init__.async_get_roku_listener",
+        lambda hass: asyncio.sleep(0, result=listener),
+    )
+
+    assert asyncio.run(async_unload_entry(hass, entry)) is True
+    assert stops == [{"release_hub": released}]
 
 
 async def _async_noop(*args, **kwargs):

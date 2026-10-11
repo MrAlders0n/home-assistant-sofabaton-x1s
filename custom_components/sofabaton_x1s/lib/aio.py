@@ -2592,6 +2592,10 @@ class AsyncXProxy:
         :meth:`erase`). No rollback on a mid-bundle failure; the result
         says where it stopped and the rebased snapshot shows the hub.
         Cannot be cancelled.
+
+        ``progress`` sees ``erasing`` (replace only), then ``device`` /
+        ``activity`` per entity written, ``reading_back``, and ``renaming``
+        when a replacing restore applies the bundle's hub name.
         """
 
         if not isinstance(bundle, dict) or bundle.get("kind") != "hub_bundle":
@@ -2601,11 +2605,15 @@ class AsyncXProxy:
         # bad bundle can never cost the hub its configuration (review of
         # 635ecfe, finding 1). Raises ValueError; nothing is written.
         await self.run(self._proxy.preflight_restore_bundle, bundle)
+        report = _ProgressReporter(self._loop, progress)
+        entity_steps = len(bundle.get("devices") or ()) + len(bundle.get("activities") or ())
         # One hold over the erase, the gap after it and the rebuild: the
         # erase empties every cache, which is exactly when a stray read
         # would reach the hub (see _holding_hub).
         async with self._holding_hub("a restore"):
             if replace:
+                report(phase="erasing", message="Erasing the hub…",
+                       completed_steps=0, total_steps=entity_steps)
                 await self.erase()
             async with self._refresh_lock:
                 result = await self._run_draining(
@@ -2629,6 +2637,8 @@ class AsyncXProxy:
             # name must not be lost. A merge keeps the hub's own name.
             hub_name = str((bundle.get("hub") or {}).get("name") or "").strip() if isinstance(bundle, dict) else ""
             if replace and hub_name and restored.get("status") == "success":
+                report(phase="renaming", message="Restoring the hub name…",
+                       completed_steps=entity_steps, total_steps=entity_steps)
                 try:
                     await self.set_hub_name(hub_name)
                     renamed = True

@@ -1557,3 +1557,124 @@ def test_async_send_key_resolution(monkeypatch):
             loop.run_until_complete(hub.async_send_key("VOL_UP"))
     finally:
         loop.close()
+
+
+
+# ---------------------------------------------------------------------------
+# Backup editor on the facade (adoption plan M2)
+# ---------------------------------------------------------------------------
+
+
+def _facade_hub(loop):
+    hub = SofabatonHub(FakeHass(loop), "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    # A controllable engine without a socket: the facade's typed refusal passes.
+    hub._proxy.can_issue_commands = lambda: True
+    return hub
+
+
+def test_backup_runs_inside_the_facades_hold_with_engine_shaped_progress(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _facade_hub(loop)
+        holds: list[int] = []
+
+        def _backup(**kwargs):
+            holds.append(hub._facade._hub_holds)
+            if kwargs["progress"] is not None:
+                kwargs["progress"](status="running", phase="device", message="Backing up device 5…",
+                                   completed_steps=0, total_steps=1, current_device_id=5)
+            return {"kind": "hub_bundle", "include_blobs": kwargs["include_blobs"]}
+
+        monkeypatch.setattr(hub._proxy, "backup_hub_bundle", _backup)
+        events: list[dict] = []
+
+        bundle = loop.run_until_complete(
+            hub.async_backup_hub(device_ids=[5], progress_callback=lambda **p: events.append(p))
+        )
+        loop.run_until_complete(asyncio.sleep(0))
+
+        assert holds == [1] and bundle["include_blobs"] is True
+        assert events == [{"status": "running", "phase": "device", "message": "Backing up device 5…",
+                           "completed_steps": 0, "total_steps": 1, "current_device_id": 5}]
+
+        generation = hub.cache_generation
+        structural = loop.run_until_complete(hub.async_refresh_hub_cache())
+        assert structural["include_blobs"] is False and holds == [1, 1]
+        assert hub.cache_generation == generation + 1
+    finally:
+        loop.close()
+
+
+def test_entity_structure_refresh_is_the_facades_refresh(monkeypatch):
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _facade_hub(loop)
+        calls: list[dict] = []
+
+        async def _refresh(**kwargs):
+            calls.append(kwargs)
+
+        monkeypatch.setattr(hub._facade, "refresh", _refresh)
+        loop.run_until_complete(hub.async_refresh_entity_structure(kind="device", ent_id=5))
+        loop.run_until_complete(hub.async_refresh_entity_structure(kind="activity", ent_id=101))
+
+        assert calls == [{"device_id": 5}, {"activity_id": 101}]
+    finally:
+        loop.close()
+
+
+def test_a_replacing_restore_erases_rebuilds_and_names_the_hub_in_one_hold(monkeypatch):
+    """The September defect (a read landing between an erasing restore's
+    page writes) cannot happen when the erase, the rebuild and the name
+    all run inside one facade hold."""
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _facade_hub(loop)
+        proxy = hub._proxy
+        trace: list[tuple[str, int]] = []
+        monkeypatch.setattr(proxy, "preflight_restore_bundle", lambda payload: None)
+
+        def _erase(**kwargs):
+            trace.append(("erase", hub._facade._hub_holds))
+            return True
+
+        def _restore(payload, **kwargs):
+            trace.append(("restore", hub._facade._hub_holds))
+            return {"status": "success", "device_id_map": {"1": 4},
+                    "restored_devices": [{"source_device_id": 1, "device_id": 4}],
+                    "restored_activities": []}
+
+        def _name(name, **kwargs):
+            trace.append(("name", hub._facade._hub_holds))
+            return True
+
+        async def _reread(*args, **kwargs):
+            trace.append(("read_back", hub._facade._hub_holds))
+
+        monkeypatch.setattr(proxy, "erase_configuration", _erase)
+        monkeypatch.setattr(proxy, "restore_hub_bundle", _restore)
+        monkeypatch.setattr(proxy, "set_hub_name", _name)
+        monkeypatch.setattr(hub._facade, "_reread_after_write", _reread)
+        adopted: list = []
+
+        async def _adopt(name, *, sync_identity=True):
+            adopted.append((name, sync_identity))
+
+        async def _no_persist():
+            return False
+
+        monkeypatch.setattr(hub, "_async_adopt_hub_name", _adopt)
+        monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _no_persist)
+        bundle = {"kind": "hub_bundle", "schema_version": 5, "hub": {"name": "Den"},
+                  "devices": [{"device": {"device_id": 1}}], "activities": [{"kind": "activity_backup"}]}
+
+        result = loop.run_until_complete(hub.async_restore_backup(bundle))
+
+        assert trace == [("erase", 1), ("restore", 1), ("read_back", 1), ("name", 1)]
+        assert result["status"] == "success" and result["device_id_map"] == {"1": 4}
+        assert result["hub_name"] == "Den" and result["cache_warmed"] is True
+        assert adopted == [("Den", True)]
+        assert hub._facade._hub_holds == 0
+    finally:
+        loop.close()

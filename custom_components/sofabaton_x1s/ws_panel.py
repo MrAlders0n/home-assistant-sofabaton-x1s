@@ -26,6 +26,7 @@ from .diagnostics import (
     async_subscribe_hub_log_lines,
 )
 from .hub import SofabatonHub, get_hub_model
+from .lib.errors import HubBusyError, HubNotConnectedError
 from .ui_settings_store import HUB_CLICK_ACTIONS, SIDEBAR_PANEL_MODES
 from . import operations
 from . import runtime
@@ -501,7 +502,12 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
     # Full structural refresh (commands, buttons, macros, inputs, key-sort,
     # idle behavior) rather than the old commands-only fetch, so per-entity
     # refresh keeps the canonical cache bundle-grade.
-    await hub.async_refresh_entity_structure(kind=msg["kind"], ent_id=target_id)
+    try:
+        await hub.async_refresh_entity_structure(kind=msg["kind"], ent_id=target_id)
+    except (HubBusyError, HubNotConnectedError) as err:
+        # The app holds the hub, or there is no hub session: nothing read.
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
     payload = await hub.async_export_cache_state()
     await store.async_set_hub_cache(hub.entry_id, payload)
     connection.send_result(msg["id"], {"ok": True})

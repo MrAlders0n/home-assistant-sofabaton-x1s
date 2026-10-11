@@ -3380,6 +3380,35 @@ def test_a_replacing_restore_applies_the_bundles_hub_name() -> None:
     asyncio.run(main())
 
 
+def test_a_restore_reports_its_erase_and_rename_steps() -> None:
+    """The hold spans the erase and the rename, so a consumer cannot report
+    them itself (the HA backup editor names both steps)."""
+
+    async def main():
+        fake = FakeProxy()
+        fake.lands_catalogs = True
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        fake._ready["activities"] = {}
+        proxy = _wrap(fake)
+        bundle = {"kind": "hub_bundle", "tag": "t", "hub": {"name": "Living Room"},
+                  "devices": [{"device_id": 3}], "activities": []}
+
+        seen: list = []
+        await proxy.restore(bundle, replace=True, progress=seen.append)
+        await asyncio.sleep(0)  # engine-thread reports reach the loop
+        phases = [p.phase for p in seen]
+        assert phases[0] == "erasing" and phases[-1] == "renaming"
+        assert "device" in phases and phases.index("device") < phases.index("renaming")
+        assert seen[0].total_steps == 1 and seen[-1].completed_steps == 1
+
+        seen.clear()
+        await proxy.restore(bundle, replace=False, progress=seen.append)
+        await asyncio.sleep(0)
+        assert not {"erasing", "renaming"} & {p.phase for p in seen}
+
+    asyncio.run(main())
+
+
 def test_the_facade_pauses_reconnects_when_the_hub_announces_a_firmware_update() -> None:
     class _OtaTransport(FakeProxy._Transport):
         def __init__(self):
