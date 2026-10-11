@@ -25,6 +25,23 @@ export function secondsToByte(value: string): number {
   return Math.min(255, Math.max(0, Math.round(seconds * 2)));
 }
 
+/** What a Wifi command that binds a button in `taking` takes from another
+ *  command already holding that button (`held`): the hub keeps one binding
+ *  per button per activity, so only the activities both name change hands
+ *  (issue #306). The other command keeps the button in the rest of its
+ *  activities; it loses the button outright (`whole`) when none are left, or
+ *  when it is also a favorite, whose activities are the same list. Null when
+ *  the two share no activity. */
+export function buttonTakeover<T extends string | number>(
+  held: { favorite: boolean; activities: readonly T[] },
+  taking: readonly (string | number)[],
+): { shared: T[]; whole: boolean } | null {
+  const wanted = new Set(taking.map(String));
+  const shared = held.activities.filter((id) => wanted.has(String(id)));
+  if (!shared.length) return null;
+  return { shared, whole: held.favorite || shared.length === held.activities.length };
+}
+
 /** Whether a Wifi command's power lines and input switch are offered. The
  *  X1 hub collapses activity-transition wifi callbacks to a single power-on
  *  + input callback regardless of how many callback devices the activity

@@ -1311,6 +1311,20 @@
       },
     ];
 
+    // A "Volume Up" on VOL+ in the given activities: two devices sharing the
+    // button per activity (issue #306).
+    const WIFI_VOLUP = (activities, entity) => ({
+      name: "Volume Up", add_as_favorite: false, hard_button: "volup",
+      long_press_enabled: false,
+      is_power_on: false, is_power_off: false, input_activity_id: "",
+      activities,
+      action: { action: "perform-action", perform_action: "media_player.volume_up",
+                target: { entity_id: [entity] } },
+      long_press_action: { action: "perform-action" },
+    });
+    const WIFI_COMMANDS_SOUNDBAR = [WIFI_VOLUP(["101"], "media_player.soundbar")];
+    const WIFI_COMMANDS_AMP = [WIFI_VOLUP(["102", "103"], "media_player.amp")];
+
     // Power-flagged and input-activity slots — exercises the new slot icons
     const WIFI_COMMANDS_POWER = [
       {
@@ -2922,6 +2936,27 @@
         async postLoad(card) {
           await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
+          await clickFirstConfiguredSlot(card);
+        },
+      },
+      {
+        id: "wifi-shared-button", group: "WiFi Commands",
+        label: "Inside device — VOL+ on two devices, per activity (issue #306)",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        // The list rows carry each device's slots, as the backend's do.
+        wifiDevices: [
+          { ...WIFI_DEVICE_LR, device_key: "dev-sb", device_name: "Soundbar", configured_slot_count: 1, commands: WIFI_COMMANDS_SOUNDBAR },
+          { ...WIFI_DEVICE_LR, device_key: "dev-amp", device_name: "Amp", configured_slot_count: 1, deployed_device_id: 12346, commands: WIFI_COMMANDS_AMP },
+        ],
+        wifiCommandsByKey: { "dev-sb": WIFI_COMMANDS_SOUNDBAR, "dev-amp": WIFI_COMMANDS_AMP },
+        wifiSyncByKey:     { "dev-sb": WIFI_SYNC_IDLE, "dev-amp": WIFI_SYNC_IDLE },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Soundbar");
           await clickFirstConfiguredSlot(card);
         },
       },

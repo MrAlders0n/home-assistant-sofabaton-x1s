@@ -16105,9 +16105,10 @@ var TOOLS_CARD_STRINGS_EN = {
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
     powerOffCommand: "Power OFF command",
-    thisDevice: "this device",
     replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot, activities) => `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot, device, activities) => `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
     none: "None",
     commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
@@ -18812,6 +18813,12 @@ function secondsToByte(value) {
   const seconds = parseFloat(String(value));
   if (!Number.isFinite(seconds) || seconds <= 0) return 0;
   return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function buttonTakeover(held, taking) {
+  const wanted = new Set(taking.map(String));
+  const shared = held.activities.filter((id) => wanted.has(String(id)));
+  if (!shared.length) return null;
+  return { shared, whole: held.favorite || shared.length === held.activities.length };
 }
 function hubSupportsPowerInput(hubVersion) {
   const version = String(hubVersion ?? "").toUpperCase();
@@ -26830,24 +26837,38 @@ function slotHoldingButton(draft, button, index) {
 function slotHoldingInput(draft, activityId, index) {
   return activityId === null ? -1 : draft.slots.findIndex((slot, i8) => i8 !== index && slot.inputActivityId === activityId);
 }
-function otherDeviceHoldingButton(devices, key, button) {
-  if (button === null) return null;
+function slotAfterTakeover(slot, takeover) {
+  if (takeover.whole) return { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] };
+  return { ...slot, activities: slot.activities.filter((id) => !takeover.shared.includes(id)) };
+}
+function otherDevicesHoldingButton(devices, key, button, activities) {
+  if (button === null) return [];
+  const out = [];
   for (const device of devices) {
     if (device.key === key) continue;
-    const row = (device.spec.slots ?? []).find((slot) => Number(slot.button) === button);
-    if (row) return { device, slotLabel: row.label };
+    for (const slot of draftFromSpec(device.spec).slots) {
+      const takeover = slot.button === button ? buttonTakeover(slot, activities) : null;
+      if (takeover) out.push({ device, slotLabel: slot.label, ...takeover });
+    }
   }
-  return null;
+  return out;
 }
 function buttonCleanups(devices, key, draft) {
-  const taken = new Set(draft.slots.map((slot) => slot.button).filter((b3) => b3 !== null));
+  const taking = /* @__PURE__ */ new Map();
+  for (const slot of draft.slots) if (slot.button !== null) taking.set(slot.button, slot.activities);
   const out = [];
   for (const device of devices) {
     if (device.key === key || device.stale || device.device_id == null) continue;
     const theirs = draftFromSpec(device.spec);
-    if (!theirs.slots.some((slot) => slot.button !== null && taken.has(slot.button))) continue;
-    const cleared = { ...theirs, slots: theirs.slots.map((slot) => slot.button !== null && taken.has(slot.button) ? { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] } : slot) };
-    out.push({ device, spec: specFromDraft(cleared) });
+    let changed = false;
+    const slots = theirs.slots.map((slot) => {
+      const wanted = slot.button === null ? void 0 : taking.get(slot.button);
+      const takeover = wanted ? buttonTakeover(slot, wanted) : null;
+      if (!takeover) return slot;
+      changed = true;
+      return slotAfterTakeover(slot, takeover);
+    });
+    if (changed) out.push({ device, spec: specFromDraft({ ...theirs, slots }) });
   }
   return out;
 }
@@ -27710,8 +27731,10 @@ var SbPanelWifiDevices = class extends i4 {
     const inputHolder = slotHoldingInput(draft, edit.inputActivityId, state.index);
     const inputHint = !hasActivities ? S7.noActivitiesForHub : inputHolder >= 0 ? S7.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S7.activityInputHint;
     const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
-    const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
-    const buttonHint = buttonHolder >= 0 ? S7.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S7.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
+    const buttonHints = [
+      ...buttonHolder >= 0 ? [S7.replacesOnButton(draft.slots[buttonHolder].label)] : [],
+      ...otherDevicesHoldingButton(this._devices, device.key, edit.button, edit.activities).map((holder) => holder.whole ? S7.replacesFromDevice(holder.slotLabel, holder.device.spec.name) : S7.replacesFromDeviceIn(holder.slotLabel, holder.device.spec.name, holder.shared.map((id) => this._activityName(id))))
+    ];
     const keyLabels = S7.keyLabels;
     const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
     return b2`
@@ -27757,7 +27780,7 @@ var SbPanelWifiDevices = class extends i4 {
                     ${buttons.map((button) => b2`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
                   </select>
                 </label>
-                ${buttonHint ? b2`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : A}
+                ${buttonHints.length ? b2`<div id="wifi-slot-button-hint">${buttonHints.map((hint) => b2`<div class="button-conflict-hint">${hint}</div>`)}</div>` : A}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
                   <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
                   <span class="checkbox-copy"><span>${S7.enableLongPress}</span></span>
