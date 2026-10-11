@@ -1704,3 +1704,77 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
                 assert repairs == [] and "resync" not in engine.trace
 
     asyncio.run(main())
+
+
+# ---------------------------------------------------------------------------
+# busy_gate: the application's own gate composed with the facade's holds
+# ---------------------------------------------------------------------------
+
+
+def _app_sessions(engine, monkeypatch) -> list:
+    """Record the app sessions the bridge would start for a CALL_ME."""
+
+    started: list = []
+    monkeypatch.setattr(engine.transport, "_handle_app_session", started.append)
+    return started
+
+
+def _call_me(engine) -> None:
+    engine.transport._handle_call_me("192.0.2.5", 8102, "192.0.2.5", 8100)
+
+
+def test_wrap_keeps_the_applications_busy_gate_beside_the_facade_holds(monkeypatch) -> None:
+    """An application that wraps its engine (the HA integration) runs long
+    hub work of its own. wrap() used to install the facade's gate over the
+    application's, so a CALL_ME during that work reached the app."""
+
+    async def main():
+        engine = x1_proxy_mod.X1Proxy("127.0.0.1", hub_version="X1S", proxy_enabled=True)
+        started = _app_sessions(engine, monkeypatch)
+        app_busy = {"value": True}
+        proxy = aio.AsyncXProxy.wrap(engine, busy_gate=lambda: app_busy["value"])
+
+        _call_me(engine)                      # the application's work, no facade hold
+        assert started == []
+
+        app_busy["value"] = False
+        async with proxy._holding_hub("a restore"):
+            _call_me(engine)                  # a facade hold, the application idle
+            assert started == []
+
+        _call_me(engine)                      # both free: the app gets its session
+        await asyncio.sleep(0.05)
+        assert started == [("192.0.2.5", 8100)]
+
+    asyncio.run(main())
+
+
+def test_a_raising_busy_gate_lets_the_app_in_unless_the_facade_holds(monkeypatch) -> None:
+    async def main():
+        engine = x1_proxy_mod.X1Proxy("127.0.0.1", hub_version="X1S", proxy_enabled=True)
+        started = _app_sessions(engine, monkeypatch)
+
+        def broken() -> bool:
+            raise RuntimeError("gate broke")
+
+        proxy = aio.AsyncXProxy.wrap(engine, busy_gate=broken)
+        async with proxy._holding_hub("a backup"):
+            _call_me(engine)
+            assert started == []
+        _call_me(engine)                      # the bridge logs the raise, as before
+        await asyncio.sleep(0.05)
+        assert started == [("192.0.2.5", 8100)]
+
+    asyncio.run(main())
+
+
+def test_the_constructor_and_from_config_take_the_busy_gate() -> None:
+    async def main():
+        busy = lambda: True  # noqa: E731
+        made = aio.AsyncXProxy(hub_ip="127.0.0.1", hub_version="X1S", busy_gate=busy)
+        assert made.sync.transport._busy_gate() is True
+        assert aio.AsyncXProxy(hub_ip="127.0.0.1", hub_version="X1S").sync.transport._busy_gate() is False
+        config = aio.HubConfig(host="127.0.0.1", hub_version="X1S")
+        assert aio.AsyncXProxy.from_config(config, busy_gate=busy).sync.transport._busy_gate() is True
+
+    asyncio.run(main())

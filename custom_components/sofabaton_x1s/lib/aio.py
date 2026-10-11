@@ -490,6 +490,7 @@ class AsyncXProxy:
         app_discovery_port: int = 8102,
         loop: Optional[asyncio.AbstractEventLoop] = None,
         initial_sync: bool = True,
+        busy_gate: Optional[Callable[[], bool]] = None,
         **proxy_kwargs: Any,
     ) -> None:
         """Construct a proxy for the hub at ``hub_ip``.
@@ -497,6 +498,14 @@ class AsyncXProxy:
         ``initial_sync`` (default on) makes the facade read the banner,
         devices and activities every time the hub connects, so the
         catalog minimum is always cached; see :meth:`wait_until_ready`.
+
+        ``busy_gate`` is for an application that also runs long hub work
+        of its own, outside the facade: while it returns true the vendor
+        app's ``CALL_ME`` is ignored, as it is while the facade holds the
+        hub. It is called on the transport's thread, so it must be quick
+        and thread-safe; one that raises counts as not busy (logged). It
+        keeps the app out only: the facade's on-demand reads do not wait
+        for it.
 
         The proxy has two network faces. Only the four arguments below
         describe them; everything else (``mdns_instance``, ``mdns_txt``,
@@ -529,6 +538,7 @@ class AsyncXProxy:
             proxy_udp_port=app_discovery_port,
             **proxy_kwargs,
         )
+        self._busy_gate = busy_gate
         self._init_burst_state()
         if initial_sync:
             self._arm_initial_sync()
@@ -539,6 +549,7 @@ class AsyncXProxy:
         config: HubConfig,
         *,
         loop: Optional[asyncio.AbstractEventLoop] = None,
+        busy_gate: Optional[Callable[[], bool]] = None,
         **overrides: Any,
     ) -> "AsyncXProxy":
         """Construct a proxy from a :class:`HubConfig` record.
@@ -547,11 +558,12 @@ class AsyncXProxy:
         (library discovery, a foreign mDNS stack, manual entry, a REST
         body or config file); ``overrides`` are applied on top of the
         record's keyword arguments, e.g. ``diag_dump=False``.
+        ``busy_gate`` is the constructor's.
         """
 
         kwargs = config.proxy_kwargs()
         kwargs.update(overrides)
-        return cls(loop=loop, **kwargs)
+        return cls(loop=loop, busy_gate=busy_gate, **kwargs)
 
     @classmethod
     def wrap(
@@ -560,16 +572,21 @@ class AsyncXProxy:
         *,
         loop: Optional[asyncio.AbstractEventLoop] = None,
         initial_sync: bool = False,
+        busy_gate: Optional[Callable[[], bool]] = None,
     ) -> "AsyncXProxy":
         """Wrap an already-constructed engine (e.g. mid-migration code).
 
         ``initial_sync`` defaults off here: an application that built the
         engine itself usually runs its own connect-time sync already.
+        ``busy_gate`` is the constructor's; pass the application's own
+        gate here rather than installing it on the engine's transport,
+        where the facade's would replace it.
         """
 
         self = object.__new__(cls)
         self._loop = loop or asyncio.get_running_loop()
         self._proxy = proxy
+        self._busy_gate = busy_gate
         self._init_burst_state()
         if initial_sync:
             self._arm_initial_sync()
@@ -619,12 +636,12 @@ class AsyncXProxy:
         self._hub_free = asyncio.Event()
         self._hub_free.set()
         # The vendor app's CALL_ME waits while an exclusive operation holds
-        # the hub, as it does in HA: an app taking the session mid-restore
-        # would stop the job partway. Read on the demuxer thread; an int
-        # read is atomic.
+        # the hub, or while the application's own gate says it is busy: an
+        # app taking the session mid-restore would stop the job partway.
+        # The bridge has one gate slot, so the two are composed here.
         transport = getattr(self._proxy, "transport", None)
         if transport is not None and hasattr(transport, "set_busy_gate"):
-            transport.set_busy_gate(lambda: self._hub_holds > 0)
+            transport.set_busy_gate(self._app_kept_out)
         # A hub that announces a firmware update goes silent for minutes;
         # reconnecting and reading into that window is what HA's pause
         # avoids. The engine only reports it, so the facade reacts too.
@@ -1966,6 +1983,16 @@ class AsyncXProxy:
 
     def _hub_held_by_another(self) -> bool:
         return self._hub_holds > 0 and not _HUB_HOLDER.get()
+
+    def _app_kept_out(self) -> bool:
+        """The transport's CALL_ME gate (read on the demuxer thread; an int
+        read is atomic). A raising application gate reaches the bridge,
+        which logs it and lets the app in, unless a hold already said no."""
+
+        if self._hub_holds > 0:
+            return True
+        gate = self._busy_gate
+        return gate is not None and bool(gate())
 
     async def _wait_for_free_hub(self, key: str, timeout: float) -> None:
         """Wait out an exclusive operation before an on-demand fetch."""

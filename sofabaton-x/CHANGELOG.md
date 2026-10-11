@@ -11,6 +11,15 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Added
+
+- `busy_gate=` on `AsyncXProxy`, `AsyncXProxy.from_config()` and
+  `AsyncXProxy.wrap()`: a callable that keeps the vendor app's `CALL_ME`
+  out while it returns true, for an application that also runs long hub
+  work of its own outside the facade. It is combined with the facade's
+  own hold. Before, `wrap()` silently replaced a gate the application had
+  installed on the engine's transport; pass it here instead.
+
 ## 0.2.4 (2026-10-10)
 
 Changes since `sofabaton-x-v0.2.3`. Backward-compatible additions and
