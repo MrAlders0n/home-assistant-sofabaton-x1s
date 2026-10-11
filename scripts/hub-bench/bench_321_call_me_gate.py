@@ -126,7 +126,10 @@ if not args.skip_wifi:
         bench_name = "Bench B321"
 
         def slot(n: int, name: str | None = None) -> dict:
-            return {"name": name or f"Command {n}", "add_as_favorite": False, "hard_button": "",
+            # The integration's empty slot (command_config._default_slot): a
+            # slot that differs counts as configured, so a cleanup of
+            # anything else updates the device in place instead of deleting it.
+            return {"name": name or f"Command {n}", "add_as_favorite": True, "hard_button": "",
                     "long_press_enabled": False, "input_activity_id": "", "activities": []}
 
         def record() -> dict | None:
@@ -155,7 +158,7 @@ if not args.skip_wifi:
             return _start
 
         slots = [slot(n) for n in range(1, 11)]
-        slots[0]["name"] = "B321 One"
+        slots[0].update({"name": "B321 One", "add_as_favorite": False})
         gate_during("Wifi Commands sync", start_sync(slots), every=2.5)
         prog = progress(key)
         tally.check("Wifi Commands sync succeeded", prog.get("status") == "success", str(prog.get("message")))

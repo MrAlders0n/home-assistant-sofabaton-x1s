@@ -5,7 +5,7 @@ slot 1 a favorite of the given (bench) activity, so the device is a
 member and its power hooks fire. Cleanup: a zero-slot sync deletes the
 device, then the record.
 
-B6.1 (defect 1: clearing a power hook in place)
+B6.1 (defect 1: clearing a power hook in place; X1S and X2 only, skipped on the X1)
   - power ON = slot 1, power OFF = slot 2, deployed (the create);
   - positive control: the activity on and off fires slot 2's callback;
   - power OFF cleared, synced in place: the log shows
@@ -58,7 +58,9 @@ act_name = str((act_row.get("device") or {}).get("name") or "")
 
 
 def slot(n: int, **extra) -> dict:
-    return {"name": f"Command {n}", "add_as_favorite": False, "hard_button": "", "long_press_enabled": False,
+    # Defaults = the integration's empty slot (command_config._default_slot);
+    # anything else counts as configured.
+    return {"name": f"Command {n}", "add_as_favorite": True, "hard_button": "", "long_press_enabled": False,
             "input_activity_id": "", "activities": [], **extra}
 
 
@@ -124,10 +126,16 @@ key = str((record() or {}).get("device_key") or "") or str(
 print(f"bench record {key!r}, activity {ACT} {act_name!r}", flush=True)
 slots = [slot(n) for n in range(1, 11)]
 slots[0] = slot(1, name="B326 On", add_as_favorite=True, activities=[str(ACT)])
-slots[1] = slot(2, name="B326 Off")
+slots[1] = slot(2, name="B326 Off", add_as_favorite=False)
 
 try:
-    if not args.skip_power:
+    if not args.skip_power and hub.version.upper() == "X1":
+        # Power and input hooks are X1S/X2 only: the X1 card hides them
+        # (decision L-B16), the X1's activity engine never fires a bench
+        # device's power rows (bench_111f) and the unbound clear row is
+        # never written there, so a cleared hook re-plans on every sync.
+        tally.note("X1: power hooks are not offered (L-B16); B6.1 skipped")
+    elif not args.skip_power:
         tally.section("B6.1: deploy with power ON and OFF")
         config(slots, power_on_command_id=1, power_off_command_id=2)
         prog, lines = run_sync(key)
