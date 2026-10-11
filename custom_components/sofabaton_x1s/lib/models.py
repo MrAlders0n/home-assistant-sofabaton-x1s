@@ -368,6 +368,11 @@ class WriteProgress:
     # Set by sync_hub: which item of how many this report belongs to.
     item_index: Optional[int] = None
     item_count: Optional[int] = None
+    # A sync step's parameters, so a UI can word the step itself: the
+    # device a binding, favorite or macro step targets, or the user's own
+    # command label for a step that writes one.
+    step_device_id: Optional[int] = None
+    step_name: Optional[str] = None
 
     @classmethod
     def from_engine(cls, **payload: Any) -> "WriteProgress":
@@ -379,6 +384,8 @@ class WriteProgress:
             entity_kind, entity_id = "device", int(payload["current_device_id"])
         elif payload.get("current_activity_id") is not None:
             entity_kind, entity_id = "activity", int(payload["current_activity_id"])
+        step_device_id = payload.get("step_device_id")
+        step_name = payload.get("step_name")
         return cls(
             phase=str(payload.get("phase") or ""),
             message=str(payload.get("message") or ""),
@@ -387,6 +394,8 @@ class WriteProgress:
             entity_kind=entity_kind,
             entity_id=entity_id,
             step_kind=payload.get("step_kind"),
+            step_device_id=int(step_device_id) if step_device_id is not None else None,
+            step_name=str(step_name) if step_name is not None else None,
         )
 
     def to_dict(self) -> dict[str, Any]:

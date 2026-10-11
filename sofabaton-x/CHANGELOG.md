@@ -23,6 +23,10 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   before a replacing restore wipes the hub, `renaming` before it applies
   the bundle's hub name. Both happen inside the restore's hold, so a
   consumer could not report them itself.
+- `WriteProgress.step_device_id` and `WriteProgress.step_name`: a sync
+  step's target device, or the user's own command label for a step that
+  writes one, so a UI can word each step itself instead of showing the
+  engine's English label.
 
 ### Fixed
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from functools import partial
-from typing import Any, Iterable
+from typing import Any
 
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import HomeAssistantError
@@ -33,7 +33,7 @@ from .lib.blob_decoders import (
 from .lib.backup_export import PAYLOAD_PROFILE_FULL
 from .lib.commands import hub_command_label, split_play_blob_tail
 from .lib.errors import HubBusyError, HubNotConnectedError, HubRejectedError
-from .lib.models import RestoreResult, WriteProgress
+from .lib.models import RestoreResult, SyncResult, WriteProgress
 
 
 # A facade write the hub (or the facade's own check) refused: the HA
@@ -50,14 +50,21 @@ def _progress_relay(
     *,
     phases: dict[str, str] | None = None,
     last: list[WriteProgress] | None = None,
+    status: str | None = "running",
+    step_keys: bool = False,
 ) -> Any:
     """A facade progress consumer that feeds an engine-style callback.
 
     The operation registry and the card take the engine's keyword dicts
-    (``status``, ``phase``, ``message``, the step counts and
-    ``current_device_id`` / ``current_activity_id``); the facade hands
+    (``status``, ``phase``, ``message``, the step counts,
+    ``current_device_id`` / ``current_activity_id`` and a sync step's
+    ``step_kind`` / ``step_device_id`` / ``step_name``); the facade hands
     out :class:`WriteProgress` on the loop. ``phases`` renames phase
-    words; ``last`` collects every report for the caller's final counts.
+    words; ``last`` collects every report for the caller's final counts;
+    ``status`` is what the engine put in each report (None: no key, as
+    for the entity syncs). ``step_keys`` always sends the three step keys,
+    None included: the registry merges reports, and the engine clears the
+    previous step's values that way.
     """
 
     if not callable(callback):
@@ -66,8 +73,8 @@ def _progress_relay(
     def relay(progress: WriteProgress) -> None:
         if last is not None:
             last.append(progress)
-        payload: dict[str, Any] = {
-            "status": "running",
+        payload: dict[str, Any] = {} if status is None else {"status": status}
+        payload |= {
             "phase": (phases or {}).get(progress.phase, progress.phase),
             "message": progress.message,
             "completed_steps": progress.completed_steps,
@@ -75,11 +82,56 @@ def _progress_relay(
         }
         if progress.entity_kind in ("device", "activity") and progress.entity_id is not None:
             payload[f"current_{progress.entity_kind}_id"] = progress.entity_id
-        if progress.step_kind:
+        if step_keys:
+            payload["step_kind"] = progress.step_kind
+            payload["step_device_id"] = progress.step_device_id
+            payload["step_name"] = progress.step_name
+        elif progress.step_kind:
             payload["step_kind"] = progress.step_kind
         callback(**payload)
 
     return relay
+
+
+# What the facade's entity syncs raise before writing anything: the hub
+# cannot be written, or the baseline / rename cannot be synced.
+_SYNC_REFUSALS = (HubBusyError, HubNotConnectedError, ValueError)
+
+
+def _sync_refusal_dict(err: Exception) -> dict[str, Any]:
+    """The engine's pre-write failure dict for a refused facade sync."""
+
+    if isinstance(err, (HubBusyError, HubNotConnectedError)):
+        return {
+            "status": "failed",
+            "failed_at": "unavailable",
+            "message": "The hub is not reachable (the Sofabaton app may be connected).",
+        }
+    # An uneditable baseline (SnapshotIncompleteError) or a name the hub
+    # cannot store: refused at planning, nothing written.
+    return {"status": "failed", "failed_at": "plan", "message": str(err)}
+
+
+def _sync_result_dict(outcome: SyncResult) -> dict[str, Any]:
+    """The engine's sync result dict (the editor's operation and the
+    ``sync_from_snapshot`` response carry it) from the facade's result."""
+
+    counts = {
+        "completed_steps": outcome.completed_steps,
+        "total_steps": outcome.total_steps,
+        "counters": dict(outcome.counters),
+    }
+    if outcome.ok:
+        return {"status": "success", **counts}
+    result: dict[str, Any] = {"status": "failed", "failed_at": outcome.failed_at}
+    if outcome.preflight is not None:
+        result["preflight"] = outcome.preflight
+    if outcome.message is not None:
+        result["message"] = outcome.message
+    if not outcome.wrote_nothing:
+        # A step the hub rejected: what landed before it.
+        result |= counts
+    return result
 
 
 def _restore_result_dict(outcome: RestoreResult) -> dict[str, Any]:
@@ -328,21 +380,23 @@ class HubOpsMixin:
         """Sync one activity's edits to the live hub (Phase L4).
 
         Diffs ``baseline`` vs ``edited`` (both ``hub_bundle`` payloads) and
-        issues targeted in-place writes against the existing activity id.
-        The engine lives in the library (:meth:`X1Proxy.sync_activity`);
-        this wrapper marshals it onto the executor thread. ``progress_callback``
-        runs on that thread — callers marshal to the loop themselves.
+        issues targeted in-place writes against the existing activity id:
+        the facade's :meth:`AsyncXProxy.sync_activity` (one hub hold, the
+        engine's stale preflight and settle loop, a read-back when it
+        stopped part-way). Returns the engine's result dict.
+        ``progress_callback`` receives the engine's keyword dicts on the loop.
         """
 
-        return await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.sync_activity,
+        try:
+            outcome = await self._facade.sync_activity(
                 baseline=baseline,
                 edited=edited,
                 activity_id=int(activity_id),
-                progress_callback=progress_callback,
+                progress=_progress_relay(progress_callback, status=None, step_keys=True),
             )
-        )
+        except _SYNC_REFUSALS as err:
+            return _sync_refusal_dict(err)
+        return _sync_result_dict(outcome)
 
     async def async_sync_device(
         self,
@@ -354,18 +408,21 @@ class HubOpsMixin:
         allow_command_removal: bool = False,
     ) -> dict[str, Any]:
         """Sync one device's edits to the live hub (device-scoped counterpart
-        of :meth:`async_sync_activity`; engine :meth:`X1Proxy.sync_device`)."""
+        of :meth:`async_sync_activity`; the facade's ``sync_device``, which
+        also reads back the activities naming the device when its command
+        records changed, scanned before the write)."""
 
-        return await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.sync_device,
+        try:
+            outcome = await self._facade.sync_device(
                 baseline=baseline,
                 edited=edited,
                 device_id=int(device_id),
-                progress_callback=progress_callback,
+                progress=_progress_relay(progress_callback, status=None, step_keys=True),
                 allow_command_removal=allow_command_removal,
             )
-        )
+        except _SYNC_REFUSALS as err:
+            return _sync_refusal_dict(err)
+        return _sync_result_dict(outcome)
 
     async def async_restore_backup(
         self,
@@ -906,41 +963,6 @@ class HubOpsMixin:
                 refresh_after_write=refresh_after_write,
             )
         )
-
-    async def async_refresh_activities_referencing_device(
-        self, device_id: int, *, also: Iterable[int] = ()
-    ) -> list[int]:
-        """Re-warm every cached activity that references *device_id*.
-
-        Rewriting a device's command records leaves the referencing
-        activities' cached favorite label maps and macro views
-        holding pre-edit values (they are resolved copies, not references
-        into the device catalog). Callers that just rewrote a device's
-        records use this to mirror the full-refresh behaviour for exactly
-        the referencing activities. ``also`` adds activities scanned before
-        the write (a delete may have cascaded their references away).
-        Returns the activity ids re-warmed.
-        """
-
-        impacted = set(
-            await self.hass.async_add_executor_job(
-                self._proxy.activities_referencing_device, device_id
-            )
-        )
-        impacted.update(int(act) for act in also)
-        impacted = sorted(impacted)
-        for act_id in impacted:
-            try:
-                await self._async_fetch_activity_commands(int(act_id))
-            except Exception:  # noqa: BLE001 - re-warm is best-effort
-                self._log.warning(
-                    "[%s] failed re-warming activity 0x%02X referencing device 0x%02X",
-                    self.entry_id,
-                    int(act_id) & 0xFF,
-                    int(device_id) & 0xFF,
-                    exc_info=True,
-                )
-        return list(impacted)
 
     async def async_activate_activity(self, act_id: int) -> None:
         self._log.debug("[%s] Activating activity %s", self.entry_id, act_id)

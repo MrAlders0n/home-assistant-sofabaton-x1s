@@ -328,6 +328,11 @@ def test_backup_state_sends_counts_instead_of_the_bundle(monkeypatch):
 
 
 def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
+    """The read-back is the facade's now (adoption plan M5): sync_activity
+    reads the entity back when the engine stopped part-way; HA persists."""
+
+    from tests.hub_fakes import make_controllable
+
     loop = asyncio.new_event_loop()
     try:
         hass, hub = _real_hub(loop)
@@ -335,14 +340,17 @@ def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
         monkeypatch.setattr(operations_module, "async_call_later", lambda *_a, **_k: (lambda: None))
         reads: list = []
 
-        async def _sync_activity(**_kwargs):
-            return {"status": "failed", "failed_at": "binding_write", "completed_steps": 1}
+        async def _read_back(devices, activities, **_kwargs):
+            reads.append(tuple(activities))
 
-        async def _refresh(*, kind, ent_id):
-            reads.append((kind, ent_id))
-
-        monkeypatch.setattr(hub, "async_sync_activity", _sync_activity)
-        monkeypatch.setattr(hub, "async_refresh_entity_structure", _refresh)
+        make_controllable(hub._proxy)
+        monkeypatch.setattr(
+            hub._proxy,
+            "sync_activity",
+            lambda **_kwargs: {"status": "failed", "failed_at": "binding_write", "message": "rejected",
+                               "completed_steps": 1, "total_steps": 2, "counters": {}},
+        )
+        monkeypatch.setattr(hub._facade, "_reread_after_write", _read_back)
         registry = operations_module._backup_operation_registry(hass)
         op = registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
 
@@ -351,8 +359,8 @@ def test_a_failed_sync_after_writes_reads_the_entity_back(monkeypatch):
                 hass, op, hub=hub, baseline={}, edited={}, entity_kind="activity", entity_id=101
             )
         )
-        assert result["failed_at"] == "binding_write"
-        assert reads == [("activity", 101)]
+        assert result["failed_at"] == "binding_write" and result["completed_steps"] == 1
+        assert reads == [(101,)]
         assert persisted == ["entry-1"]
         assert registry.get(op)["state"]["status"] == "failed"
     finally:

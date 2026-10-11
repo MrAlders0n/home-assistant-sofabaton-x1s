@@ -28,7 +28,6 @@ from .command_config import (
 from .lib.activity_sync import build_device_sync_plan
 from .lib.bundle_validation import validate_hub_bundle_for_model
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
-from .lib.wifi_inplace_plan import REFERENCED_RECORD_STEP_KINDS
 from . import operations
 from . import runtime
 
@@ -424,19 +423,6 @@ async def _run_entity_sync_operation(
                     pending_wifi_rename=pending_wifi_rename,
                 )
 
-    # Scanned before the write, as the facade does: a failed record delete
-    # may already have cascaded the references a later scan would miss.
-    referencing_before: list[int] = []
-    if entity_kind == "device":
-        try:
-            referencing_before = list(
-                await hass.async_add_executor_job(
-                    hub._proxy.activities_referencing_device, entity_id
-                )
-            )
-        except Exception:  # noqa: BLE001 - the re-read list is best-effort
-            _LOGGER.debug("[device_sync] referencing scan failed", exc_info=True)
-
     def _progress(**payload: Any) -> None:
         registry.update_from_thread(operation_id, **payload)
 
@@ -492,19 +478,15 @@ async def _run_entity_sync_operation(
             )
             registry.retire_transient(operation_id)
             return result
-        # Writes happened before the failure: read the entity (and, for a
-        # device, the activities naming it) back so the cache shows what
-        # the hub holds, not what the aborted plan left cleared (CR-X1-1).
-        # The operation stays running until then, like the success tail.
+        # Writes happened before the failure: the facade has read the entity
+        # (and, for a device, the activities naming it, scanned before the
+        # write) back, so the cache shows what the hub holds, not what the
+        # aborted plan left cleared (CR-X1-1). Persist that.
         try:
-            await hub.async_refresh_entity_structure(kind=entity_kind, ent_id=entity_id)
-            if entity_kind == "device":
-                await hub.async_refresh_activities_referencing_device(
-                    entity_id, also=referencing_before
-                )
+            hub._bump_cache_generation()
             await runtime._async_persist_hub_cache(hass, hub)
-        except Exception:  # pragma: no cover - the read-back is best-effort
-            _LOGGER.exception("[%s_sync] read-back after a failed sync failed", entity_kind)
+        except Exception:  # pragma: no cover - the persist is best-effort
+            _LOGGER.exception("[%s_sync] persist after a failed sync failed", entity_kind)
         registry.update(
             operation_id,
             status="failed",
@@ -586,15 +568,10 @@ async def _run_entity_sync_operation(
         total_steps=completed_steps,
     )
     try:
+        # The catalog row carries the entity's name for HA's own lists. The
+        # activities naming a device whose command records changed were read
+        # back by the facade's sync_device.
         await hub.async_request_catalog("activities" if entity_kind == "activity" else "devices")
-        if entity_kind == "device":
-            # Command-record rewrites also change labels held by every
-            # referencing activity's cached favorite maps;
-            # refreshing only the device would leave those stale until an
-            # unrelated activity re-read.
-            counters = (result or {}).get("counters") or {}
-            if any(counters.get(kind) for kind in REFERENCED_RECORD_STEP_KINDS):
-                await hub.async_refresh_activities_referencing_device(entity_id)
         store = await runtime._async_get_persistent_cache_store(hass)
         if store.enabled:
             payload = await hub.async_export_persistent_cache()

@@ -4610,6 +4610,17 @@
             "title": "Phase",
             "type": "string"
           },
+          "step_device_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Device Id"
+          },
           "step_kind": {
             "anyOf": [
               {
@@ -4620,6 +4631,17 @@
               }
             ],
             "title": "Step Kind"
+          },
+          "step_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Name"
           },
           "total_steps": {
             "title": "Total Steps",

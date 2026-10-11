@@ -1743,3 +1743,75 @@ def test_creates_reorders_and_renames_go_through_the_facade(monkeypatch):
         assert run(hub.async_set_hub_name("Den")) is True and adopted == ["Den"]
     finally:
         loop.close()
+
+
+# ---------------------------------------------------------------------------
+# Live editor syncs on the facade (adoption plan M5)
+# ---------------------------------------------------------------------------
+
+
+def test_entity_syncs_go_through_the_facade_with_the_engines_shapes(monkeypatch):
+    """The editor's operation and the sync_from_snapshot response keep the
+    engine's result dicts; the card keeps its step keys (the registry merges
+    reports, so a cleared step device must arrive as None)."""
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _facade_hub(loop)
+        proxy = hub._proxy
+        reads: list = []
+
+        async def _read_back(devices, activities, **_kwargs):
+            reads.append(tuple(activities))
+
+        monkeypatch.setattr(hub._facade, "_reread_after_write", _read_back)
+        outcome: dict = {}
+
+        def _engine_sync(**kwargs):
+            report = kwargs["progress_callback"]
+            report(phase="writing", message="Binding", step_kind="binding_write",
+                   completed_steps=0, total_steps=1, step_device_id=5)
+            report(phase="settling", message="Settling", step_kind=None, step_device_id=None,
+                   completed_steps=1, total_steps=1)
+            return dict(outcome)
+
+        monkeypatch.setattr(proxy, "sync_activity", _engine_sync)
+        run = loop.run_until_complete
+
+        def _sync(baseline=None):
+            events: list = []
+            result = run(hub.async_sync_activity(
+                baseline=baseline or {}, edited={}, activity_id=101,
+                progress_callback=lambda **p: events.append(p),
+            ))
+            run(asyncio.sleep(0))
+            return result, events
+
+        outcome.update(status="success", completed_steps=1, total_steps=1, counters={"binding_write": 1})
+        result, events = _sync()
+        assert result == outcome and reads == []
+        assert events[0] == {"phase": "writing", "message": "Binding", "completed_steps": 0, "total_steps": 1,
+                             "step_kind": "binding_write", "step_device_id": 5, "step_name": None}
+        assert events[1]["step_kind"] is None and events[1]["step_device_id"] is None
+
+        outcome.clear()
+        outcome.update(status="failed", failed_at="stale_check", preflight="changed", message="changed on the hub")
+        result, _ = _sync()
+        assert result == outcome and reads == []
+
+        outcome.clear()
+        outcome.update(status="failed", failed_at="binding_write (device 5)", message="The hub rejected: Binding",
+                       completed_steps=1, total_steps=3, counters={"binding_write": 1})
+        result, _ = _sync()
+        assert result == outcome and reads == [(101,)]  # stopped part-way: read back
+
+        uneditable = {"activities": [{"device": {"device_id": 101}, "editable": False}]}
+        result, _ = _sync(uneditable)
+        assert result["status"] == "failed" and result["failed_at"] == "plan"
+
+        proxy.can_issue_commands = lambda: False  # the app holds the hub / no session
+        result, _ = _sync()
+        assert result == {"status": "failed", "failed_at": "unavailable",
+                          "message": "The hub is not reachable (the Sofabaton app may be connected)."}
+    finally:
+        loop.close()

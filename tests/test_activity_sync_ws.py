@@ -629,7 +629,9 @@ def test_device_sync_command_removal_on_regular_device(monkeypatch):
 
     assert result["status"] == "success"
     assert hub.sync_kwargs["allow_command_removal"] is True
-    assert hub.refreshed_referencing == 1
+    # The activities naming the device are read back inside the facade's
+    # sync_device (adoption plan M5), not by HA after it.
+    assert hub.refreshed_referencing is None
     assert reconciled == []
     assert ((registry.get(operation_id) or {}).get("state") or {}).get("status") == "success"
 

@@ -2443,6 +2443,23 @@ def test_sync_progress_is_typed_write_progress_with_entity() -> None:
     asyncio.run(main())
 
 
+def test_sync_progress_carries_the_step_target_and_name() -> None:
+    """A UI words a sync step itself from its kind plus the target device
+    (or the user's own command label for a step that writes one)."""
+
+    targeted = aio.WriteProgress.from_engine(
+        phase="writing", message="Binding", step_kind="binding_write",
+        completed_steps=0, total_steps=1, step_device_id=7,
+    )
+    assert (targeted.step_device_id, targeted.step_name) == (7, None)
+    named = aio.WriteProgress.from_engine(
+        phase="writing", message="Adding", step_kind="command_add",
+        completed_steps=0, total_steps=1, step_name="Netflix",
+    )
+    assert (named.step_device_id, named.step_name) == (None, "Netflix")
+    assert named.to_dict()["step_name"] == "Netflix"
+
+
 def test_refresh_cancel_drains_the_in_flight_read_before_releasing_the_hub() -> None:
     # Review of 635ecfe, finding 4: a cancelled refresh used to release the
     # lock (and the job) while the engine thread was still reading.
