@@ -101,6 +101,53 @@ def test_the_busy_gate_covers_a_wifi_sync_and_a_running_backup(monkeypatch):
         loop.close()
 
 
+def test_the_engine_gate_keeps_ha_work_and_facade_holds(monkeypatch):
+    """Adoption plan M0: the hub wraps its engine in the facade, and wrap()
+    takes the transport's one gate slot. HA's long-running check must still
+    keep the app out, and so must a facade hold, on every engine the hub
+    builds."""
+
+    import custom_components.sofabaton_x1s.operations as operations_module
+
+    class _Registry:
+        def has_running_for_entry(self, entry_id):
+            return False
+
+    monkeypatch.setattr(operations_module, "_backup_operation_registry", lambda _hass: _Registry())
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+
+        def _gate_states() -> list[bool]:
+            gate = hub._proxy.transport._busy_gate
+            assert hub._facade.sync is hub._proxy
+
+            async def _during(context) -> bool:
+                async with context:
+                    return gate()
+
+            return [
+                gate(),
+                loop.run_until_complete(_during(hub.async_hub_work())),
+                loop.run_until_complete(_during(hub._facade._holding_hub("a restore"))),
+                gate(),
+            ]
+
+        assert _gate_states() == [False, True, True, False]
+
+        monkeypatch.setattr(hub, "async_stop", AsyncMock())
+        monkeypatch.setattr(hub, "async_start", AsyncMock())
+        monkeypatch.setattr(hub, "_async_initial_sync", AsyncMock())
+        old_facade = hub._facade
+        loop.run_until_complete(
+            hub.async_apply_new_settings(host="127.0.0.2", port=1234, proxy_udp_port=9999, hub_listen_base=10000)
+        )
+        assert hub._facade is not old_facade
+        assert _gate_states() == [False, True, True, False]
+    finally:
+        loop.close()
+
+
 def test_a_client_disconnect_reprimes_the_current_activitys_buttons(monkeypatch):
     """CR-H1-7: the vendor app leaving re-primes what it may have changed."""
 

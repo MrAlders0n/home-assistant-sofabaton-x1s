@@ -25,6 +25,7 @@ from .const import (
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .logging_utils import get_hub_logger
+from .lib.aio import AsyncXProxy
 from .lib.x1_proxy import X1Proxy
 
 # Re-exported: __init__.py and the tests read these from .hub.
@@ -214,7 +215,16 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         proxy.on_burst_end("macros", self._on_macros_burst)
         proxy.on_app_activation(self._on_app_activation)
         proxy.on_redundant_off_press(self._on_redundant_off_press)
-        proxy.transport.set_busy_gate(self.is_long_running_task_active)
+        # The facade over this engine (adoption plan M0). The CALL_ME gate
+        # goes through it: wrap() takes the transport's one gate slot and
+        # composes HA's own long-running check with its holds. HA keeps its
+        # connect-time sync, so the facade's stays off.
+        self._facade = AsyncXProxy.wrap(
+            proxy,
+            loop=self.hass.loop,
+            initial_sync=False,
+            busy_gate=self.is_long_running_task_active,
+        )
         self._hub_event_hooks_armed = False
         return proxy
 
