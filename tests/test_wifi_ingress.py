@@ -748,3 +748,51 @@ def test_map_wifi_mqtt_key_law():
     assert map_wifi_mqtt_key(0, 10) is None
     assert map_wifi_mqtt_key("junk", 10) is None
     assert map_wifi_mqtt_key(1, 0) is None
+
+
+def test_a_manual_hub_accepts_the_action_id_the_library_writes():
+    """Issue #308: a hub added by IP has a synthetic entry MAC, while the
+    library writes the hub's banner MAC into every callback once the
+    banner was read. The listener ids must cover what the library wrote
+    before the banner, after it, and after a restart that has not
+    reconnected yet."""
+
+    from custom_components.sofabaton_x1s.config_flow import generate_static_mac
+
+    def _written_id(hub: SofabatonHub) -> str:
+        path = hub._proxy._build_launch_action_path(device_id=7, command_index=0)
+        return path.split("/")[1]
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        hass = FakeHass(loop)
+        synthetic = generate_static_mac("192.168.1.50", 8102)
+        args = ("entry-id", "hub-name", "192.168.1.50", 8102, {"MAC": synthetic}, 9999, 10000, True, False)
+        hub = SofabatonHub(hass, *args)
+
+        before_banner = _written_id(hub)
+        assert hub.get_roku_action_ids() == (before_banner,)
+
+        with hub._proxy._banner_info_lock:
+            hub._proxy._banner_info = {"mac": "E2:6A:44:86:1B:45"}
+        hub._apply_banner_info(hub._proxy.get_banner_info())
+        after_banner = _written_id(hub)
+        assert after_banner == "e26a44861b45"
+        assert hub.get_roku_action_ids() == (after_banner, before_banner)
+
+        # Restart: the banner MAC persisted in the entry, no connect yet.
+        hass._entries["entry-id"] = SimpleNamespace(data={"banner_mac": "E26A44861B45"})
+        restarted = SofabatonHub(hass, *args)
+        assert restarted.get_roku_action_ids() == (after_banner, before_banner)
+    finally:
+        loop.close()
+
+
+def test_a_discovered_hub_has_one_action_id():
+    hub = SimpleNamespace(mac="FC:01:2C:39:D3:D0", banner_mac="FC012C39D3D0", entry_id="entry-1")
+    hub._wifi_mqtt_mac = lambda: hub.banner_mac
+    assert SofabatonHub.get_roku_action_ids(hub) == ("fc012c39d3d0",)
+
+    no_mac = SimpleNamespace(mac=None, entry_id="entry-1", _wifi_mqtt_mac=lambda: None)
+    assert SofabatonHub.get_roku_action_ids(no_mac) == ("entry-1",)
