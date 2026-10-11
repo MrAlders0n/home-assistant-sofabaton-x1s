@@ -317,7 +317,9 @@ def add_member(
     power off sequences (as the vendor app's "add device" does), placed
     among the other members by device id. ``input_command_id`` makes one of
     the device's inputs (a command its input record lists) the one the
-    activity selects at start; without it no input is selected. A
+    activity selects at start; without it no input is selected. For a
+    device that already is a member, ``input_command_id`` changes the input
+    it selects, and without it the bundle comes back unchanged. A
     ``sync_activity`` on ``activity_id`` writes it. Favorites and buttons
     for the device come afterwards, through the other helpers.
     """
@@ -343,7 +345,9 @@ def add_member(
             raise ValueError(f"command {want} is not one of device {dev}'s inputs")
     edited, activity = _edit(bundle, "activity", act_id)
     if dev in _power_members(activity):
-        raise ValueError(f"device {dev} is already in activity {act_id}")
+        if input_command_id is not None:
+            _set_member_input(activity, dev, ordinal)
+        return edited
     members = sorted(_power_members(activity) | {dev})
     macros = list(activity.get("macros") or [])
     for button_id, name, refs in (
@@ -367,6 +371,34 @@ def add_member(
         {int(i) & 0xFF for i in activity.get("referenced_source_device_ids") or []} | {dev}
     )
     return edited
+
+
+def _set_member_input(activity: dict[str, Any], device_id: int, ordinal: int) -> None:
+    """Point an existing member's input reference at ``ordinal`` (adding the
+    reference after its power-on group when the sequence has none)."""
+
+    macros = list(activity.get("macros") or [])
+    for index, row in enumerate(macros):
+        if int(row.get("button_id", 0)) & 0xFF != _POWER_ON_MACRO_ID:
+            continue
+        steps = [dict(step) for step in row.get("steps") or []]
+        for step in steps:
+            if (
+                not _is_delay_step(step)
+                and int(step.get("device_id", 0)) & 0xFF == device_id
+                and int(step.get("command_id", 0)) == _INPUT_REF
+            ):
+                step["duration"] = ordinal & 0xFF
+                break
+        else:
+            members = sorted(_power_members(activity))
+            steps.insert(
+                _power_ref_insert_index(steps, members, device_id, _INPUT_REF),
+                _power_step(device_id, _INPUT_REF, ordinal),
+            )
+        macros[index] = {**row, "steps": steps}
+        activity["macros"] = macros
+        return
 
 
 def _power_step(device_id: int, command_id: int, duration: int) -> dict[str, Any]:

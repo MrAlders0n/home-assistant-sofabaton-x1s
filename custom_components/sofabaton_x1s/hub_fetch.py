@@ -158,53 +158,6 @@ class HubFetchMixin:
 
         await self._async_wait_for_command_fetch_complete(ent_id, timeout=wait_timeout)
 
-    async def async_fetch_single_device_command(
-        self,
-        ent_id: int,
-        command_id: int,
-        *,
-        wait_timeout: float = 10.0,
-        force_refresh: bool = False,
-    ) -> dict[int, str]:
-        """Fetch metadata for a single command on a device.
-
-        This is narrower than :meth:`async_fetch_device_commands`: it verifies
-        one command slot without reloading the entire device command catalog.
-        """
-
-        ent_lo = ent_id & 0xFF
-        cmd_lo = command_id & 0xFF
-        commands = self._proxy.state.commands.setdefault(ent_lo, {})
-        previous_label = None
-        if force_refresh:
-            previous_label = commands.pop(cmd_lo, None)
-
-        self._commands_in_flight.add(ent_id)
-        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-
-        try:
-            cached, ready = await self.hass.async_add_executor_job(
-                partial(
-                    self._proxy.get_single_command_for_entity,
-                    ent_id,
-                    cmd_lo,
-                    fetch_if_missing=True,
-                )
-            )
-            if ready:
-                return cached
-
-            return await self._async_wait_for_single_command_ready(
-                ent_id,
-                cmd_lo,
-                timeout=wait_timeout,
-            )
-        finally:
-            if force_refresh and previous_label is not None and cmd_lo not in commands:
-                commands[cmd_lo] = previous_label
-            self._commands_in_flight.discard(ent_id)
-            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(act_id)
         await self.hass.async_add_executor_job(
@@ -356,32 +309,6 @@ class HubFetchMixin:
             self.entry_id,
             ent_id & 0xFF,
         )
-
-    async def _async_wait_for_single_command_ready(
-        self,
-        ent_id: int,
-        command_id: int,
-        *,
-        timeout: float = 10.0,
-    ) -> dict[int, str]:
-        deadline = monotonic() + timeout
-        while monotonic() < deadline:
-            commands, ready = self._proxy.get_single_command_for_entity(
-                ent_id,
-                command_id,
-                fetch_if_missing=False,
-            )
-            if ready:
-                return commands
-            await asyncio.sleep(0.05)
-
-        self._log.debug(
-            "[%s] timed out waiting for command 0x%02X on 0x%02X",
-            self.entry_id,
-            command_id & 0xFF,
-            ent_id & 0xFF,
-        )
-        return {}
 
     def _reset_entity_cache(self, ent_id: int) -> None:
         """Forget the HA-side readiness trackers for ``ent_id``.

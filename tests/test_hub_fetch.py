@@ -78,61 +78,6 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     loop.close()
 
 
-def test_async_fetch_single_device_command_force_refresh_bypasses_cached_label(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    hass = FakeHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-    )
-
-    hub._proxy.state.commands[11] = {112: "Optimistic Label"}
-    call_log: list[tuple[bool, bool]] = []
-
-    def _get_single_command_for_entity(
-        ent_id: int,
-        command_id: int,
-        *,
-        fetch_if_missing: bool = True,
-    ):
-        cached = command_id in hub._proxy.state.commands.get(ent_id & 0xFF, {})
-        call_log.append((fetch_if_missing, cached))
-        if fetch_if_missing:
-            assert cached is False
-            return ({}, False)
-        hub._proxy.state.commands.setdefault(ent_id & 0xFF, {})[command_id] = "Hub Label"
-        return ({command_id: "Hub Label"}, True)
-
-    monkeypatch.setattr(
-        hub._proxy,
-        "get_single_command_for_entity",
-        _get_single_command_for_entity,
-    )
-
-    result = loop.run_until_complete(
-        hub.async_fetch_single_device_command(
-            11,
-            112,
-            wait_timeout=0.2,
-            force_refresh=True,
-        )
-    )
-
-    assert result == {112: "Hub Label"}
-    assert hub._proxy.state.commands[11][112] == "Hub Label"
-    assert call_log == [(True, False), (False, False)]
-
-    loop.close()
 
 
 def test_async_restore_persistent_cache_bumps_cache_generation():

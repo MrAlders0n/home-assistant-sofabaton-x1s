@@ -7,7 +7,6 @@ favorites and bindings, and the send, activate and remote helpers.
 
 from __future__ import annotations
 
-import asyncio
 from functools import partial
 from typing import Any
 
@@ -329,6 +328,34 @@ class HubOpsMixin:
         self._bump_cache_generation()
         return bundle
 
+    async def async_editable_bundle(self, kind: str, entity_id: int) -> dict[str, Any]:
+        """A baseline bundle in which ``kind`` ``entity_id`` is editable.
+
+        The facade's snapshot of the cache, or, when that entity's copy is
+        not complete (never fetched, or partly), a facade refresh of that
+        one entity first. Raises ``HomeAssistantError`` when the hub does
+        not list it or it cannot be read now. For the single-shot services,
+        which run as an edit of this bundle plus a sync.
+        """
+
+        snap = await self._facade.snapshot()
+        entity = snap.entity(kind, entity_id)
+        if entity is None or not entity.editable:
+            try:
+                snap = await self._facade.refresh(**{f"{kind}_id": int(entity_id)})
+            except (TimeoutError, HubBusyError, HubNotConnectedError) as err:
+                raise HomeAssistantError(
+                    f"Could not read {kind} {int(entity_id)} from the hub: {err}"
+                ) from err
+            entity = snap.entity(kind, entity_id)
+        if entity is None:
+            raise HomeAssistantError(f"The hub has no {kind} {int(entity_id)}")
+        if not entity.editable:
+            raise HomeAssistantError(
+                f"The hub did not return all of {kind} {int(entity_id)}; try again"
+            )
+        return snap.bundle
+
     async def async_get_structural_bundle(self) -> dict[str, Any] | None:
         """Assemble the structural ``hub_bundle`` from cached proxy state.
 
@@ -565,107 +592,6 @@ class HubOpsMixin:
         """
 
         return bool(self._proxy.cancel_ir_learn())
-
-    async def async_persist_ir_blob(
-        self,
-        *,
-        device_id: int,
-        command_name: str,
-        blob: bytes,
-        inter_frame_delay: float = 0.08,
-        wait_timeout: float = 10.0,
-    ) -> dict[str, Any] | None:
-        """Persist a new IR command blob onto an existing device."""
-
-        device_class = self._get_cached_device_class(device_id)
-        if device_class is not None and device_class != DEVICE_CLASS_IR:
-            raise HomeAssistantError(
-                f"persist_ir_blob only supports IR devices; device {device_id} is {device_class}"
-            )
-
-        # Always refresh command occupancy immediately before persist so the
-        # selected command slot comes from an authoritative REQ_COMMANDS view.
-        await self.async_fetch_device_commands(device_id, wait_timeout=wait_timeout)
-
-        result = await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.persist_ir_blob,
-                device_id=device_id,
-                command_name=command_name,
-                blob=blob,
-                inter_frame_delay=inter_frame_delay,
-            )
-        )
-        if result is None:
-            return None
-
-        # Decouple post-save housekeeping (refresh + cache persist) from
-        # the action's return value. The save and the sort-table write
-        # have already landed on the hub at this point, so the caller
-        # has everything it needs to report success. Running the refresh
-        # in the foreground was prone to wedging the websocket action's
-        # completion -- the family-0x61 sort write can leave the proxy's
-        # burst tracker briefly mid-stream on an unsolicited commands
-        # burst, which then stalls the verification round-trip. Move
-        # housekeeping to a background task so nothing downstream of
-        # this point can block the action from settling.
-        self.hass.async_create_task(
-            self._async_post_persist_housekeeping(device_id, result, wait_timeout)
-        )
-
-        return result
-
-    async def _async_post_persist_housekeeping(
-        self,
-        device_id: int,
-        result: dict[str, Any],
-        wait_timeout: float,
-    ) -> None:
-        """Refresh cached command metadata and persist the catalog cache.
-
-        Runs in the background after ``async_persist_ir_blob`` has
-        already returned. Any failure is logged at debug level and
-        swallowed -- the user-visible save action has already
-        succeeded, and the cache will catch up on the next normal
-        refresh cycle if this pass times out.
-        """
-
-        refresh_budget = min(2.0, wait_timeout)
-        try:
-            command_id = result.get("command_id")
-            if isinstance(command_id, int):
-                await asyncio.wait_for(
-                    self.async_fetch_single_device_command(
-                        device_id,
-                        command_id,
-                        wait_timeout=refresh_budget,
-                        force_refresh=False,
-                    ),
-                    timeout=refresh_budget + 0.5,
-                )
-            else:
-                await asyncio.wait_for(
-                    self.async_fetch_device_commands(
-                        device_id,
-                        wait_timeout=refresh_budget,
-                    ),
-                    timeout=refresh_budget + 0.5,
-                )
-        except Exception:
-            self._log.debug(
-                "[BLOBS] persist_ir_blob background refresh failed for device %s",
-                device_id,
-                exc_info=True,
-            )
-
-        try:
-            await self._async_persist_cache_if_enabled()
-        except Exception:
-            self._log.debug(
-                "[BLOBS] persist_ir_blob background cache persist failed for device %s",
-                device_id,
-                exc_info=True,
-            )
 
     async def async_create_wifi_device(
         self,
@@ -913,27 +839,6 @@ class HubOpsMixin:
                 self._proxy.reorder_favorites,
                 activity_id,
                 ordered_fav_ids,
-                refresh_after_write=refresh_after_write,
-            )
-        )
-
-    async def async_delete_favorite(
-        self,
-        activity_id: int,
-        fav_id: int,
-        *,
-        refresh_after_write: bool = True,
-    ) -> dict[str, Any] | None:
-        """Delete the favorite identified by *fav_id* from *activity_id*.
-
-        Use :meth:`async_request_favorites_order` or the Home Assistant
-        ``get_favorites`` service to discover available ``fav_id`` values.
-        """
-        return await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.delete_favorite,
-                activity_id,
-                fav_id,
                 refresh_after_write=refresh_after_write,
             )
         )

@@ -277,7 +277,7 @@
         },
         "slot_id": {
           "name": "Favorite slot ID",
-          "description": "Optional slot or index to store in the favorite mapping."
+          "description": "No effect: the hub assigns the favorite's id. Kept so existing automations keep working."
         }
       }
     },

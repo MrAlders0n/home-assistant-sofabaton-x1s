@@ -303,8 +303,7 @@ def test_add_member_writes_the_power_references_in_member_order() -> None:
     member = [payload for kind, payload in plan if kind == "member_replay"]
     assert member == [{"activity_id": 101, "device_id": 6, "input_cmd_id": 2}]
 
-    with pytest.raises(ValueError):
-        edits.add_member(base, 101, 5)  # already a member
+    assert edits.add_member(base, 101, 5) == base  # already a member, nothing to change
     with pytest.raises(ValueError):
         edits.add_member(base, 101, 6, input_command_id=1)  # not one of its inputs
     with pytest.raises(KeyError):
@@ -322,3 +321,17 @@ def test_add_member_to_an_activity_without_power_sequences_creates_them() -> Non
     assert [(s["device_id"], s["command_id"], s["duration"]) for s in macros[198]["steps"]] == [
         (6, 0xC6, 0), (6, 0xC5, 0),
     ]
+
+
+def test_add_member_on_a_member_changes_the_input_it_selects() -> None:
+    base = _with_macro_and_power(_bundle())
+    base["devices"][1]["input_record"] = {"entries": [
+        {"input_index": 1, "command_id": 3}, {"input_index": 2, "command_id": 9}]}
+    changed = edits.add_member(base, 101, 7, input_command_id=9)
+    power_on = next(r for r in changed["activities"][0]["macros"] if r["button_id"] == 198)["steps"]
+    assert [(s["device_id"], s["command_id"], s["duration"]) for s in power_on if s["device_id"] == 7] == [
+        (7, 0xC6, 0), (7, 0xC5, 2),
+    ]
+    plan = _activity_plan(base, changed)
+    assert [kind for kind, _ in plan] == ["macro_write", "remote_sync"]
+    assert base["activities"][0]["macros"][1]["steps"][4]["duration"] == 0  # input untouched

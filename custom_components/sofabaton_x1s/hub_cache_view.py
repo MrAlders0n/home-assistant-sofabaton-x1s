@@ -264,6 +264,15 @@ class HubCacheViewMixin:
 
         return devices_list
 
+    def cached_favorites_order(self, activity_id: int) -> list[tuple[int, int]] | None:
+        """The hub's quick-access order for ``activity_id`` as last read:
+        ``(fav_id, slot)`` pairs, slot 1 first; None when never read."""
+
+        pairs = self._proxy.state.activity_favorites_order.get(int(activity_id) & 0xFF)
+        if pairs is None:
+            return None
+        return [(int(fav_id), int(slot)) for fav_id, slot in pairs]
+
     def describe_favorites_order(
         self,
         activity_id: int,

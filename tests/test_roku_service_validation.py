@@ -38,6 +38,7 @@ class _FakeHub:
         self.calls: list[dict] = []
         self.favorite_order_result: list[tuple[int, int]] | None = None
         self.favorite_descriptions: list[dict] | None = None
+        self.bundle = _service_bundle()
 
     async def async_create_wifi_device(
         self,
@@ -60,57 +61,6 @@ class _FakeHub:
             payload["power_off_command_id"] = power_off_command_id
         if input_command_ids is not None:
             payload["input_command_ids"] = input_command_ids
-        self.calls.append(payload)
-        return payload
-
-    async def async_add_device_to_activity(self, *, activity_id: int, device_id: int, input_cmd_id: int | None = None):
-        payload = {
-            "activity_id": activity_id,
-            "device_id": device_id,
-        }
-        if input_cmd_id is not None:
-            payload["input_cmd_id"] = input_cmd_id
-        self.calls.append(payload)
-        return payload
-
-    async def async_command_to_favorite(
-        self,
-        *,
-        activity_id: int,
-        device_id: int,
-        command_id: int,
-        slot_id: int | None = None,
-    ):
-        payload = {
-            "activity_id": activity_id,
-            "device_id": device_id,
-            "command_id": command_id,
-        }
-        if slot_id is not None:
-            payload["slot_id"] = slot_id
-        self.calls.append(payload)
-        return payload
-
-    async def async_command_to_button(
-        self,
-        *,
-        activity_id: int,
-        button_id: int,
-        device_id: int,
-        command_id: int,
-        long_press_device_id: int | None = None,
-        long_press_command_id: int | None = None,
-    ):
-        payload: dict[str, int | None] = {
-            "activity_id": activity_id,
-            "button_id": button_id,
-            "device_id": device_id,
-            "command_id": command_id,
-        }
-        if long_press_device_id is not None:
-            payload["long_press_device_id"] = long_press_device_id
-        if long_press_command_id is not None:
-            payload["long_press_command_id"] = long_press_command_id
         self.calls.append(payload)
         return payload
 
@@ -200,25 +150,20 @@ class _FakeHub:
         self.calls.append(payload)
         return True
 
-    async def async_request_favorites_order(self, activity_id: int):
-        self.calls.append({"activity_id": activity_id, "kind": "request_favorites_order"})
+    async def async_editable_bundle(self, kind: str, entity_id: int):
+        import copy
+
+        self.calls.append({"kind": "editable_bundle", "entity": (kind, entity_id)})
+        return copy.deepcopy(self.bundle)
+
+    async def async_refresh_entity_structure(self, *, kind: str, ent_id: int):
+        self.calls.append({"kind": "refresh", "entity": (kind, ent_id)})
+
+    def cached_favorites_order(self, activity_id: int):
         return self.favorite_order_result
 
-    async def async_reorder_favorites(self, *, activity_id: int, ordered_fav_ids: list[int]):
-        payload = {
-            "activity_id": activity_id,
-            "ordered_fav_ids": ordered_fav_ids,
-        }
-        self.calls.append(payload)
-        return payload
-
-    async def async_delete_favorite(self, *, activity_id: int, fav_id: int):
-        payload = {
-            "activity_id": activity_id,
-            "fav_id": fav_id,
-        }
-        self.calls.append(payload)
-        return payload
+    def _get_cached_device_class(self, device_id: int):
+        return "ir"
 
     def describe_favorites_order(self, activity_id: int, order: list[tuple[int, int]]):
         self.calls.append({"activity_id": activity_id, "kind": "describe_favorites_order", "order": list(order)})
@@ -414,22 +359,6 @@ def test_device_to_activity_validates_activity_id(monkeypatch) -> None:
         )
 
 
-def test_device_to_activity_accepts_valid_input(monkeypatch) -> None:
-    hub = _FakeHub()
-
-    async def _resolve(hass, call):
-        return hub
-
-    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-
-    result = asyncio.run(
-        integration._async_handle_device_to_activity(
-            _FakeCall({"activity_id": 101, "device_id": 6})
-        )
-    )
-
-    assert result == {"activity_id": 101, "device_id": 6}
-    assert hub.calls[-1] == result
 
 
 
@@ -449,42 +378,10 @@ def test_command_to_favorite_validates_command_id(monkeypatch) -> None:
         )
 
 
-def test_command_to_favorite_accepts_valid_input(monkeypatch) -> None:
-    hub = _FakeHub()
-
-    async def _resolve(hass, call):
-        return hub
-
-    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-
-    result = asyncio.run(
-        integration._async_handle_command_to_favorite(
-            _FakeCall({"activity_id": 101, "device_id": 6, "command_id": 4, "slot_id": 0})
-        )
-    )
-
-    assert result == {"activity_id": 101, "device_id": 6, "command_id": 4, "slot_id": 0}
-    assert hub.calls[-1] == result
 
 
 
 
-def test_command_to_favorite_omits_slot_when_not_provided(monkeypatch) -> None:
-    hub = _FakeHub()
-
-    async def _resolve(hass, call):
-        return hub
-
-    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-
-    result = asyncio.run(
-        integration._async_handle_command_to_favorite(
-            _FakeCall({"activity_id": 101, "device_id": 6, "command_id": 4})
-        )
-    )
-
-    assert result == {"activity_id": 101, "device_id": 6, "command_id": 4}
-    assert hub.calls[-1] == result
 
 def test_command_to_button_validates_button_id(monkeypatch) -> None:
     hub = _FakeHub()
@@ -502,22 +399,7 @@ def test_command_to_button_validates_button_id(monkeypatch) -> None:
         )
 
 
-def test_command_to_button_accepts_valid_input(monkeypatch) -> None:
-    hub = _FakeHub()
 
-    async def _resolve(hass, call):
-        return hub
-
-    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-
-    result = asyncio.run(
-        integration._async_handle_command_to_button(
-            _FakeCall({"activity_id": 101, "button_id": 193, "device_id": 5, "command_id": 2})
-        )
-    )
-
-    assert result == {"activity_id": 101, "button_id": 193, "device_id": 5, "command_id": 2}
-    assert hub.calls[-1] == result
 
 
 def test_delete_device_validates_device_id(monkeypatch) -> None:
@@ -845,17 +727,170 @@ def test_play_ir_blob_accepts_descriptor_string(monkeypatch) -> None:
     assert hub.calls[-1]["blob"] == build_descriptive_ir_blob_body(descriptor)
 
 
+def _service_bundle() -> dict:
+    """Activity 101 with favorite 1 (device 4 command 6), macro shortcut 9,
+    a VOL_UP binding to that macro and power sequences for device 4;
+    device 6 has an input record."""
+
+    def _device(dev_id, inputs=None):
+        return {
+            "kind": "device_backup", "complete": True,
+            "device": {"device_id": dev_id, "name": f"Device {dev_id}", "device_class": "ir"},
+            "commands": [{"command_id": c, "name": f"Command {c}"} for c in (1, 2, 4, 6)],
+            "input_record": {"entries": inputs} if inputs else None,
+            "button_bindings": [], "macros": [],
+        }
+
+    return {
+        "kind": "hub_bundle", "schema_version": 5,
+        "devices": [_device(4), _device(5), _device(6, [{"input_index": 1, "command_id": 2}])],
+        "activities": [{
+            "kind": "activity_backup", "complete": True,
+            "device": {"device_id": 101, "name": "Watch TV", "entity_type": "activity"},
+            "button_bindings": [
+                {"button_id": 182, "device_id": 101, "command_id": 9,
+                 "long_press_device_id": None, "long_press_command_id": None},
+            ],
+            "favorite_slots": [{"button_id": 1, "device_id": 4, "command_id": 6}],
+            "favorites_order": [9, 1],
+            "macros": [
+                {"button_id": 9, "name": "Test Macro", "steps": [
+                    {"device_id": 4, "command_id": 1, "button_code": 0, "duration": 0, "delay": 0}]},
+                {"button_id": 198, "name": "POWER_ON", "steps": [
+                    {"device_id": 4, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF},
+                    {"device_id": 4, "command_id": 0xC5, "button_code": 0, "duration": 0, "delay": 0xFF}]},
+                {"button_id": 199, "name": "POWER_OFF", "steps": [
+                    {"device_id": 4, "command_id": 0xC7, "button_code": 0, "duration": 0, "delay": 0xFF}]},
+            ],
+            "referenced_source_device_ids": [4],
+        }],
+    }
+
+
+def _capture_syncs(monkeypatch) -> list[dict]:
+    """The services' edit + sync path (services migration S1): record the
+    bundle pair each one hands to the sync_from_snapshot gauntlet."""
+
+    import custom_components.sofabaton_x1s.entity_sync as entity_sync_module
+
+    syncs: list[dict] = []
+
+    async def _prepare(hass, *, hub, entity_kind, sync_input, operation_label, **_kwargs):
+        entity_id = sync_input[f"{entity_kind}_id"]
+        return "op-1", sync_input["baseline"], sync_input["edited"], entity_id
+
+    async def _run(hass, operation_id, *, hub, baseline, edited, entity_kind, entity_id):
+        syncs.append({"kind": entity_kind, "id": entity_id, "baseline": baseline, "edited": edited})
+        return {"status": "success", "completed_steps": 1, "total_steps": 1, "counters": {}}
+
+    monkeypatch.setattr(entity_sync_module, "_async_prepare_entity_sync", _prepare)
+    monkeypatch.setattr(entity_sync_module, "_run_entity_sync_operation", _run)
+    return syncs
+
+
+def _activity(bundle: dict) -> dict:
+    return bundle["activities"][0]
+
+
+def test_device_to_activity_accepts_valid_input(monkeypatch) -> None:
+    hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_device_to_activity(
+            _FakeCall({"activity_id": 101, "device_id": 6, "input_command_id": 2})
+        )
+    )
+
+    assert result["status"] == "success"
+    assert hub.calls[-1] == {"kind": "editable_bundle", "entity": ("activity", 101)}
+    power_on = next(m for m in _activity(syncs[0]["edited"])["macros"] if m["button_id"] == 198)["steps"]
+    assert [(s["device_id"], s["command_id"], s["duration"]) for s in power_on if s["device_id"] == 6] == [
+        (6, 0xC6, 0), (6, 0xC5, 1),
+    ]
+
+
+def test_command_to_favorite_accepts_valid_input(monkeypatch, caplog) -> None:
+    hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_command_to_favorite(
+            _FakeCall({"activity_id": 101, "device_id": 6, "command_id": 4, "slot_id": 3})
+        )
+    )
+
+    assert result["status"] == "success"
+    rows = _activity(syncs[0]["edited"])["favorite_slots"]
+    assert [(r["device_id"], r["command_id"]) for r in rows] == [(4, 6), (6, 4)]
+    # The hub assigns the favorite's id: a slot_id is accepted and ignored.
+    assert "slot_id 3 has no effect" in caplog.text
+
+
+def test_command_to_favorite_omits_slot_when_not_provided(monkeypatch, caplog) -> None:
+    hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    asyncio.run(
+        integration._async_handle_command_to_favorite(
+            _FakeCall({"activity_id": 101, "device_id": 6, "command_id": 4})
+        )
+    )
+
+    assert len(syncs) == 1 and "has no effect" not in caplog.text
+    # An existing favorite is refused before any sync.
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="already a favorite"):
+        asyncio.run(
+            integration._async_handle_command_to_favorite(
+                _FakeCall({"activity_id": 101, "device_id": 4, "command_id": 6})
+            )
+        )
+    assert len(syncs) == 1
+
+
+def test_command_to_button_accepts_valid_input(monkeypatch) -> None:
+    hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
+
+    asyncio.run(
+        integration._async_handle_command_to_button(
+            _FakeCall({"activity_id": 101, "button_id": 193, "device_id": 5, "command_id": 2,
+                       "long_press_device_id": 5, "long_press_command_id": 4})
+        )
+    )
+
+    row = next(r for r in _activity(syncs[0]["edited"])["button_bindings"] if r["button_id"] == 193)
+    assert (row["device_id"], row["command_id"]) == (5, 2)
+    assert (row["long_press_device_id"], row["long_press_command_id"]) == (5, 4)
+
+
 def test_get_favorites_returns_explicit_fav_ids(monkeypatch) -> None:
     hub = _FakeHub()
     hub.favorite_order_result = [(0x09, 0x01), (0x01, 0x02)]
     hub.favorite_descriptions = [
-        {
-            "fav_id": 0x09,
-            "button_id": 0x09,
-            "slot": 0x01,
-            "type": "macro",
-            "name": "Test Macro",
-        },
+        {"fav_id": 0x09, "button_id": 0x09, "slot": 0x01, "type": "macro", "name": "Test Macro"},
         {
             "fav_id": 0x01,
             "button_id": 0x01,
@@ -874,164 +909,142 @@ def test_get_favorites_returns_explicit_fav_ids(monkeypatch) -> None:
 
     monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
-    result = asyncio.run(
-        integration._async_handle_get_favorites(
-            _FakeCall({"activity_id": 101})
-        )
-    )
+    result = asyncio.run(integration._async_handle_get_favorites(_FakeCall({"activity_id": 101})))
 
-    assert result == {
-        "favorites": [
-            {"fav_id": 0x09, "button_id": 0x09, "slot": 0x01, "type": "macro", "name": "Test Macro"},
-            {
-                "fav_id": 0x01,
-                "button_id": 0x01,
-                "favorite_button_id": 0x01,
-                "activity_map_button_id": 0x01,
-                "slot": 0x02,
-                "type": "favorite",
-                "name": "Command 6",
-                "device_id": 0x04,
-                "command_id": 0x06,
-            },
-        ]
+    assert result == {"favorites": hub.favorite_descriptions}
+    # Read fresh through the facade's activity refresh, then the cached order.
+    assert {"kind": "refresh", "entity": ("activity", 101)} in hub.calls
+    assert hub.calls[-1] == {
+        "activity_id": 101, "kind": "describe_favorites_order", "order": [(0x09, 0x01), (0x01, 0x02)],
     }
 
 
 def test_get_favorites_can_include_cached_entries_missing_from_hub_order(monkeypatch) -> None:
     hub = _FakeHub()
-    hub.favorite_order_result = [(0x01, 0x01), (0x02, 0x02)]
-    hub.favorite_descriptions = [
-        {
-            "fav_id": 0x01,
-            "button_id": 0x01,
-            "favorite_button_id": 0x01,
-            "activity_map_button_id": 0x01,
-            "slot": 0x01,
-            "type": "favorite",
-            "name": "Ok",
-            "device_id": 0x04,
-            "command_id": 0x1A,
-        },
-        {
-            "fav_id": 0x02,
-            "button_id": 0x02,
-            "favorite_button_id": 0x02,
-            "activity_map_button_id": 0x02,
-            "slot": 0x02,
-            "type": "favorite",
-            "name": "Yellow",
-            "device_id": 0x04,
-            "command_id": 0x20,
-        },
-        {
-            "fav_id": 0x03,
-            "button_id": 0x03,
-            "favorite_button_id": 0x03,
-            "activity_map_button_id": 0x03,
-            "slot": 0x03,
-            "type": "favorite",
-            "name": "Dim the lights",
-            "device_id": 0x08,
-            "command_id": 0x01,
-        },
-    ]
+    hub.favorite_order_result = None  # the refresh read no order
 
     async def _resolve(hass, call):
         return hub
 
     monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
-    result = asyncio.run(
-        integration._async_handle_get_favorites(
-            _FakeCall({"activity_id": 101})
-        )
-    )
-
-    assert result["favorites"][-1] == {
-        "fav_id": 0x03,
-        "button_id": 0x03,
-        "favorite_button_id": 0x03,
-        "activity_map_button_id": 0x03,
-        "slot": 0x03,
-        "type": "favorite",
-        "name": "Dim the lights",
-        "device_id": 0x08,
-        "command_id": 0x01,
-    }
+    with pytest.raises(ValueError, match="did not respond to favorites order request"):
+        asyncio.run(integration._async_handle_get_favorites(_FakeCall({"activity_id": 101})))
 
 
 def test_reorder_favorites_requires_explicit_fav_ids(monkeypatch) -> None:
     hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
 
     async def _resolve(hass, call):
         return hub
 
     monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
-    result = asyncio.run(
+    asyncio.run(
         integration._async_handle_reorder_favorites(
-            _FakeCall({"activity_id": 101, "ordered_fav_ids": [9, 1, 2]})
+            _FakeCall({"activity_id": 101, "ordered_fav_ids": [1, 9]})
         )
     )
 
-    assert result == {"activity_id": 101, "ordered_fav_ids": [9, 1, 2]}
-    assert hub.calls[-1] == result
+    assert _activity(syncs[0]["edited"])["favorites_order"] == [1, 9]
 
 
-def test_reorder_favorites_accepts_legacy_order_alias(monkeypatch) -> None:
+def test_reorder_favorites_accepts_legacy_order_alias(monkeypatch, caplog) -> None:
+    """A partial list (or one naming an id the activity lacks) is completed:
+    the asked ids first, the rest in their current order; the hub's order
+    table always lists every entry now."""
+
     hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
 
     async def _resolve(hass, call):
         return hub
 
     monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
-    result = asyncio.run(
-        integration._async_handle_reorder_favorites(
-            _FakeCall({"activity_id": 101, "order": [9, 1, 2]})
-        )
+    asyncio.run(
+        integration._async_handle_reorder_favorites(_FakeCall({"activity_id": 101, "order": [1, 77]}))
     )
 
-    assert result == {"activity_id": 101, "ordered_fav_ids": [9, 1, 2]}
-    assert hub.calls[-1] == result
+    assert _activity(syncs[0]["edited"])["favorites_order"] == [1, 9]
+    assert "fav_id 77 is not in the activity" in caplog.text
 
 
 def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
+    """A favorite's id removes the favorite."""
+
     hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
 
     async def _resolve(hass, call):
         return hub
 
     monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
 
-    result = asyncio.run(
-        integration._async_handle_delete_favorite(
-            _FakeCall({"activity_id": 101, "fav_id": 9})
-        )
-    )
+    asyncio.run(integration._async_handle_delete_favorite(_FakeCall({"activity_id": 101, "fav_id": 1})))
 
-    assert result == {"activity_id": 101, "fav_id": 9}
-    assert hub.calls[-1] == result
+    activity = _activity(syncs[0]["edited"])
+    assert activity["favorite_slots"] == [] and activity["favorites_order"] == [9]
 
 
 def test_delete_favorite_accepts_legacy_button_id_alias(monkeypatch) -> None:
+    """A macro shortcut's id removes the macro (as the hub's delete always
+    did), and the binding that named it."""
+
     hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
 
     async def _resolve(hass, call):
         return hub
 
     monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
-    monkeypatch.setattr(runtime_module, "_raise_if_hub_operation_locked", lambda *args, **kwargs: None)
+
+    asyncio.run(integration._async_handle_delete_favorite(_FakeCall({"activity_id": 101, "button_id": 9})))
+
+    activity = _activity(syncs[0]["edited"])
+    assert [m["button_id"] for m in activity["macros"]] == [198, 199]
+    assert activity["button_bindings"] == [] and activity["favorites_order"] == [1]
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="not a favorite or macro"):
+        asyncio.run(integration._async_handle_delete_favorite(_FakeCall({"activity_id": 101, "fav_id": 198})))
+
+
+
+
+def test_persist_ir_blob_adds_the_command_through_a_device_sync(monkeypatch) -> None:
+    """persist_ir_blob runs as an add_command edit + a device sync (services
+    migration S1); its response names the new command."""
+
+    hub = _FakeHub()
+    syncs = _capture_syncs(monkeypatch)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(runtime_module, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
-        integration._async_handle_delete_favorite(
-            _FakeCall({"activity_id": 101, "button_id": 9})
+        integration._async_handle_persist_ir_blob(
+            _FakeCall({"device_id": 6, "command_name": "Learned", "blob": "P:NEC1 D:4 S:5 F:21"})
         )
     )
 
-    assert result == {"activity_id": 101, "fav_id": 9}
-    assert hub.calls[-1] == result
+    assert result == {"status": "success", "device_id": 6, "command_id": 3, "command_name": "Learned"}
+    assert syncs[0]["kind"] == "device" and syncs[0]["id"] == 6
+    device = next(d for d in syncs[0]["edited"]["devices"] if d["device"]["device_id"] == 6)
+    added = next(c for c in device["commands"] if c["command_id"] == 3)
+    assert added["name"] == "Learned"
+    assert added["restore_data"]["data_hex"] == build_descriptive_ir_blob_body("P:NEC1 D:4 S:5 F:21").hex()
+
+    hub._get_cached_device_class = lambda device_id: "wifi_ip"
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="only supports IR devices"):
+        asyncio.run(
+            integration._async_handle_persist_ir_blob(
+                _FakeCall({"device_id": 6, "command_name": "Learned", "blob": "P:NEC1 D:4 S:5 F:21"})
+            )
+        )

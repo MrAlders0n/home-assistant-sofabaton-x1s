@@ -319,7 +319,6 @@ This action returns data and can be used inline in scripts and automations.
 | `device_id` | Device id that received the new command. |
 | `command_id` | Newly assigned hub command id. |
 | `command_name` | Saved display label. |
-| `page_count` | Number of upload pages sent to the hub. |
 
 ```yaml
 action: sofabaton_x1s.persist_ir_blob
@@ -404,7 +403,7 @@ Adds a command as a quick-access favorite for an activity.
 | `activity_id` | int (101-255) | Yes | Activity id to add the favorite to. |
 | `device_id` | int (1-99) | Yes | Device id the command belongs to. |
 | `command_id` | int (1-255) | Yes | Command id within that device. |
-| `slot_id` | int (0-255) | No | Optional slot or index for the favorite order position in the hub mapping payload. Default `0`, which puts it at the top. |
+| `slot_id` | int (0-255) | No | No effect: the hub assigns the favorite's id and the favorite is added at the end of the quick-access list (move it with `reorder_favorites`). Accepted so existing automations keep working. |
 
 ```yaml
 action: sofabaton_x1s.command_to_favorite
@@ -427,7 +426,7 @@ the desired order.
 | --------- | ---- | :------: | ----------- |
 | `device` | HA Device | Yes | Your Sofabaton hub. |
 | `activity_id` | int (101-255) | Yes | Activity id. |
-| `ordered_fav_ids` | list of int | Yes | Hub-order `fav_id` values in the desired display order. |
+| `ordered_fav_ids` | list of int | Yes | Hub-order `fav_id` values in the desired display order. Favorites and macro shortcuts can be mixed. Entries you leave out keep their current order after the ones you list; ids the activity does not have are skipped with a warning in the log. |
 
 ```yaml
 action: sofabaton_x1s.reorder_favorites
@@ -442,7 +441,9 @@ data:
 ## ◇ `sofabaton_x1s.delete_favorite`
 
 Removes a single favorite from an activity.
-Use `get_favorites` first to find the correct `fav_id`.
+Use `get_favorites` first to find the correct `fav_id`. When the `fav_id` is a
+macro shortcut, the macro itself is deleted (as the hub always did), and a
+button bound to it loses that binding.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |

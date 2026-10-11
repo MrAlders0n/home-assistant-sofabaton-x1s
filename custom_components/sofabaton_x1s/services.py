@@ -6,12 +6,17 @@ runtime.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN
+from .lib import edits
+from .lib.errors import HubBusyError, HubNotConnectedError
+from .lib.payloads import IrPayload
+from .lib.protocol_const import DEVICE_CLASS_IR
 from .command_config import (
     CommandConfigStore,
     is_wifi_events_device_key,
@@ -30,6 +35,8 @@ from .ws_ir import (
 from .ws_wifi import (
     _validate_wifi_name_for_hub,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @runtime._hub_write_service()
@@ -216,13 +223,82 @@ async def _async_handle_ir_learn_command(call: ServiceCall):
     return result
 
 
-@runtime._hub_write_service()
+# The activity's power sequences: not quick-access entries.
+_POWER_MACRO_IDS = frozenset({198, 199})
+
+
+def _bundle_activity(bundle: dict[str, Any], activity_id: int) -> dict[str, Any]:
+    for payload in bundle.get("activities") or []:
+        if int((payload.get("device") or {}).get("device_id") or 0) & 0xFF == activity_id & 0xFF:
+            return payload
+    raise KeyError(f"activity {activity_id & 0xFF} is not in the bundle")
+
+
+async def _async_service_entity_edit(
+    hass: HomeAssistant,
+    hub: Any,
+    *,
+    entity_kind: str,
+    entity_id: int,
+    edit: Callable[[dict[str, Any]], dict[str, Any]],
+    label: str,
+) -> dict[str, Any] | None:
+    """A single-shot service as an edit of the cached bundle plus a sync
+    (services migration S1): the one write path the live editors use.
+
+    Refused while the hub is busy. The baseline is the facade's snapshot,
+    the entity refreshed first when its cached copy is incomplete (read as
+    hub work). The edit then runs through the ``sync_from_snapshot``
+    service's gauntlet and engine entry point: payload validation, the
+    operation the card's dock shows, the facade's sync (hold, stale
+    preflight, read-back), the persist. An edit that changes nothing writes
+    nothing (None). A rejected edit or a failed sync raises
+    ``HomeAssistantError`` with its message.
+    """
+
+    runtime._raise_if_hub_operation_locked(hass, hub, label)
+    async with runtime._hub_work(hub):
+        baseline = await hub.async_editable_bundle(entity_kind, entity_id)
+    try:
+        edited = edit(baseline)
+    except (ValueError, KeyError) as err:
+        raise HomeAssistantError(f"{label}: {err.args[0] if err.args else err}") from err
+    if edited == baseline:
+        return None
+    sync_input = {"baseline": baseline, "edited": edited, f"{entity_kind}_id": entity_id}
+    try:
+        operation_id, baseline, edited, entity_id = await entity_sync._async_prepare_entity_sync(
+            hass,
+            hub=hub,
+            entity_kind=entity_kind,
+            sync_input=sync_input,
+            operation_label=label,
+        )
+    except entity_sync._EntitySyncRejected as err:
+        raise HomeAssistantError(str(err)) from err
+    result = await entity_sync._run_entity_sync_operation(
+        hass,
+        operation_id,
+        hub=hub,
+        baseline=baseline,
+        edited=edited,
+        entity_kind=entity_kind,
+        entity_id=entity_id,
+    )
+    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
+        raise HomeAssistantError(f"{label}: {result.get('message') or 'Sync failed'}")
+    return result
+
+
 async def _async_handle_persist_ir_blob(call: ServiceCall):
+    """A new command with a learned or built IR body on an IR device: the
+    command added to the device's cached bundle, a device sync writes it
+    (services migration S1)."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
-
 
     device_id = int(call.data["device_id"])
     if device_id < 1 or device_id > 255:
@@ -230,15 +306,30 @@ async def _async_handle_persist_ir_blob(call: ServiceCall):
 
     command_name = _validate_ir_command_name(call.data.get("command_name"))
     blob_bytes = _parse_play_ir_blob_input(call.data.get("blob"))
+    device_class = hub._get_cached_device_class(device_id)
+    if device_class is not None and device_class != DEVICE_CLASS_IR:
+        raise HomeAssistantError(
+            f"persist_ir_blob only supports IR devices; device {device_id} is {device_class}"
+        )
 
-    result = await hub.async_persist_ir_blob(
-        device_id=device_id,
-        command_name=command_name,
-        blob=blob_bytes,
+    added: dict[str, int] = {}
+
+    def _edit(bundle: dict[str, Any]) -> dict[str, Any]:
+        edited, command_id = edits.add_command(
+            bundle, device_id, IrPayload.from_bytes(blob_bytes), command_name
+        )
+        added["command_id"] = command_id
+        return edited
+
+    await _async_service_entity_edit(
+        hass, hub, entity_kind="device", entity_id=device_id, edit=_edit, label="persist_ir_blob"
     )
-    if result is None:
-        raise HomeAssistantError("Hub is not ready to persist IR blob (proxy client connected?)")
-    return result
+    return {
+        "status": "success",
+        "device_id": device_id,
+        "command_id": added["command_id"],
+        "command_name": command_name,
+    }
 
 
 @runtime._hub_write_service()
@@ -301,13 +392,15 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
     )
 
 
-@runtime._hub_write_service()
 async def _async_handle_device_to_activity(call: ServiceCall):
+    """Add a device to an activity, or change the input an existing member
+    selects: the activity's power sequences edited, an activity sync writes
+    them (services migration S1)."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
-
 
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
@@ -320,10 +413,15 @@ async def _async_handle_device_to_activity(call: ServiceCall):
     if device_id < 1 or device_id > 255:
         raise ValueError("device_id must be between 1 and 255")
 
-    return await hub.async_add_device_to_activity(
-        activity_id=activity_id,
-        device_id=device_id,
-        input_cmd_id=input_command_id,
+    return await _async_service_entity_edit(
+        hass,
+        hub,
+        entity_kind="activity",
+        entity_id=activity_id,
+        edit=lambda bundle: edits.add_member(
+            bundle, activity_id, device_id, input_command_id=input_command_id
+        ),
+        label="device_to_activity",
     )
 
 
@@ -342,13 +440,15 @@ async def _async_handle_delete_device(call: ServiceCall):
     return await hub.async_delete_device(device_id=device_id)
 
 
-@runtime._hub_write_service()
 async def _async_handle_command_to_favorite(call: ServiceCall):
+    """Add a device command to an activity's favorites: the activity's
+    cached bundle edited, an activity sync writes it (services migration
+    S1). The hub assigns the favorite's id, so ``slot_id`` has no effect."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
-
 
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
@@ -364,21 +464,27 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
         raise ValueError("command_id must be between 1 and 255")
     if slot_id is not None and (slot_id < 0 or slot_id > 255):
         raise ValueError("slot_id must be between 0 and 255")
+    if slot_id:
+        _LOGGER.warning(
+            "command_to_favorite: slot_id %s has no effect (the hub assigns the favorite's id)",
+            slot_id,
+        )
 
-    kwargs: dict[str, Any] = {}
-    if slot_id is not None:
-        kwargs["slot_id"] = slot_id
-
-    return await hub.async_command_to_favorite(
-        activity_id=activity_id,
-        device_id=device_id,
-        command_id=command_id,
-        **kwargs,
+    return await _async_service_entity_edit(
+        hass,
+        hub,
+        entity_kind="activity",
+        entity_id=activity_id,
+        edit=lambda bundle: edits.add_favorite(bundle, activity_id, device_id, command_id),
+        label="command_to_favorite",
     )
 
 
 @runtime._hub_write_service(persist=False)
 async def _async_handle_get_favorites(call: ServiceCall):
+    """The activity's quick-access list (favorites and macro shortcuts) in
+    display order, read fresh through the facade's activity refresh."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
@@ -388,20 +494,56 @@ async def _async_handle_get_favorites(call: ServiceCall):
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
 
-    order = await hub.async_request_favorites_order(activity_id)
+    try:
+        await hub.async_refresh_entity_structure(kind="activity", ent_id=activity_id)
+    except (TimeoutError, HubBusyError, HubNotConnectedError) as err:
+        raise ValueError(
+            f"Hub did not respond to favorites order request for activity {activity_id}"
+        ) from err
+    order = hub.cached_favorites_order(activity_id)
     if order is None:
         raise ValueError(f"Hub did not respond to favorites order request for activity {activity_id}")
 
     return {"favorites": hub.describe_favorites_order(activity_id, order)}
 
 
-@runtime._hub_write_service()
+def _complete_quick_access_order(activity: dict[str, Any], ordered_ids: list[int]) -> list[int]:
+    """Every quick-access id once: the ones asked for in that order (ids the
+    activity does not have are skipped with a warning), then the rest in
+    their current order. The engine wrote a partial list as given; the hub
+    table always lists every entry now."""
+
+    present: list[int] = []
+    for row in activity.get("favorite_slots") or []:
+        present.append(int(row.get("button_id", 0)) & 0xFF)
+    for row in activity.get("macros") or []:
+        macro_id = int(row.get("button_id", 0)) & 0xFF
+        if macro_id not in _POWER_MACRO_IDS:
+            present.append(macro_id)
+    known = set(present)
+    asked: list[int] = []
+    for fav_id in ordered_ids:
+        fav_lo = int(fav_id) & 0xFF
+        if fav_lo not in known:
+            _LOGGER.warning("reorder_favorites: fav_id %s is not in the activity; skipped", fav_lo)
+            continue
+        if fav_lo not in asked:
+            asked.append(fav_lo)
+    current = [int(i) & 0xFF for i in activity.get("favorites_order") or []]
+    rest = [i for i in current if i in known and i not in asked]
+    rest += [i for i in present if i not in asked and i not in rest]
+    return asked + rest
+
+
 async def _async_handle_reorder_favorites(call: ServiceCall):
+    """Reorder an activity's quick-access list (favorites and macro
+    shortcuts by their fav_id): the cached bundle's order edited, an
+    activity sync writes it (services migration S1)."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
-
 
     activity_id = int(call.data["activity_id"])
     raw_order = call.data.get("ordered_fav_ids", call.data.get("order"))
@@ -414,19 +556,27 @@ async def _async_handle_reorder_favorites(call: ServiceCall):
     if not ordered_fav_ids:
         raise ValueError("ordered_fav_ids must be a non-empty list of fav_ids")
 
-    return await hub.async_reorder_favorites(
-        activity_id=activity_id,
-        ordered_fav_ids=ordered_fav_ids,
+    def _edit(bundle: dict[str, Any]) -> dict[str, Any]:
+        activity = _bundle_activity(bundle, activity_id)
+        return edits.reorder_favorites(
+            bundle, activity_id, _complete_quick_access_order(activity, ordered_fav_ids)
+        )
+
+    return await _async_service_entity_edit(
+        hass, hub, entity_kind="activity", entity_id=activity_id, edit=_edit,
+        label="reorder_favorites",
     )
 
 
-@runtime._hub_write_service()
 async def _async_handle_delete_favorite(call: ServiceCall):
+    """Delete a quick-access entry by its fav_id: a favorite, or the macro a
+    macro shortcut names (as the hub's delete always did); the cached
+    bundle edited, an activity sync writes it (services migration S1)."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
-
 
     activity_id = int(call.data["activity_id"])
     raw_fav_id = call.data.get("fav_id", call.data.get("button_id"))
@@ -439,19 +589,35 @@ async def _async_handle_delete_favorite(call: ServiceCall):
     if fav_id < 1 or fav_id > 255:
         raise ValueError("fav_id must be between 1 and 255")
 
-    return await hub.async_delete_favorite(
-        activity_id=activity_id,
-        fav_id=fav_id,
+    def _edit(bundle: dict[str, Any]) -> dict[str, Any]:
+        activity = _bundle_activity(bundle, activity_id)
+        for row in activity.get("favorite_slots") or []:
+            if int(row.get("button_id", 0)) & 0xFF == fav_id:
+                return edits.remove_favorite(
+                    bundle, activity_id, int(row.get("device_id", 0)), int(row.get("command_id", 0))
+                )
+        if fav_id not in _POWER_MACRO_IDS and any(
+            int(row.get("button_id", 0)) & 0xFF == fav_id for row in activity.get("macros") or []
+        ):
+            return edits.remove_macro(bundle, activity_id, fav_id)
+        raise ValueError(f"fav_id {fav_id} is not a favorite or macro of activity {activity_id}")
+
+    return await _async_service_entity_edit(
+        hass, hub, entity_kind="activity", entity_id=activity_id, edit=_edit,
+        label="delete_favorite",
     )
 
 
-@runtime._hub_write_service()
 async def _async_handle_command_to_button(call: ServiceCall):
+    """Bind an activity button to a device command (with an optional long
+    press): the cached bundle edited, an activity sync writes it (services
+    migration S1). Without a complete long press any long press the button
+    had is cleared, as the hub's keymap write always did."""
+
     hass = call.hass
     hub = await runtime._async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
-
 
     activity_id = int(call.data["activity_id"])
     button_id = int(call.data["button_id"])
@@ -477,14 +643,21 @@ async def _async_handle_command_to_button(call: ServiceCall):
         long_press_command_id = int(long_press_command_id)
         if long_press_command_id < 1 or long_press_command_id > 255:
             raise ValueError("long_press_command_id must be between 1 and 255")
+    long_press = (
+        (long_press_device_id, long_press_command_id)
+        if long_press_device_id is not None and long_press_command_id is not None
+        else None
+    )
 
-    return await hub.async_command_to_button(
-        activity_id=activity_id,
-        button_id=button_id,
-        device_id=device_id,
-        command_id=command_id,
-        long_press_device_id=long_press_device_id,
-        long_press_command_id=long_press_command_id,
+    return await _async_service_entity_edit(
+        hass,
+        hub,
+        entity_kind="activity",
+        entity_id=activity_id,
+        edit=lambda bundle: edits.bind_button(
+            bundle, activity_id, button_id, device_id, command_id, long_press=long_press
+        ),
+        label="command_to_button",
     )
 
 

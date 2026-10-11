@@ -1140,84 +1140,6 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
     loop.close()
 
 
-def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    hass = FakeHass(loop)
-
-    hub = SofabatonHub(
-        hass,
-        "entry-id",
-        "hub-name",
-        "127.0.0.1",
-        1234,
-        {},
-        9999,
-        10000,
-        True,
-        False,
-    )
-
-    hub._proxy.state.devices[11] = {"device_class": "ir"}
-    full_refresh_calls: list[tuple[int, float]] = []
-    single_refresh_calls: list[tuple[int, int, float, bool]] = []
-
-    async def _refresh_commands(device_id: int, *, wait_timeout: float = 10.0):
-        full_refresh_calls.append((device_id, wait_timeout))
-
-    async def _refresh_single_command(
-        device_id: int,
-        command_id: int,
-        *,
-        wait_timeout: float = 10.0,
-        force_refresh: bool = False,
-    ):
-        single_refresh_calls.append(
-            (device_id, command_id, wait_timeout, force_refresh)
-        )
-        return {command_id: "New Command"}
-
-    async def _persist_cache():
-        return True
-
-    monkeypatch.setattr(hub, "async_fetch_device_commands", _refresh_commands)
-    monkeypatch.setattr(hub, "async_fetch_single_device_command", _refresh_single_command)
-    monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _persist_cache)
-    monkeypatch.setattr(
-        hub._proxy,
-        "persist_ir_blob",
-        lambda **kwargs: {
-            "status": "success",
-            "device_id": kwargs["device_id"],
-            "command_id": 112,
-            "command_name": kwargs["command_name"],
-            "page_count": 4,
-        },
-    )
-
-    result = loop.run_until_complete(
-        hub.async_persist_ir_blob(
-            device_id=11,
-            command_name="New Command",
-            blob=b"\x00" * 10,
-        )
-    )
-
-    assert result == {
-        "status": "success",
-        "device_id": 11,
-        "command_id": 112,
-        "command_name": "New Command",
-        "page_count": 4,
-    }
-    assert full_refresh_calls == [(11, 10.0)]
-    # Post-persist single-command refresh now runs as background housekeeping
-    # with a capped budget (refresh_budget = min(2.0, wait_timeout)) and
-    # force_refresh=False — the persist itself has already settled on the
-    # hub, so this pass just re-pulls the metadata on a best-effort basis.
-    assert single_refresh_calls == [(11, 112, 2.0, False)]
-
-    loop.close()
 
 
 def test_command_to_favorite_executor_job_uses_partial_not_kwargs():
@@ -1813,5 +1735,46 @@ def test_entity_syncs_go_through_the_facade_with_the_engines_shapes(monkeypatch)
         result, _ = _sync()
         assert result == {"status": "failed", "failed_at": "unavailable",
                           "message": "The hub is not reachable (the Sofabaton app may be connected)."}
+    finally:
+        loop.close()
+
+
+def test_the_service_baseline_refreshes_an_incomplete_entity_first(monkeypatch):
+    """Services migration S1: a single-shot service edits the facade's
+    snapshot; an entity whose cached copy is incomplete is refreshed first,
+    one the hub does not have is refused."""
+
+    from types import SimpleNamespace
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    def _snap(editable, tag):
+        entity = None if editable is None else SimpleNamespace(editable=editable)
+        return SimpleNamespace(entity=lambda kind, entity_id: entity, bundle={"tag": tag})
+
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _facade_hub(loop)
+        state = {"cached": _snap(True, "cache"), "fresh": _snap(True, "fresh")}
+        refreshes: list = []
+
+        async def _snapshot(**_kwargs):
+            return state["cached"]
+
+        async def _refresh(**kwargs):
+            refreshes.append(kwargs)
+            return state["fresh"]
+
+        monkeypatch.setattr(hub._facade, "snapshot", _snapshot)
+        monkeypatch.setattr(hub._facade, "refresh", _refresh)
+        run = loop.run_until_complete
+
+        assert run(hub.async_editable_bundle("activity", 101)) == {"tag": "cache"} and refreshes == []
+        state["cached"] = _snap(False, "cache")
+        assert run(hub.async_editable_bundle("activity", 101)) == {"tag": "fresh"}
+        assert refreshes == [{"activity_id": 101}]
+        state["cached"], state["fresh"] = _snap(None, "cache"), _snap(None, "fresh")
+        with pytest.raises(HomeAssistantError, match="has no device 7"):
+            run(hub.async_editable_bundle("device", 7))
     finally:
         loop.close()
