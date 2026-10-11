@@ -19,7 +19,7 @@ refreshes and control through HA.
 The UI halves (remote card buttons, the Hub tab display, the X2 MQTT
 flips) stay manual: see the runbook.
 
-Usage: python bench_325_catalog_control.py [--hub X1] [--activity-name NAME] [--device 12] [--with-app]
+Usage: python bench_325_catalog_control.py [--hub X1] [--activity-name NAME] [--device 1] [--with-app]
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from ha_bench import (DOMAIN, FakeApp, Tally, log_mark, log_since, resolve_hub, 
 parser = argparse.ArgumentParser()
 parser.add_argument("--hub", default="X1")
 parser.add_argument("--activity-name", default=None)
-parser.add_argument("--device", type=int, default=12)
+parser.add_argument("--device", type=int, default=1)
 parser.add_argument("--with-app", action="store_true")
 args = parser.parse_args()
 

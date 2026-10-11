@@ -25,7 +25,7 @@ Steps:
  9. undo, then compare with the start.
 
 Usage:
-    python bench_322_services.py [--hub X1] [--activity 102] [--device 12] [--macro-id N]
+    python bench_322_services.py [--hub X1] [--activity 102] [--device 1] [--macro-id N]
                                  [--descriptor "P:NEC1 ..."]
 """
 
@@ -42,7 +42,7 @@ from ha_bench import (DOMAIN, Tally, bundle_activity, bundle_device, grep, log_m
 parser = argparse.ArgumentParser()
 parser.add_argument("--hub", default="X1")
 parser.add_argument("--activity", type=int, default=102)
-parser.add_argument("--device", type=int, default=12, help="an IR device (favorite source, blob copy)")
+parser.add_argument("--device", type=int, default=1, help="an IR device that is a member of the activity (favorite source, blob copy)")
 parser.add_argument("--macro-id", type=int, default=None)
 parser.add_argument("--descriptor", default=None)
 args = parser.parse_args()

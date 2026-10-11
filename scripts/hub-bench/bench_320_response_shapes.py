@@ -11,12 +11,14 @@ Calls (X1 by default; every write is undone by the capture itself):
 - export_snapshot;
 - sync_from_snapshot: a rename of the activity (success), the rename
   back, a stale generation (refused), a stale baseline (refused);
-- with --with-restore (X1 only): restore_backup of a bundle with a bad
-  reference (refused before any write) and a merge restore of the
-  device-only bundle (a copy of the device), the copy deleted after.
+- with --with-restore (X1 only): restore_backup of a device entry of the
+  wrong kind (the preflight refuses it before any write) and a merge
+  restore of the device-only bundle (a copy of the device), the copy
+  deleted after. (A binding to a missing command is no probe: 0.7.0
+  restores the device and drops the row with a warning.)
 
 Usage:
-    python bench_320_response_shapes.py capture <tag> [--hub X1] [--activity 102] [--device 12] [--with-restore]
+    python bench_320_response_shapes.py capture <tag> [--hub X1] [--activity 102] [--device 7] [--with-restore]
     python bench_320_response_shapes.py diff <tagA> <tagB> [--hub X1]
 """
 
@@ -25,6 +27,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -37,7 +40,7 @@ parser.add_argument("mode", choices=["capture", "diff"])
 parser.add_argument("tags", nargs="+")
 parser.add_argument("--hub", default="X1")
 parser.add_argument("--activity", type=int, default=102)
-parser.add_argument("--device", type=int, default=12)
+parser.add_argument("--device", type=int, default=7, help="an IR device in no activity (its copy is restored, then deleted)")
 parser.add_argument("--with-restore", action="store_true")
 args = parser.parse_args()
 
@@ -84,9 +87,15 @@ def record(call: str, status: int, body, mark: int | None = None) -> None:
     if status != 200 and mark is not None:
         time.sleep(1)
         lines = log_since(mark)
-        reason = next((line.split(" ERROR ", 1)[-1][:300] for line in lines
-                       if " ERROR " in line or "HomeAssistantError" in line), None)
+        # The exception's own line ("homeassistant.exceptions.HomeAssistantError:
+        # ..."), not aiohttp's "Error handling request" header above it.
+        reason = next((line.strip()[:300] for line in lines
+                       if re.match(r"^[\w.]*(Error|Exception): ", line.strip())), None) or next(
+            (line.split(" ERROR ", 1)[-1][:300] for line in lines if " ERROR " in line), None)
     captured[call] = {"status": status, "shape": shape(body), "reason": reason}
+    # Saved after every call: a crash later in the run keeps what ran.
+    OUT.mkdir(exist_ok=True)
+    capture_path(args.tags[0]).write_text(json.dumps(captured, indent=2), encoding="utf-8")
     print(f"  {call}: HTTP {status}" + (f" ({reason})" if reason else ""), flush=True)
 
 
@@ -178,12 +187,12 @@ if args.with_restore:
             tally.note(f"{label}: the result named no restored device; delete any copy by hand (Hub tab)")
         return status
 
+    # A device entry of the wrong kind: the restore preflight refuses it
+    # before any write, in merge mode (no activities, so never an erase).
     bad = copy.deepcopy(device_bundle)
     for row in bad.get("devices") or []:
-        row.setdefault("button_bindings", []).append(
-            {"button_id": 0xB6, "device_id": 254, "command_id": 250,
-             "long_press_device_id": None, "long_press_command_id": None})
-    tally.check("a bad reference is refused", restore_and_clean("restore_backup[bad_reference]", bad) != 200)
+        row["kind"] = "not_a_device_backup"
+    tally.check("a bad device entry is refused", restore_and_clean("restore_backup[bad_device_kind]", bad) != 200)
     tally.check("merge restore of the device answered",
                 restore_and_clean("restore_backup[merge]", device_bundle) == 200)
 

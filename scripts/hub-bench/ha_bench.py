@@ -83,13 +83,16 @@ class HaWs:
     buffered by message id, so calls and subscriptions can interleave."""
 
     def __init__(self) -> None:
+        self._id = 0
+        self._results: dict[int, dict] = {}
+        self._events: dict[int, list[dict]] = {}
+        self._connect()
+
+    def _connect(self) -> None:
         self.ws = websocket.create_connection(WS_URL, sslopt={"cert_reqs": ssl.CERT_NONE}, timeout=30)
         assert json.loads(self.ws.recv())["type"] == "auth_required"
         self.ws.send(json.dumps({"type": "auth", "access_token": TOKEN}))
         assert json.loads(self.ws.recv())["type"] == "auth_ok"
-        self._id = 0
-        self._results: dict[int, dict] = {}
-        self._events: dict[int, list[dict]] = {}
 
     def _pump_one(self, timeout: float) -> bool:
         self.ws.settimeout(max(0.05, timeout))
@@ -117,8 +120,19 @@ class HaWs:
         return self._results.pop(msg_id)
 
     def call(self, payload: dict, timeout: float = 900.0) -> tuple[dict, float]:
+        """One command and its result. A connection dropped while idle (a
+        long REST call in between; the proxy in front of HA closes idle
+        sockets) is reopened once and the command sent again; any
+        subscription on the old connection is gone."""
+
         t0 = time.time()
-        res = self.result(self.send(payload), timeout)
+        try:
+            msg_id = self.send(payload)
+        except (OSError, websocket.WebSocketException):
+            print("  (websocket dropped while idle; reconnecting)", flush=True)
+            self._connect()
+            msg_id = self.send(payload)
+        res = self.result(msg_id, timeout)
         return res, time.time() - t0
 
     def ok(self, payload: dict, timeout: float = 900.0) -> Any:

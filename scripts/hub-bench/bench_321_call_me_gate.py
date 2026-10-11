@@ -21,7 +21,7 @@ Operations (each checked during and right after):
 Needs: the hub's proxy on (Settings), the integration logging at info or
 debug, HA's UDP 8102 reachable from this box.
 
-Usage: python bench_321_call_me_gate.py [--hub X1] [--restore --device 12] [--skip-wifi]
+Usage: python bench_321_call_me_gate.py [--hub X1] [--restore --device 7] [--skip-wifi]
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from ha_bench import (DOMAIN, FakeApp, Tally, bundle_summary, call_me_verdict, l
 parser = argparse.ArgumentParser()
 parser.add_argument("--hub", default="X1")
 parser.add_argument("--restore", action="store_true")
-parser.add_argument("--device", type=int, default=12)
+parser.add_argument("--device", type=int, default=7, help="an IR device in no activity (its copy is restored, then deleted)")
 parser.add_argument("--skip-wifi", action="store_true")
 parser.add_argument("--port", type=int, default=8193)
 args = parser.parse_args()
