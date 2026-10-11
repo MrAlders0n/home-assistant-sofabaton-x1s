@@ -882,6 +882,8 @@ def test_deploy_wifi_device_builds_the_profile_and_returns_the_deployment(monkey
         engine, creates = _wifi_engine(monkeypatch, "X1S")
         proxy = aio.AsyncXProxy.wrap(engine)
         spec = _WifiDeviceSpec(name=" Server ", slots=(_WifiSlotSpec("Play"),), power_on_slot=1, input_slots=(2,))
+        resyncs: list = []
+        monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: resyncs.append(list(engine.rereads)) or True)
 
         dep = await proxy.deploy_wifi_device(spec, host=_TARGET, port=8480)
 
@@ -892,7 +894,10 @@ def test_deploy_wifi_device_builds_the_profile_and_returns_the_deployment(monkey
         assert dep.labels[2] == "Button 2"
         kw = creates[0]
         assert kw["ip_address"] == _TARGET and kw["request_port"] == 8480 and kw["device_name"] == "Server"
-        assert kw["brand_name"] == "m3tac0de" and kw["send_remote_sync"] is True
+        # The create's own trigger runs mid-pipeline (before the power, input
+        # and finalize writes) as a bare 0x64: never used; one terminal
+        # trigger follows the read-back instead.
+        assert kw["brand_name"] == "m3tac0de" and kw["send_remote_sync"] is False
         assert len(kw["commands"]) == 2 * _N
         assert kw["commands"][0]["display_name"] == "Play" and kw["commands"][0]["press_type"] == "short"
         assert kw["commands"][_N]["display_name"] == "Play Long" and kw["commands"][_N]["press_type"] == "long"
@@ -901,6 +906,7 @@ def test_deploy_wifi_device_builds_the_profile_and_returns_the_deployment(monkey
         assert kw["input_command_ids"] == [2]
         # The create seeds a head and labels only: the device is read back, its list too.
         assert engine.rereads == [((12,), (), True)]
+        assert resyncs == [[((12,), (), True)]]
 
     asyncio.run(main())
 

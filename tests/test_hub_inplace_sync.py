@@ -519,7 +519,12 @@ def test_baseline_read_refreshes_the_activity_catalog_once(monkeypatch):
         activity_reads.append(dict(kwargs))
         return {}
 
-    monkeypatch.setattr(hub._proxy, "_refresh_catalog", lambda kind, **_k: refreshes.append(kind))
+    async def _activities(*, refresh=False, timeout=10.0):
+        # The catalog read is the facade's now (adoption plan M6, W-B).
+        refreshes.append("activities" if refresh else "cached")
+        return []
+
+    monkeypatch.setattr(hub._facade, "activities", _activities)
     monkeypatch.setattr(hub._proxy, "backup_activity", _backup_activity)
 
     _run_sync(loop, hub, _payload())

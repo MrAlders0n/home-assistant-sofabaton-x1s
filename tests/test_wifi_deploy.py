@@ -2240,3 +2240,38 @@ def test_wifi_sync_repairs_x1_quick_access_order_per_known_activity():
         assert calls == []
     finally:
         loop.close()
+
+
+def test_wifi_event_record_deletes_run_as_one_gated_plan(monkeypatch):
+    """The freed event records go out through the engine's public
+    run_wifi_inplace_plan (refused while the app holds the hub), not the
+    private step writer (adoption plan M6, W-B)."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        hub = SofabatonHub(FakeHass(loop), "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+        plans: list = []
+        outcome = {"status": "success"}
+
+        def _run(plan, **_kwargs):
+            plans.append(plan)
+            return dict(outcome)
+
+        async def _noop(*_args, **_kwargs):
+            return None
+
+        monkeypatch.setattr(hub._proxy, "run_wifi_inplace_plan", _run)
+        monkeypatch.setattr(hub._proxy, "activities_referencing_device", lambda dev: [])
+        monkeypatch.setattr(hub, "async_fetch_device_commands", _noop)
+        monkeypatch.setattr(hub, "_async_warm_devices_snapshot", _noop)
+        monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _noop)
+
+        assert loop.run_until_complete(hub.async_delete_wifi_event_records(device_id=9, command_ids=[4])) is True
+        steps = plans[0].steps
+        assert [(s.kind, s.payload["device_id"], s.payload["command_id"]) for s in steps] == [("command_delete", 9, 4)]
+
+        outcome["status"] = "failed"
+        assert loop.run_until_complete(hub.async_delete_wifi_event_records(device_id=9, command_ids=[4])) is False
+    finally:
+        loop.close()

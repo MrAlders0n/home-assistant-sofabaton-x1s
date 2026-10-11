@@ -2217,10 +2217,12 @@ class AsyncXProxy:
             power_on_command_id=shape.power_on_command_id,
             power_off_command_id=shape.power_off_command_id,
             input_command_ids=list(shape.input_command_ids) or None,
-            # With references the first update keeps writing after the
-            # create, so the create's own trigger is skipped and one
-            # terminal trigger follows every write (see _finish_wifi_deploy).
-            send_remote_sync=bare is normalized,
+            # The create's own app-parity trigger goes out mid-pipeline,
+            # before the power, input and finalize writes, and as a bare
+            # family 0x64 the X2 does not broadcast: never use it. One
+            # terminal trigger follows every write instead (below, or
+            # _finish_wifi_deploy's when references follow).
+            send_remote_sync=False,
             ip_address=target.host,
         )
         device_id = int(result.get("device_id") or 0) & 0xFF
@@ -2240,6 +2242,7 @@ class AsyncXProxy:
             hub_version=hub_version,
         )
         if bare is normalized:
+            await self._resync_remote_after(f"deploy_wifi_device({normalized.name!r})")
             return deployment
         return await self._finish_wifi_deploy(deployment, normalized)
 
@@ -3472,7 +3475,12 @@ ENGINE_ONLY: dict[str, str] = {
     ),
     **_reasons(
         _R_INTEGRATION,
-        ("create_wifi_device", "create_wifi_mqtt_device", "run_wifi_inplace_plan"),
+        (
+            "create_wifi_device",
+            "create_wifi_mqtt_device",
+            "run_wifi_inplace_plan",
+            "wifi_launch_action_path",
+        ),
     ),
     **_reasons(_R_F2, ("request_banner_info",)),
     **_reasons(_R_F6, ("wipe_all_cached_state",)),

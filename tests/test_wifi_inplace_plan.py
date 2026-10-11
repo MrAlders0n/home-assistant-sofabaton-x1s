@@ -114,7 +114,21 @@ def test_power_id_change():
         "device_id": DEV,
         "power_on_command_id": 4,
         "power_off_command_id": 2,
+        "clear_power_on": False,
+        "clear_power_off": False,
     }
+
+
+def test_dropping_a_power_hook_flags_it_for_clearing():
+    """None alone means "unchanged" to the executor, so a hook the device
+    has and the edit drops is flagged (it used to plan a step that wrote
+    nothing, and the same step again on every later update)."""
+
+    plan = build_wifi_inplace_plan(snapshot(), snapshot(power_off_command_id=None))
+    assert kinds(plan) == ["wifi_power_config"]
+    payload = plan.steps[0].payload
+    assert payload["power_off_command_id"] is None and payload["clear_power_off"] is True
+    assert payload["power_on_command_id"] == 1 and payload["clear_power_on"] is False
 
 
 # ── input record (device list) vs per-activity ordinal ───────────────────

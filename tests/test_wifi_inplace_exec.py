@@ -174,3 +174,56 @@ def test_walker_does_not_reuse_the_live_favorite_cache_across_runs():
     assert set(proxy.resolved) == {7}
     # Run state never outlives the walk.
     assert proxy._activity_sync_live_fav_cache == {}
+
+
+# ── clearing a power hook (real engine, wire stubbed) ────────────────────
+
+
+def _power_engine(hub_version):
+    from types import SimpleNamespace
+
+    from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+    engine = X1Proxy("127.0.0.1", hub_version=hub_version, proxy_enabled=False)
+    sent: list = []
+
+    def _send_step(*, step_name, family, payload, **_kwargs):
+        sent.append((step_name, family, bytes(payload)))
+        return SimpleNamespace(ok=True)
+
+    engine._send_step = _send_step
+    return engine, sent
+
+
+def test_a_cleared_power_hook_writes_the_unbound_row():
+    from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
+
+    engine, sent = _power_engine("X1S")
+    payload = {"device_id": 7, "power_on_command_id": 3, "power_off_command_id": None,
+               "clear_power_on": False, "clear_power_off": True}
+
+    assert engine._sync_step_wifi_power_config(payload) is True
+
+    assert [s[0] for s in sent] == ["wifi-power[dev=0x07 btn=0xC6]", "wifi-power[dev=0x07 btn=0xC7]"]
+    assert all(family == 0x12 for _, family, _ in sent)
+    unbound = engine._build_device_power_binding_payload(
+        device_id=7, button_id=ButtonName.POWER_OFF, command_id=None
+    )
+    assert sent[1][2] == unbound  # the empty key sequence the create uses
+
+
+def test_an_unflagged_none_hook_and_the_x1_write_no_clear():
+    engine, sent = _power_engine("X1S")
+    engine._sync_step_wifi_power_config(
+        {"device_id": 7, "power_on_command_id": 3, "power_off_command_id": None}
+    )
+    assert [s[0] for s in sent] == ["wifi-power[dev=0x07 btn=0xC6]"]
+
+    # The spec model ignores hooks on an X1, so its baseline can name a
+    # command the desired side never does: never clear there.
+    x1, x1_sent = _power_engine("X1")
+    assert x1._sync_step_wifi_power_config(
+        {"device_id": 7, "power_on_command_id": None, "power_off_command_id": None,
+         "clear_power_on": True, "clear_power_off": True}
+    ) is True
+    assert x1_sent == []

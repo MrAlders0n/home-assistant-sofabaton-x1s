@@ -42,7 +42,7 @@ from .device_create import (
 )
 from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
 from .devices import build_device_create_payload, parse_device_record
-from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
     DEVICE_CLASS_CODE_WIFI_MQTT,
@@ -1868,20 +1868,30 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         write, no 0x41 enable, no activity write. The activity power macros
         resolve ``(dev, 0xC6)/(dev, 0xC7)`` through these device-side rows, so
         the rewrite propagates without touching any activity.
+
+        A hook the plan clears (``clear_power_on`` / ``clear_power_off``) is
+        written as the row with an empty key sequence, the unbound form the
+        create uses; a None id without the flag is left as it is. Never on
+        an X1, whose hooks the spec model ignores (its baseline can name
+        commands the desired side never does).
         """
         dev_lo = int(payload.get("device_id") or 0) & 0xFF
         if not dev_lo:
             return False
         ok = True
-        for button_id, key in (
-            (ButtonName.POWER_ON, "power_on_command_id"),
-            (ButtonName.POWER_OFF, "power_off_command_id"),
+        for button_id, key, clear_key in (
+            (ButtonName.POWER_ON, "power_on_command_id", "clear_power_on"),
+            (ButtonName.POWER_OFF, "power_off_command_id", "clear_power_off"),
         ):
             command_id = payload.get(key)
-            if command_id is None:
+            if command_id is None and not (
+                payload.get(clear_key) and self.hub_version != HUB_VERSION_X1
+            ):
                 continue
             body = self._build_device_power_binding_payload(
-                device_id=dev_lo, button_id=button_id, command_id=int(command_id)
+                device_id=dev_lo,
+                button_id=button_id,
+                command_id=None if command_id is None else int(command_id),
             )
             self.reset_ack_queues()
             step = self._send_step(

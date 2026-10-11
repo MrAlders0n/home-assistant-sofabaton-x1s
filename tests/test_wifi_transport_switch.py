@@ -491,7 +491,10 @@ def _make_hub(monkeypatch, loop, *, activity_entries, mqtt_available=True, plan_
 
     monkeypatch.setattr(hub._proxy, "backup_device", _backup_device)
     monkeypatch.setattr(hub._proxy, "backup_activity", _backup_activity)
-    monkeypatch.setattr(hub._proxy, "_refresh_catalog", lambda *_a, **_k: None)
+    async def _no_catalog_read(**_kwargs):
+        return []
+
+    monkeypatch.setattr(hub._facade, "activities", _no_catalog_read)
 
     plans: list = []
     results = list(plan_results or [])

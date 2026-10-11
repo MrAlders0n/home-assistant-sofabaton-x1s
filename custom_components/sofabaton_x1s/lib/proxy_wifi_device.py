@@ -1201,6 +1201,20 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         normalized_press_type = "long" if str(press_type).lower() == "long" else "short"
         return f"launch/{hub_action_id}/{device_id}/{command_index}/{normalized_press_type}"
 
+    def wifi_launch_action_path(
+        self, *, device_id: int, command_index: int, press_type: str = "short"
+    ) -> str:
+        """The callback path a managed Wifi record carries:
+        ``launch/<hub action id>/<device id>/<0-based slot>/<short|long>``.
+
+        For an application that writes such a record itself (the HA
+        integration re-adds a record the hub lost by cloning a sibling).
+        """
+
+        return self._build_launch_action_path(
+            device_id=device_id, command_index=command_index, press_type=press_type
+        )
+
     def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
         # Specialization of the canonical wifi_ip HTTP-text writer for
         # the "launch app" command pattern this flow uses (POST,

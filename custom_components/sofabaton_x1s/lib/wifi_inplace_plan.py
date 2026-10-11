@@ -375,6 +375,12 @@ def build_wifi_inplace_plan(
                     "device_id": dev,
                     "power_on_command_id": desired.power_on_command_id,
                     "power_off_command_id": desired.power_off_command_id,
+                    # A hook the device has and the edit drops: the executor
+                    # writes the empty row (None alone means "unchanged").
+                    "clear_power_on": baseline.power_on_command_id is not None
+                    and desired.power_on_command_id is None,
+                    "clear_power_off": baseline.power_off_command_id is not None
+                    and desired.power_off_command_id is None,
                 },
             )
         )

@@ -28,8 +28,20 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   writes one, so a UI can word each step itself instead of showing the
   engine's English label.
 
+- `X1Proxy.wifi_launch_action_path()`: the callback path a managed Wifi
+  record carries, for an application that writes such a record itself.
+
 ### Fixed
 
+- Clearing a Wifi Device's power on or power off command in place now
+  reaches the hub (X1S and X2): the hook is written as the unbound row
+  the create uses. The update used to report success, write nothing and
+  plan the same step again on every later update. An X1 keeps ignoring
+  the hooks.
+- `deploy_wifi_device()` without slot references ends with one terminal
+  remote-sync trigger after its read-back. It used the create's own
+  trigger, which goes out before the power, input and finalize writes
+  and, on an X2, without the broadcast the remotes there need.
 - A catalog refresh (`devices(refresh=True)`, `activities(refresh=True)`
   and the reads built on them) only counts a catalog the hub committed
   after the request went out. The end of an earlier catalog read, still

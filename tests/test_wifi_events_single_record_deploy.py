@@ -213,7 +213,10 @@ def _make_hub(monkeypatch, loop, *, device_entry, activity_entries, managed=True
     monkeypatch.setattr(wifi_deploy_module, "async_get_command_config_store", _get_store)
     monkeypatch.setattr(hub._proxy, "backup_device", lambda *_a, **_k: device_entry)
     monkeypatch.setattr(hub._proxy, "backup_activity", lambda act_id, **_k: by_id.get(int(act_id)))
-    monkeypatch.setattr(hub._proxy, "_refresh_catalog", lambda *_a, **_k: None)
+    async def _no_catalog_read(**_kwargs):
+        return []
+
+    monkeypatch.setattr(hub._facade, "activities", _no_catalog_read)
 
     plans: list = []
 

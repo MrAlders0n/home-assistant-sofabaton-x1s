@@ -4,6 +4,15 @@ The deploy constants, the managed-brand parser, and WifiDeployMixin: the
 sync of a configured Wifi Device to the hub (in place when it can, replace
 otherwise), its progress reporting, the managed-device bookkeeping and the
 X1 quick-access check that closes a sync.
+
+HA-owned orchestration over the engine's public Wifi primitives
+(``create_wifi_device``, ``create_wifi_mqtt_device``,
+``run_wifi_inplace_plan``, the planners in ``lib.wifi_inplace_plan``),
+deliberately not the facade's ``deploy_wifi_device`` /
+``update_wifi_device``: those cover the server's fixed ten-slot model, while
+this pipeline also needs the replace path, the HTTP/MQTT switch, the
+single-record Wifi Events layout and HA's label and button-sharing rules
+(facade adoption plan, M6 option W-C). Catalog reads go through the facade.
 """
 
 from __future__ import annotations
@@ -38,6 +47,8 @@ from .lib.wifi_inplace_plan import (
     wifi_events_retarget_steps,
     wifi_membership_order_steps,
 )
+from .lib.activity_sync import SyncStep
+from .lib.errors import HubBusyError, HubNotConnectedError
 from .lib.protocol_const import ButtonName
 from .command_config import (
     COMMAND_BRAND_PREFIX,
@@ -402,15 +413,23 @@ class WifiDeployMixin:
         """
 
         async with self._command_sync_lock:
-            ok = True
-            for command_id in command_ids:
-                result = await self.hass.async_add_executor_job(
-                    partial(
-                        self._proxy._sync_step_command_delete,
-                        {"device_id": int(device_id), "command_id": int(command_id)},
+            # The deletes as an in-place plan: the engine's public, gated walk
+            # (refused while the app holds the hub), one ack-gated step each.
+            plan = WifiInplacePlan(
+                steps=tuple(
+                    SyncStep(
+                        kind="command_delete",
+                        label="Removing a Wifi Event…",
+                        target_device_id=int(device_id),
+                        payload={"device_id": int(device_id), "command_id": int(command_id)},
                     )
+                    for command_id in command_ids
                 )
-                ok = ok and bool(result)
+            )
+            result = await self.hass.async_add_executor_job(
+                self._proxy.run_wifi_inplace_plan, plan
+            )
+            ok = str((result or {}).get("status") or "") == "success"
             # Cascade epilogue: the deletes rewrote referencing activities'
             # key rows hub-side; re-warm them + the device catalog so the
             # cached views (favorite/binding labels, macro steps) follow.
@@ -481,7 +500,7 @@ class WifiDeployMixin:
                 index, press = command_id - 1, "short"
             else:
                 index, press = command_id - 1 - slot_count, "long"
-            return self._proxy._build_launch_action_path(
+            return self._proxy.wifi_launch_action_path(
                 device_id=dev_id, command_index=index, press_type=press
             )
 
@@ -616,20 +635,21 @@ class WifiDeployMixin:
             message="Reading the deployed Wifi Device",
         )
 
-        def _read_baseline():
-            device_entry = self._proxy.backup_device(dev_id, include_blobs=False)
-            # One activity catalog read for the loop (best effort, as each
-            # per-activity read's own refresh was), not one per activity.
-            self._proxy._refresh_catalog("activities", timeout=5.0)
+        def _read_activities() -> list[dict[str, Any]]:
             activity_entries = []
             for idx, act_id in enumerate(activity_ids):
                 _report_read_progress(idx + 1)
                 payload = self._proxy.backup_activity(act_id, refresh_catalog=False)
                 if isinstance(payload, dict):
                     activity_entries.append(payload)
-            return device_entry, activity_entries
+            return activity_entries
 
-        device_entry, activity_entries = await self.hass.async_add_executor_job(_read_baseline)
+        device_entry = await self.hass.async_add_executor_job(
+            partial(self._proxy.backup_device, dev_id, include_blobs=False)
+        )
+        # One activity catalog read for the loop, not one per activity.
+        await self._async_refresh_activities_best_effort()
+        activity_entries = await self.hass.async_add_executor_job(_read_activities)
         if not isinstance(device_entry, dict) or len(activity_entries) < len(activity_ids):
             _LOGGER.info("[%s] in-place sync declined: baseline read incomplete", self.entry_id)
             return None
@@ -1797,6 +1817,16 @@ class WifiDeployMixin:
             long_press_offset=slot_count,
         )
 
+    async def _async_refresh_activities_best_effort(self) -> None:
+        """One activity catalog read ahead of per-activity baseline reads
+        (the facade's, with its commit gate). Best effort: a refused or
+        unanswered read leaves the cached catalog, as before."""
+
+        try:
+            await self._facade.activities(refresh=True, timeout=5.0)
+        except (TimeoutError, HubBusyError, HubNotConnectedError) as err:
+            self._log.debug("[%s] activity catalog read skipped: %s", self.entry_id, err)
+
     async def _async_read_replace_baseline(
         self, old_device_ids: list[int]
     ) -> tuple[list[dict[str, Any] | None], list[dict[str, Any]]] | None:
@@ -1806,24 +1836,24 @@ class WifiDeployMixin:
 
         activity_ids = sorted(int(a) for a in self.activities)
 
-        def _read():
-            device_entries = [
+        def _read_devices() -> list[dict[str, Any] | None]:
+            return [
                 self._proxy.backup_device(dev_id, include_blobs=False)
                 for dev_id in old_device_ids
             ]
-            try:
-                self._proxy._refresh_catalog("activities", timeout=5.0)
-            except Exception:  # noqa: BLE001 - best effort, as the in-place path
-                pass
+
+        def _read_activities() -> list[dict[str, Any]]:
             activity_entries: list[dict[str, Any]] = []
             for act_id in activity_ids:
                 payload = self._proxy.backup_activity(act_id, refresh_catalog=False)
                 if isinstance(payload, dict):
                     activity_entries.append(payload)
-            return device_entries, activity_entries
+            return activity_entries
 
         try:
-            device_entries, activity_entries = await self.hass.async_add_executor_job(_read)
+            device_entries = await self.hass.async_add_executor_job(_read_devices)
+            await self._async_refresh_activities_best_effort()
+            activity_entries = await self.hass.async_add_executor_job(_read_activities)
         except Exception:  # noqa: BLE001 - the caller decides what a failed read means
             self._log.debug("[%s] replace baseline read failed", self.entry_id, exc_info=True)
             return None
