@@ -23,7 +23,7 @@ What runs during the rebuild (the device/activity phases):
   restore; the side traffic timeline is printed against the failure.
 
 Afterwards: the phases in order (erase, device/activity, cache_warm, hub),
-the result, ids contiguous, the hub name and the entry title, a fresh
+the result, ids contiguous, the hub name, the entry title unchanged, a fresh
 backup compared with the first one (names, classes, counts), the wire
 opcodes the restore sent (run-length, for the "no catalog reads between
 page writes" check by eye).
@@ -61,6 +61,8 @@ hub = resolve_hub(ws, "X1")
 if hub.version.upper() != "X1":
     sys.exit(f"refusing: the resolved hub reports {hub.version!r}, not X1")
 hub.wait_connected(ws)
+title_before = next((e.get("title") for e in ws.ok({"type": "config_entries/get", "domain": DOMAIN})
+                     if e.get("entry_id") == hub.entry_id), None)
 tally = Tally(f"bench_323_{args.arm}")
 stamp = time.strftime("%Y%m%d_%H%M%S")
 
@@ -231,7 +233,12 @@ state = hub.panel_state(ws)
 tally.check("hub name restored", state.get("name") == before["hub"], f"{state.get('name')!r} vs {before['hub']!r}")
 entries = ws.ok({"type": "config_entries/get", "domain": DOMAIN})
 title = next((e.get("title") for e in entries if e.get("entry_id") == hub.entry_id), None)
-tally.check("entry title follows the hub name", title == before["hub"], f"{title!r}")
+# The title names the model, address and MAC (not the hub name): the
+# restore puts the same name back, so the title must not change.
+tally.check("entry title unchanged", title == title_before, f"{title!r}")
+records = ws.ok({"type": f"{DOMAIN}/command_devices/list", "entity_id": hub.wifi_sensor}).get("devices") or []     if hub.wifi_sensor else []
+print("  Wifi Commands records after the rebuild: "
+      + ", ".join(f"{r.get('device_name')!r} -> {r.get('deployed_device_id')}" for r in records), flush=True)
 tally.check("hub name step reported", bool(result.get("hub_name_restored", "hub" in seen)), str(result.get("hub_name_restored")))
 if not args.no_verify_backup:
     meta, after_bundle = run_backup(ws, hub)
