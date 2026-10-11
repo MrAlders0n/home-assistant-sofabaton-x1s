@@ -78,6 +78,12 @@ class Tally:
 # -- websocket ------------------------------------------------------------------------------------
 
 
+#: The proxy in front of HA closes a websocket that carried nothing for a
+#: while (seen during long REST calls); a call after this much silence
+#: opens a fresh connection first.
+IDLE_RECONNECT_S = 20.0
+
+
 class HaWs:
     """One authenticated connection. Results and subscription events are
     buffered by message id, so calls and subscriptions can interleave."""
@@ -93,6 +99,7 @@ class HaWs:
         assert json.loads(self.ws.recv())["type"] == "auth_required"
         self.ws.send(json.dumps({"type": "auth", "access_token": TOKEN}))
         assert json.loads(self.ws.recv())["type"] == "auth_ok"
+        self._last_traffic = time.time()
 
     def _pump_one(self, timeout: float) -> bool:
         self.ws.settimeout(max(0.05, timeout))
@@ -100,6 +107,7 @@ class HaWs:
             raw = json.loads(self.ws.recv())
         except websocket.WebSocketTimeoutException:
             return False
+        self._last_traffic = time.time()
         if raw.get("type") == "result":
             self._results[raw["id"]] = raw
         elif raw.get("type") == "event":
@@ -126,10 +134,15 @@ class HaWs:
         subscription on the old connection is gone."""
 
         t0 = time.time()
+        if t0 - self._last_traffic > IDLE_RECONNECT_S:
+            # A send into a socket the proxy already closed raises nothing;
+            # only the reply never comes. Never reuse an idle connection.
+            self.close()
+            self._connect()
         try:
             msg_id = self.send(payload)
         except (OSError, websocket.WebSocketException):
-            print("  (websocket dropped while idle; reconnecting)", flush=True)
+            print("  (websocket dropped; reconnecting)", flush=True)
             self._connect()
             msg_id = self.send(payload)
         res = self.result(msg_id, timeout)
@@ -218,14 +231,39 @@ def service(name: str, data: dict, *, response: bool = False, domain: str = DOMA
 # -- the HA log -----------------------------------------------------------------------------------
 
 
+# HA starts a fresh home-assistant.log on every start and keeps the last
+# one as home-assistant.log.1: a mark remembers the log's first line, so a
+# read after a restart takes the old file's tail and the whole new file.
+_MARK_HEADS: dict[int, str] = {}
+
+
+def _head(path: Path) -> str:
+    try:
+        with path.open("rb") as handle:
+            return handle.readline().decode("utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
 def log_mark() -> int:
-    return HA_LOG.stat().st_size
+    mark = HA_LOG.stat().st_size
+    _MARK_HEADS[mark] = _head(HA_LOG)
+    return mark
+
+
+def _read_from(path: Path, offset: int) -> list[str]:
+    with path.open("rb") as handle:
+        handle.seek(offset)
+        return handle.read().decode("utf-8", errors="replace").splitlines()
 
 
 def log_since(mark: int) -> list[str]:
-    with HA_LOG.open("rb") as handle:
-        handle.seek(mark)
-        return handle.read().decode("utf-8", errors="replace").splitlines()
+    head = _MARK_HEADS.get(mark)
+    if head is None or head == _head(HA_LOG):
+        return _read_from(HA_LOG, mark)
+    previous = HA_LOG.with_name(HA_LOG.name + ".1")
+    older = _read_from(previous, mark) if _head(previous) == head else []
+    return older + _read_from(HA_LOG, 0)
 
 
 def grep(lines: list[str], *needles: str) -> list[str]:
