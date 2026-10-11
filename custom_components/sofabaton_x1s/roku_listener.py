@@ -22,7 +22,6 @@ DEFAULT_MAX_PATH_SEGMENT_LENGTH = 30
 @dataclass
 class _HubRegistration:
     hub: Any
-    action_id: str
     enabled: bool
 
     @property
@@ -31,6 +30,13 @@ class _HubRegistration:
         # snapshot taken at setup answered its presses 403 (CR-H3-2).
         host = str(getattr(self.hub, "host", "") or "").strip()
         return {host} if host else set()
+
+    @property
+    def action_ids(self) -> tuple[str, ...]:
+        # Read per request too: a manually-added hub's banner MAC, which
+        # its callbacks carry, arrives with its first connect, after the
+        # registration (issue #308).
+        return tuple(self.hub.get_roku_action_ids())
 
 
 class RokuListenerManager:
@@ -71,12 +77,7 @@ class RokuListenerManager:
         await self._async_ensure_server_state()
 
     async def async_register_hub(self, hub: Any, *, enabled: bool) -> None:
-        action_id = hub.get_roku_action_id()
-        self._hubs[hub.entry_id] = _HubRegistration(
-            hub=hub,
-            action_id=action_id,
-            enabled=enabled,
-        )
+        self._hubs[hub.entry_id] = _HubRegistration(hub=hub, enabled=enabled)
         await self._async_ensure_server_state()
 
     async def async_set_hub_enabled(self, entry_id: str, enabled: bool) -> None:
@@ -329,7 +330,7 @@ class RokuListenerManager:
         action_id = parts[1]
         target = None
         for registration in self._hubs.values():
-            if registration.enabled and registration.action_id == action_id:
+            if registration.enabled and action_id in registration.action_ids:
                 target = registration
                 break
 

@@ -141,7 +141,12 @@ On both variants the `1..20` space is what `REQ_ACTIVATE` (`0x023F`)
 and the power/input binding rows address — activating key `0x18` on an
 X1 hits nothing. Callback paths are
 `/launch/<hub_action_id>/<device_id>/<command_index>/<short|long>`,
-where `command_index` is the 0-based slot the user configured.
+where `command_index` is the 0-based slot the user configured and
+`hub_action_id` is the hub's MAC as lowercase bare hex: the MAC from
+the hub's connect banner, else the mDNS TXT `MAC`. A hub added to Home
+Assistant by IP has a synthetic TXT `MAC`, so its records can carry
+either id depending on when they were written; the HA listener accepts
+both (issue #308).
 
 ## ◇ Callback delivery and activity macros
 

@@ -2251,7 +2251,10 @@ Findings:
   sends on connect, then the TXT record, then the proxy id
   (`tests/lib/test_aio_real_engine.py::test_action_id_prefers_the_banner_mac_over_the_proxy_id`).
   The Home Assistant path is unchanged (its TXT record carries the same
-  MAC).
+  MAC). Not for a hub added by IP: its TXT record holds the synthetic
+  `generate_static_mac` identity, so the banner MAC the library now
+  writes no longer matched the HA listener, and every press answered
+  404 (issue #308). The listener accepts both ids since.
 - **Projection, not the hub.** Right after a deploy the snapshot's device
   block has no `ip_address` on the X1: the create seeds the cache without
   the raw record. `GET /devices?refresh=true` reads the catalog and the
