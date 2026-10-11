@@ -28,6 +28,9 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   writes one, so a UI can word each step itself instead of showing the
   engine's English label.
 
+- `edits.remove_macro()` and `edits.add_member()`; `edits.reorder_favorites()`
+  also takes quick-access ids (the `button_id` a favorite or macro row
+  carries), which may interleave favorites and macro shortcuts.
 - `X1Proxy.wifi_launch_action_path()`: the callback path a managed Wifi
   record carries, for an application that writes such a record itself.
 

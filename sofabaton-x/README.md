@@ -577,9 +577,12 @@ The common row edits are pure functions in `sofabaton.edits`: each takes
 a snapshot bundle and returns an edited copy for the sync, so a script
 does not have to know the row shapes. `rename_activity`, `rename_device`,
 `bind_button` (with an optional long press), `clear_button`,
-`add_favorite`, `remove_favorite`, `reorder_favorites`, `rename_command`,
-`set_idle_behavior`, `set_command_payload`, and `add_command` (which returns
-the edited bundle and an available command id):
+`add_favorite`, `remove_favorite`, `reorder_favorites` (by favorite content,
+or by quick-access ids with macro shortcuts interleaved), `remove_macro`,
+`add_member` (a device joins an activity's power sequences, optionally with
+the input it selects), `rename_command`, `set_idle_behavior`,
+`set_command_payload`, and `add_command` (which returns the edited bundle
+and an available command id):
 
 ```python
 from sofabaton import ButtonName, edits

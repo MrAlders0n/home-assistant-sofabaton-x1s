@@ -208,3 +208,117 @@ def test_payload_overwrite_and_add_command_plan_the_record_writes() -> None:
     assert explicit == 40
     with pytest.raises(ValueError):
         edits.add_command(base, 5, desc, "Input", command_id=1)
+
+
+# ---------------------------------------------------------------------------
+# Quick-access ids, macros and membership (services migration, S0)
+# ---------------------------------------------------------------------------
+
+
+def _with_macro_and_power(bundle: dict) -> dict:
+    """Watch TV with a user macro (quick-access id 3, bound to VOL_UP) and
+    power sequences naming its two members, as a hub read returns them."""
+
+    activity = bundle["activities"][0]
+    activity["macros"] = [
+        {"button_id": 3, "name": "Movie", "steps": [
+            {"device_id": 5, "command_id": 1, "button_code": 0, "duration": 0, "delay": 0}]},
+        {"button_id": 198, "name": "POWER_ON", "steps": [
+            {"device_id": 5, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF},
+            {"device_id": 5, "command_id": 0xC5, "button_code": 0, "duration": 0, "delay": 0xFF},
+            {"device_id": 0xFF, "command_id": 0xFF, "button_code": 0, "duration": 0, "delay": 3},
+            {"device_id": 7, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF},
+            {"device_id": 7, "command_id": 0xC5, "button_code": 0, "duration": 0, "delay": 0xFF},
+        ]},
+        {"button_id": 199, "name": "POWER_OFF", "steps": [
+            {"device_id": 5, "command_id": 0xC7, "button_code": 0, "duration": 0, "delay": 0xFF},
+            {"device_id": 7, "command_id": 0xC7, "button_code": 0, "duration": 0, "delay": 0xFF},
+        ]},
+    ]
+    activity["favorites_order"] = [1, 2, 3]
+    activity["button_bindings"].append(
+        {"button_id": VOL_UP, "button_name": "VOL_UP", "device_id": 101, "command_id": 3,
+         "long_press_device_id": None, "long_press_command_id": None}
+    )
+    return bundle
+
+
+def test_reorder_by_quick_access_ids_interleaves_macros() -> None:
+    base = _with_macro_and_power(_bundle())
+    reordered = edits.reorder_favorites(base, 101, [3, 2, 1])
+    assert reordered["activities"][0]["favorites_order"] == [3, 2, 1]
+    plan = _activity_plan(base, reordered)
+    assert plan[0] == ("favorite_order", {"activity_id": 101, "order": [
+        {"kind": "macro", "button_id": 3},
+        {"kind": "favorite", "device_id": 7, "command_id": 3},
+        {"kind": "favorite", "device_id": 5, "command_id": 2},
+    ]})
+    assert edits.reorder_favorites(base, 101, [1, 2, 3]) == base
+    for bad in ([1, 2], [1, 2, 3, 3], [1, 2, 3, 198], [1, 2, 9]):
+        with pytest.raises(ValueError):
+            edits.reorder_favorites(base, 101, bad)
+
+
+def test_remove_macro_cascades_its_binding() -> None:
+    base = _with_macro_and_power(_bundle())
+    removed = edits.remove_macro(base, 101, 3)
+    activity = removed["activities"][0]
+    assert [row["button_id"] for row in activity["macros"]] == [198, 199]
+    assert activity["favorites_order"] == [1, 2]
+    assert all(row["button_id"] != VOL_UP for row in activity["button_bindings"])
+    kinds = [kind for kind, _ in _activity_plan(base, removed)]
+    assert "macro_delete" in kinds and "binding_delete" in kinds
+
+    for bad in (198, 199, 9):
+        with pytest.raises(ValueError):
+            edits.remove_macro(base, 101, bad)
+
+
+def test_remove_macro_clears_a_long_press_that_named_it() -> None:
+    base = _with_macro_and_power(_bundle())
+    base["activities"][0]["button_bindings"][0].update(long_press_device_id=101, long_press_command_id=3)
+    removed = edits.remove_macro(base, 101, 3)
+    power = next(r for r in removed["activities"][0]["button_bindings"] if r["button_id"] == POWER_ON)
+    assert (power["device_id"], power["command_id"]) == (5, 1)
+    assert power["long_press_device_id"] is None and power["long_press_command_id"] is None
+
+
+def test_add_member_writes_the_power_references_in_member_order() -> None:
+    base = _with_macro_and_power(_bundle())
+    base["devices"].append(_device(6, "Lamp", {1: "On", 2: "HDMI 2"}))
+    base["devices"][-1]["input_record"] = {"entries": [{"input_index": 1, "command_id": 2}]}
+
+    added = edits.add_member(base, 101, 6, input_command_id=2)
+    activity = added["activities"][0]
+    power_on = next(r for r in activity["macros"] if r["button_id"] == 198)["steps"]
+    # Device 6 goes between 5 (its group keeps its trailing wait) and 7.
+    assert [(s["device_id"], s["command_id"]) for s in power_on] == [
+        (5, 0xC6), (5, 0xC5), (0xFF, 0xFF), (6, 0xC6), (6, 0xC5), (7, 0xC6), (7, 0xC5),
+    ]
+    assert power_on[4]["duration"] == 1  # the input's ordinal in the device's input record
+    power_off = next(r for r in activity["macros"] if r["button_id"] == 199)["steps"]
+    assert [(s["device_id"], s["command_id"]) for s in power_off] == [(5, 0xC7), (6, 0xC7), (7, 0xC7)]
+    assert activity["referenced_source_device_ids"] == [5, 6, 7]
+    plan = _activity_plan(base, added)
+    member = [payload for kind, payload in plan if kind == "member_replay"]
+    assert member == [{"activity_id": 101, "device_id": 6, "input_cmd_id": 2}]
+
+    with pytest.raises(ValueError):
+        edits.add_member(base, 101, 5)  # already a member
+    with pytest.raises(ValueError):
+        edits.add_member(base, 101, 6, input_command_id=1)  # not one of its inputs
+    with pytest.raises(KeyError):
+        edits.add_member(base, 101, 9)  # not in the bundle
+    with pytest.raises(ValueError):
+        edits.add_member(base, 101, 102)  # an activity id
+
+
+def test_add_member_to_an_activity_without_power_sequences_creates_them() -> None:
+    base = _bundle()
+    base["devices"].append(_device(6, "Lamp", {1: "On"}))
+    added = edits.add_member(base, 101, 6)
+    macros = {row["button_id"]: row for row in added["activities"][0]["macros"]}
+    assert macros[198]["name"] == "POWER_ON" and macros[199]["name"] == "POWER_OFF"
+    assert [(s["device_id"], s["command_id"], s["duration"]) for s in macros[198]["steps"]] == [
+        (6, 0xC6, 0), (6, 0xC5, 0),
+    ]

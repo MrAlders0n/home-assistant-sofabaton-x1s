@@ -11,13 +11,15 @@ guard keeps that safe.
 
 Ids are the hub's: devices below 101, activities from 101 up, buttons by
 their button code (``ButtonName``), commands by command id. Favorites are
-identified by content, the ``(device_id, command_id)`` pair.
+identified by content, the ``(device_id, command_id)`` pair; a macro by its
+id, which is also its quick-access id (favorites and macro shortcuts share
+that id space: the ``button_id`` a favorite or macro row carries).
 """
 
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any, Optional, Sequence
+from typing import Any, Optional, Sequence, cast
 
 from .payloads import CommandPayload, CommandRecord, NetworkCommand
 from .protocol_const import (
@@ -48,6 +50,8 @@ __all__ = [
     "add_favorite",
     "remove_favorite",
     "reorder_favorites",
+    "remove_macro",
+    "add_member",
     "rename_command",
     "set_idle_behavior",
     "set_command_payload",
@@ -56,6 +60,17 @@ __all__ = [
 
 # Highest quick-access id a new favorite may take; 198/199 are the power macros.
 _MAX_QUICK_ACCESS_ID = 197
+_POWER_ON_MACRO_ID = 198
+_POWER_OFF_MACRO_ID = 199
+_POWER_MACRO_IDS = frozenset({_POWER_ON_MACRO_ID, _POWER_OFF_MACRO_ID})
+_ACTIVITY_ID_BASE = 101
+# A device's references inside the power sequences: input, power on, power off.
+_INPUT_REF = 0xC5
+_POWER_ON_REF = 0xC6
+_POWER_OFF_REF = 0xC7
+_POWER_REFS = frozenset({_INPUT_REF, _POWER_ON_REF, _POWER_OFF_REF})
+_POWER_STEP_DELAY = 0xFF
+_DELAY_SENTINEL = 0xFF
 
 
 def _find(bundle: dict[str, Any], kind: str, entity_id: int) -> dict[str, Any]:
@@ -210,20 +225,28 @@ def remove_favorite(
 
 
 def reorder_favorites(
-    bundle: dict[str, Any], activity_id: int, ordered: Sequence[tuple[int, int]]
+    bundle: dict[str, Any],
+    activity_id: int,
+    ordered: Sequence[tuple[int, int]] | Sequence[int],
 ) -> dict[str, Any]:
-    """Put an activity's favorites in ``ordered`` (``(device_id, command_id)`` pairs).
+    """Put an activity's quick-access list in order.
 
-    Lists every favorite exactly once. Macro shortcuts keep their place
-    after the favorites, in their current order.
+    ``ordered`` is either ``(device_id, command_id)`` pairs, listing every
+    favorite exactly once (macro shortcuts keep their place after the
+    favorites, in their current order), or quick-access ids, listing every
+    favorite and macro shortcut exactly once in any interleaving (the ids
+    a favorite or macro row carries as ``button_id``, the hub's favorite
+    ids).
     """
 
+    if ordered and all(isinstance(item, int) and not isinstance(item, bool) for item in ordered):
+        return _reorder_quick_access(bundle, activity_id, [int(cast(int, item)) for item in ordered])
     edited, activity = _edit(bundle, "activity", activity_id)
     rows = activity.get("favorite_slots") or []
     by_content = {
         (int(r.get("device_id", 0)) & 0xFF, int(r.get("command_id", 0)) & 0xFF): r for r in rows
     }
-    wanted = [(int(d) & 0xFF, int(c) & 0xFF) for d, c in ordered]
+    wanted = [(int(d) & 0xFF, int(c) & 0xFF) for d, c in cast(Sequence[tuple[int, int]], ordered)]
     if len(set(wanted)) != len(wanted) or set(wanted) != set(by_content):
         raise ValueError("the order must list every favorite exactly once")
     favorite_ids = [int(by_content[c].get("button_id", 0)) & 0xFF for c in wanted]
@@ -233,6 +256,172 @@ def reorder_favorites(
     ]
     activity["favorites_order"] = favorite_ids + rest
     return edited
+
+
+def _reorder_quick_access(bundle: dict[str, Any], activity_id: int, ids: list[int]) -> dict[str, Any]:
+    edited, activity = _edit(bundle, "activity", activity_id)
+    wanted = [i & 0xFF for i in ids]
+    present = _quick_access_ids(activity) - _POWER_MACRO_IDS
+    if len(set(wanted)) != len(wanted) or set(wanted) != present:
+        raise ValueError("the order must list every favorite and macro shortcut exactly once")
+    activity["favorites_order"] = wanted
+    return edited
+
+
+def remove_macro(bundle: dict[str, Any], activity_id: int, button_id: int) -> dict[str, Any]:
+    """Remove one of an activity's macros, its quick-access entry included.
+
+    ``button_id`` is the macro's id (its quick-access id). A button bound to
+    the macro loses the binding (the long press alone is cleared when only
+    it named the macro). The power macros (198 / 199) are not removable:
+    they carry the activity's start and end sequence.
+    """
+
+    want = int(button_id) & 0xFF
+    if want in _POWER_MACRO_IDS:
+        raise ValueError("the power on / power off macros cannot be removed")
+    edited, activity = _edit(bundle, "activity", activity_id)
+    act_id = int(activity_id) & 0xFF
+    macros = activity.get("macros") or []
+    kept = [row for row in macros if int(row.get("button_id", 0)) & 0xFF != want]
+    if len(kept) == len(macros):
+        raise ValueError(f"activity {act_id} has no macro {want}")
+    activity["macros"] = kept
+    bindings: list[dict[str, Any]] = []
+    for row in activity.get("button_bindings") or []:
+        if int(row.get("device_id", 0)) & 0xFF == act_id and int(row.get("command_id", 0)) & 0xFF == want:
+            continue
+        if (
+            int(row.get("long_press_device_id") or 0) & 0xFF == act_id
+            and int(row.get("long_press_command_id") or 0) & 0xFF == want
+        ):
+            row = {**row, "long_press_device_id": None, "long_press_command_id": None}
+        bindings.append(row)
+    activity["button_bindings"] = bindings
+    activity["favorites_order"] = [
+        i for i in activity.get("favorites_order") or [] if int(i) & 0xFF != want
+    ]
+    return edited
+
+
+def add_member(
+    bundle: dict[str, Any],
+    activity_id: int,
+    device_id: int,
+    *,
+    input_command_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """Add a device to an activity: the hub powers it on and off with it.
+
+    Writes the device's power references into the activity's power on and
+    power off sequences (as the vendor app's "add device" does), placed
+    among the other members by device id. ``input_command_id`` makes one of
+    the device's inputs (a command its input record lists) the one the
+    activity selects at start; without it no input is selected. A
+    ``sync_activity`` on ``activity_id`` writes it. Favorites and buttons
+    for the device come afterwards, through the other helpers.
+    """
+
+    dev = int(device_id) & 0xFF
+    act_id = int(activity_id) & 0xFF
+    if not 0 < dev < _ACTIVITY_ID_BASE:
+        raise ValueError(f"{dev} is not a device id")
+    device = _find(bundle, "device", dev)
+    ordinal = 0
+    if input_command_id is not None:
+        want = int(input_command_id) & 0xFF
+        entries = (device.get("input_record") or {}).get("entries") or []
+        ordinal = next(
+            (
+                int(entry.get("input_index") or 0)
+                for entry in entries
+                if isinstance(entry, dict) and int(entry.get("command_id") or 0) & 0xFF == want
+            ),
+            0,
+        )
+        if ordinal <= 0:
+            raise ValueError(f"command {want} is not one of device {dev}'s inputs")
+    edited, activity = _edit(bundle, "activity", act_id)
+    if dev in _power_members(activity):
+        raise ValueError(f"device {dev} is already in activity {act_id}")
+    members = sorted(_power_members(activity) | {dev})
+    macros = list(activity.get("macros") or [])
+    for button_id, name, refs in (
+        (_POWER_ON_MACRO_ID, "POWER_ON", ((_POWER_ON_REF, 0), (_INPUT_REF, ordinal))),
+        (_POWER_OFF_MACRO_ID, "POWER_OFF", ((_POWER_OFF_REF, 0),)),
+    ):
+        index = next(
+            (i for i, row in enumerate(macros) if int(row.get("button_id", 0)) & 0xFF == button_id), None
+        )
+        row = dict(macros[index]) if index is not None else {"button_id": button_id, "name": name}
+        steps = list(row.get("steps") or [])
+        for ref, duration in refs:
+            steps.insert(_power_ref_insert_index(steps, members, dev, ref), _power_step(dev, ref, duration))
+        row["steps"] = steps
+        if index is None:
+            macros.append(row)
+        else:
+            macros[index] = row
+    activity["macros"] = macros
+    activity["referenced_source_device_ids"] = sorted(
+        {int(i) & 0xFF for i in activity.get("referenced_source_device_ids") or []} | {dev}
+    )
+    return edited
+
+
+def _power_step(device_id: int, command_id: int, duration: int) -> dict[str, Any]:
+    return {
+        "device_id": device_id,
+        "command_id": command_id,
+        "button_code": 0,
+        "duration": duration & 0xFF,
+        "delay": _POWER_STEP_DELAY,
+    }
+
+
+def _is_delay_step(step: dict[str, Any]) -> bool:
+    return int(step.get("device_id", 0)) == _DELAY_SENTINEL or int(step.get("command_id", 0)) == _DELAY_SENTINEL
+
+
+def _power_members(activity: dict[str, Any]) -> set[int]:
+    """Devices with a power reference in the activity's power sequences."""
+
+    members: set[int] = set()
+    for row in activity.get("macros") or []:
+        if int(row.get("button_id", 0)) & 0xFF not in _POWER_MACRO_IDS:
+            continue
+        for step in row.get("steps") or []:
+            if not _is_delay_step(step) and int(step.get("command_id", 0)) in _POWER_REFS:
+                members.add(int(step.get("device_id", 0)) & 0xFF)
+    return members
+
+
+def _power_ref_insert_index(steps: list[dict[str, Any]], members: list[int], device_id: int, ref: int) -> int:
+    """Where a new power reference goes: the input reference right after the
+    device's power-on group (its trailing waits included), every other one
+    before the first reference of a later member, else at the end (the
+    vendor app's and the control panel's ordering)."""
+
+    if ref == _INPUT_REF:
+        for i, step in enumerate(steps):
+            if (
+                not _is_delay_step(step)
+                and int(step.get("device_id", 0)) & 0xFF == device_id
+                and int(step.get("command_id", 0)) == _POWER_ON_REF
+            ):
+                i += 1
+                while i < len(steps) and _is_delay_step(steps[i]):
+                    i += 1
+                return i
+    rank = {member: i for i, member in enumerate(members)}
+    mine = rank.get(device_id, len(members))
+    for i, step in enumerate(steps):
+        if _is_delay_step(step) or int(step.get("command_id", 0)) not in _POWER_REFS:
+            continue
+        other = rank.get(int(step.get("device_id", 0)) & 0xFF)
+        if other is not None and other > mine:
+            return i
+    return len(steps)
 
 
 def rename_command(
