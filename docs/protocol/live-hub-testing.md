@@ -804,6 +804,11 @@ read-back on both hubs):
   when the hub holds exactly what it restored, and `bench_288` /
   `bench_compare.py` compare display order (bench_288 reverses both
   lists first, so a hub already in id order cannot pass by accident).
+  Validated live on the X1 the same day (bench_288, 12 devices and 3
+  activities, fully reversed): the restore wrote both orders, the
+  compare found no problems, and the one remote-sync trigger went out
+  after the hub name (batch closed with 3 requests: both reorders and
+  the restore's own).
 
 ## ◇ Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 
