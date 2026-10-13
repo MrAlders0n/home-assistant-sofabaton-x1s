@@ -1047,6 +1047,42 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     assert frame_7746[-1] == expected_token
 
 
+@pytest.mark.parametrize(
+    "hub_version, trigger",
+    [
+        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
+        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+    ],
+)
+def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_version, trigger) -> None:
+    """The virtual-IP create also runs on the X2, where a bare 0x0064
+    starts no sync; its save tail is the frame resync_remote sends."""
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=hub_version
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_assigned_device_id", lambda timeout=5.0: 0x07)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
+    )
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(commands=["Launch One"], ip_address="192.168.1.10")
+
+    assert result == {"device_id": 0x07, "status": "success"}
+    remote_syncs = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x64]
+    assert remote_syncs == [trigger]
+
+    # send_remote_sync=False (the deploy pipeline owns the trigger) sends none.
+    sent.clear()
+    proxy.create_wifi_device(commands=["Launch One"], ip_address="192.168.1.10", send_remote_sync=False)
+    assert [opcode for opcode, _payload in sent if (opcode & 0xFF) == 0x64] == []
+
+
 def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",

@@ -29,7 +29,6 @@ from .hub_logging import LogTag
 from .macros import MacroRecord
 from .wire_schema import encode_label_slot
 from .device_create import (
-    FAMILY_REMOTE_SYNC,
     build_button_binding_step,
     synthesize_command_code,
 )
@@ -402,15 +401,8 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # The app follows the order write with REMOTE_SYNC so the remote
-        # refreshes its local view.
-        _step = self._send_step(
-            step_name="activity-sort-remote-sync",
-            family=FAMILY_REMOTE_SYNC,
-            payload=b"",
-            ack_opcode=0x0103,
-            ack_first_byte=0x00,
-        )
-        if not _step.ok:
+        # refreshes its local view (on the X2, the all-remotes broadcast).
+        if not self._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00):
             self._log.warning("[ACT_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_activities_and_wait():
@@ -502,14 +494,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning("[DEV_REORDER] hub did not accept the new order")
             return None
 
-        _step = self._send_step(
-            step_name="device-sort-remote-sync",
-            family=FAMILY_REMOTE_SYNC,
-            payload=b"",
-            ack_opcode=0x0103,
-            ack_first_byte=0x00,
-        )
-        if not _step.ok:
+        if not self._send_remote_sync_step("device-sort-remote-sync", ack_first_byte=0x00):
             self._log.warning("[DEV_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_devices_and_wait():

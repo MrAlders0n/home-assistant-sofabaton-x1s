@@ -2,7 +2,9 @@
 reorder_devices / create_activity."""
 from typing import Any
 
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
+import pytest
+
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from custom_components.sofabaton_x1s.lib.device_create import (
     FAMILY_REMOTE_SYNC,
     DeviceCreateResult,
@@ -13,6 +15,8 @@ from custom_components.sofabaton_x1s.lib.hub_versions import (
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     FAMILY_ACTIVITY_SORT,
     FAMILY_DEVICE_SORT,
+    OP_REMOTE_SYNC,
+    OP_X2_REMOTE_SYNC_ALL,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 import custom_components.sofabaton_x1s.lib.proxy_restore as proxy_restore_module
@@ -253,6 +257,66 @@ def test_reorder_devices_refused_while_proxy_client_connected(monkeypatch) -> No
     _seed_device(proxy, 0x01, "TV")
 
     assert proxy.reorder_devices([0x01]) is None
+
+
+# ── the remote sync after a reorder, per hub ────────────────────────────
+
+
+def _resync_remote_frame(hub_version: str, monkeypatch) -> tuple[int, bytes]:
+    """The frame the bench-validated ``resync_remote`` enqueues on this hub."""
+
+    proxy = _make_proxy(hub_version)
+    enqueued: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy, "enqueue_cmd", lambda opcode, payload=b"", **_kw: enqueued.append((opcode, payload)) or True
+    )
+    assert proxy.resync_remote() is True
+    assert len(enqueued) == 1
+    return enqueued[0]
+
+
+@pytest.mark.parametrize(
+    "hub_version, trigger",
+    [
+        (HUB_VERSION_X1, (OP_REMOTE_SYNC, b"")),
+        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
+        # A bare 0x0064 starts no sync on the X2; only the all-remotes
+        # broadcast does (bench 2026-08-27).
+        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+    ],
+)
+@pytest.mark.parametrize("kind", ["activity", "device"])
+def test_reorder_remote_sync_is_the_resync_remote_frame(monkeypatch, hub_version, trigger, kind) -> None:
+    proxy = _make_proxy(hub_version)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    if kind == "activity":
+        _seed_x1s_activity(proxy, 0x65, "Watch TV")
+        _seed_x1s_activity(proxy, 0x66, "Play Xbox")
+        monkeypatch.setattr(proxy, "_request_activities_and_wait", lambda timeout=15.0: True)
+        reorder, sort_family = proxy.reorder_activities, FAMILY_ACTIVITY_SORT
+    else:
+        _seed_device(proxy, 0x01, "TV")
+        _seed_device(proxy, 0x02, "Soundbar")
+        monkeypatch.setattr(proxy, "_request_devices_and_wait", lambda timeout=15.0: True)
+        reorder, sort_family = proxy.reorder_devices, FAMILY_DEVICE_SORT
+
+    wire: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: wire.append((opcode, payload)))
+    ack_waits: list[list[tuple[int, int | None]]] = []
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: ack_waits.append(candidates) or (0x0103, b"\x00"),
+    )
+
+    result = reorder([0x02, 0x01] if kind == "device" else [0x66, 0x65])
+
+    assert result is not None and result["status"] == "success"
+    assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family, FAMILY_REMOTE_SYNC]
+    assert wire[1] == trigger
+    assert wire[1] == _resync_remote_frame(hub_version, monkeypatch)
+    # The trigger's own STATUS_ACK is consumed as part of the step.
+    assert len(ack_waits) == 2 and ack_waits[1][0] == (0x0103, 0x00)
 
 
 # ── create_activity ─────────────────────────────────────────────────────

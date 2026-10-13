@@ -11,6 +11,14 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Fixed
+
+- X2: `reorder_devices()`, `reorder_activities()` and a Wifi Device deploy
+  without references send the X2's own remote-sync trigger. They sent the
+  X1/X1S trigger (`0x0064`), which was never seen to start a sync on the
+  X2. They now send the all-remotes broadcast that `resync_remote()`
+  already uses. X1 and X1S are unchanged.
+
 ## 0.2.4 (2026-10-10)
 
 Changes since `sofabaton-x-v0.2.3`. Backward-compatible additions and

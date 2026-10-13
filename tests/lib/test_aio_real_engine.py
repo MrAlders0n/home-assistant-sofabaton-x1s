@@ -1358,19 +1358,22 @@ def test_write_batch_coalesces_every_remote_sync_path_into_one_trigger(monkeypat
     assert engine.write_batch_open
     # 1. resync_remote itself (create_device, restore).
     assert engine.resync_remote() is True
-    # 2. the inline 0x64 step the reorder writes send through execute_exchange.
+    # 2. any raw family-0x64 step sent through execute_exchange.
     step = engine.execute_exchange(step_name="device-sort-remote-sync", family=0x64, payload=b"",
                                    ack_opcode=0x0103, ack_first_byte=0x00)
     assert step.ok
     # 3. a create sequence's terminal step.
     seq = device_create_mod.run_create_sequence(engine, [device_create_mod.build_remote_sync_step()])
     assert seq.success
+    # 4. the acked remote-sync step (reorder writes, Wifi create save tail).
+    assert engine._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00) is True
     assert enqueued == [] and frames == [], "a batch must send no trigger while open"
 
     summary = engine.end_write_batch()
     assert not engine.write_batch_open
-    assert summary["remote_sync"] == "sent" and summary["remote_sync_requests"] == 3
+    assert summary["remote_sync"] == "sent" and summary["remote_sync_requests"] == 4
     assert summary["origins"][:2] == ["resync_remote", "device-sort-remote-sync"]
+    assert summary["origins"][3] == "activity-sort-remote-sync"
     assert enqueued == [trigger] and frames == []
 
 
