@@ -12,13 +12,63 @@ Hub-owned bytes excluded from equality (chunk-1 bootstrap notes):
 - capture metadata: ``captured_at`` / ``fetched_at`` / ``complete`` /
   ``payload_profile`` / ``key_sort`` ordering.
 - ``restore_data.decoded`` (derived from data_hex, not wire data).
+
+The per-entity ``sort`` byte is excluded too: the hub renumbers it on
+every create and delete, so its value never round-trips. What must
+round-trip is the display order it encodes, which the per-entity compare
+cannot see. Compare that across the whole bundle with
+:func:`display_order_problems` (it was missing from every restore bench
+until 2026-10-13, issue #307).
+
+Run as a script to compare saved bundles:
+``python bench_compare.py <before.json> <after.json> [<before> <after> ...]``
+(exit 1 when any display order differs).
 """
 
 from __future__ import annotations
 
+import json
+import sys
 from typing import Any
 
 SYNTH_FID_BASE = 0x4E20
+
+
+def display_order(bundle: dict[str, Any], kind: str) -> list[str]:
+    """Names of a bundle's ``devices`` or ``activities`` in display order.
+
+    The engine's rule (``aio._catalog_order_key``, the HA cache view): the
+    record's sort byte first, rows without one (0) after them by id. A
+    backup lists entities by id, so the order must be derived, never
+    read from the array.
+    """
+
+    rows = []
+    for row in bundle.get(kind) or []:
+        block = row.get("device") or {}
+        sort = int(block.get("sort") or 0)
+        entity_id = int(block.get("device_id") or 0)
+        key = (0, sort, entity_id) if sort else (1, 0, entity_id)
+        rows.append((key, str(block.get("name"))))
+    return [name for _key, name in sorted(rows)]
+
+
+def display_order_problems(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """Display-order differences between two bundles, matched by name.
+
+    Only names present on both sides are ordered: a missing or extra
+    entity is the content compare's finding, not an order one.
+    """
+
+    problems = []
+    for kind in ("devices", "activities"):
+        want, got = display_order(before, kind), display_order(after, kind)
+        common = set(want) & set(got)
+        want = [name for name in want if name in common]
+        got = [name for name in got if name in common]
+        if want != got:
+            problems.append(f"{kind} display order: {want} -> {got}")
+    return problems
 
 
 def _remap_cmd(cmd_map: dict[int, int], value: Any) -> Any:
@@ -395,3 +445,21 @@ def compare_device_backup(
         problems.append(f"key_sort.msg_hex: {src_ks!r} != {dst_ks!r}")
 
     return problems, notes
+
+
+if __name__ == "__main__":
+    paths = sys.argv[1:]
+    if not paths or len(paths) % 2:
+        sys.exit("usage: python bench_compare.py <before.json> <after.json> [<before> <after> ...]")
+    failed = False
+    for before_path, after_path in zip(paths[::2], paths[1::2]):
+        with open(before_path, encoding="utf-8") as fh:
+            before = json.load(fh)
+        with open(after_path, encoding="utf-8") as fh:
+            after = json.load(fh)
+        problems = display_order_problems(before, after)
+        print(f"{before_path} -> {after_path}: {'display order kept' if not problems else 'DISPLAY ORDER CHANGED'}")
+        for problem in problems:
+            print(f"  {problem}")
+        failed = failed or bool(problems)
+    sys.exit(1 if failed else 0)

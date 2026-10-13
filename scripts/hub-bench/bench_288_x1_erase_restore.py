@@ -11,10 +11,17 @@ Checks, all through the AsyncXProxy facade (the server's path):
   and leaves no new burst listeners behind;
 - CR-X1-4: a replacing restore applies the bundle's hub name;
 - the rebuilt hub is compared with the original backup (names, classes,
-  command/binding/macro/favorite counts per entity).
+  command/binding/macro/favorite counts per entity);
+- the rebuilt hub keeps the backup's display order of devices and
+  activities (issue #307: a restore that came back with every entity
+  intact but the order lost used to pass). An erased hub numbers what
+  the restore creates in id order, so a hub already in id order (as an
+  earlier restore leaves it) would keep it by accident: both lists are
+  reversed before the backup, and the hub's own order is put back after
+  the compare. ``--no-scramble`` skips that.
 
 Usage:
-    python bench_288_x1_erase_restore.py <ip> <X1>
+    python bench_288_x1_erase_restore.py <ip> <X1> [--no-scramble]
 """
 
 from __future__ import annotations
@@ -27,11 +34,13 @@ from pathlib import Path
 
 import bench_common  # noqa: F401  (loads the lib under the x1slib alias)
 from bench_common import BENCH_DIR, save_json, setup_logging
+from bench_compare import display_order, display_order_problems
 from x1slib import AsyncXProxy, HubConfig  # noqa: E402
 from x1slib.protocol_const import OP_REQ_ACTIVITIES, OP_REQ_DEVICES  # noqa: E402
 
 HOST = sys.argv[1]
 HVER = sys.argv[2]
+SCRAMBLE = "--no-scramble" not in sys.argv[3:]
 
 
 def summary(bundle: dict) -> dict:
@@ -96,6 +105,16 @@ async def main() -> dict:
             report["problems"].append("hub never ready")
             return report
 
+        hub_order: dict[str, list[str]] = {}
+        if SCRAMBLE:
+            devices, activities = await proxy.devices(), await proxy.activities()
+            hub_order = {"devices": [d.name for d in devices], "activities": [a.name for a in activities]}
+            if len(devices) > 1:
+                await proxy.reorder_devices([d.device_id for d in reversed(devices)])
+            if len(activities) > 1:
+                await proxy.reorder_activities([a.activity_id for a in reversed(activities)])
+            step("scramble", hub_order=hub_order)
+
         reads.update(devices=0, activities=0)
         t0 = time.monotonic()
         original = await proxy.backup(include_blobs=True)
@@ -130,7 +149,27 @@ async def main() -> dict:
                     report["problems"].append(f"{kind} {name!r}: {want[kind].get(name)} -> {got[kind].get(name)}")
         if want["hub"] != got["hub"]:
             report["problems"].append(f"hub name {want['hub']!r} -> {got['hub']!r}")
-        step("compare", problems=len(report["problems"]))
+        report["order_before"] = {kind: display_order(original, kind) for kind in ("devices", "activities")}
+        report["order_after"] = {kind: display_order(after, kind) for kind in ("devices", "activities")}
+        order_problems = display_order_problems(original, after)
+        report["problems"].extend(order_problems)
+        step("compare", problems=len(report["problems"]), order_kept=not order_problems)
+
+        if SCRAMBLE:
+            # Put back the order the hub had before the scramble (by name;
+            # the restore gave everything new ids).
+            for kind, listed, id_attr, reorder in (
+                ("devices", await proxy.devices(), "device_id", proxy.reorder_devices),
+                ("activities", await proxy.activities(), "activity_id", proxy.reorder_activities),
+            ):
+                ids_by_name = {e.name: getattr(e, id_attr) for e in listed}
+                wanted = hub_order.get(kind) or []
+                if len(ids_by_name) != len(listed) or sorted(wanted) != sorted(ids_by_name):
+                    report["problems"].append(f"{kind}: hub order not put back (names changed or not unique): {wanted}")
+                    continue
+                if len(wanted) > 1:
+                    await reorder([ids_by_name[name] for name in wanted])
+            step("unscramble", order=hub_order)
     return report
 
 
