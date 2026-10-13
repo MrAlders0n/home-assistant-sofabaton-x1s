@@ -808,7 +808,11 @@ read-back on both hubs):
   activities, fully reversed): the restore wrote both orders, the
   compare found no problems, and the one remote-sync trigger went out
   after the hub name (batch closed with 3 requests: both reorders and
-  the restore's own).
+  the restore's own). Also through Home Assistant (`bench_331`, same
+  scramble, erasing restore from HA's Backup path): order kept for both
+  lists, progress `erase > device > activity > hub > cache_warm >
+  remote_sync`, the batch opened before the erase and the one
+  `REMOTE_SYNC` went out after the hub name and the cache warm.
 
 ## ◇ Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 
