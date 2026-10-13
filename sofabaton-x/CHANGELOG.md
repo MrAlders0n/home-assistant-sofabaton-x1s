@@ -18,6 +18,19 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   X1/X1S trigger (`0x0064`), which was never seen to start a sync on the
   X2. They now send the all-remotes broadcast that `resync_remote()`
   already uses. X1 and X1S are unchanged.
+- `restore()` gives the restored devices and activities the backup's
+  display order. The hub numbers what a restore creates itself (an erased
+  X1 put everything in id order), so a backup in any other order came back
+  reordered. When the hub holds only what the backup restored, the restore
+  now writes the order, once per list and only when it differs. Next to
+  devices or activities that were already on the hub, the restored ones
+  stay where the hub put them, as before. `restore_hub_bundle()` reports
+  what it did under `display_order`.
+- `restore()` sends its one remote-sync trigger after everything it
+  writes, a replacing restore's hub name included. It went out after the
+  devices and activities, so the remotes started syncing while the
+  restore was still writing. `restore_hub_bundle()` holds its trigger in
+  the caller's write batch when one is open, and opens its own otherwise.
 
 ## 0.2.4 (2026-10-10)
 

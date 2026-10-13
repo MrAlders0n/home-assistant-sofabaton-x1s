@@ -793,6 +793,17 @@ read-back on both hubs):
   ties resolve by id, which matches the observed remote behavior.
 - **Guards** — same as activities: partial orders and unknown ids are
   refused before any write.
+- **A restore does not carry the order (issue #307, found 2026-10-13 in
+  the saved bench_323 run of 2026-10-11, X1, erasing restore through HA).**
+  The device create carries the backup's sort byte, yet the rebuilt X1
+  numbered every device by creation position (1..12, the restore's id
+  order): the backup's "Wifi Events" (id 12, sort 10) ahead of id 11
+  came back after it. Every bench check passed, because
+  `bench_compare.py` excluded `sort` and no restore bench compared the
+  order. The restore now writes the bundle's order with these frames
+  when the hub holds exactly what it restored, and `bench_288` /
+  `bench_compare.py` compare display order (bench_288 reverses both
+  lists first, so a hub already in id order cannot pass by accident).
 
 ## ◇ Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 

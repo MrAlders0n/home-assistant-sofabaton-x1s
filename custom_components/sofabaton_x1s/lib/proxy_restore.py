@@ -123,6 +123,46 @@ def _key_sort_table_has_positions(msg_hex: str) -> bool:
     )
 
 
+def _display_order_key(sort: int, entity_id: int) -> tuple[int, int, int]:
+    """Display order as the remote and the app show it: the stored sort
+    byte first, rows without one (``0``) after them by id (the facade's
+    ``_catalog_order_key``, the HA cache view)."""
+
+    return (0, sort, entity_id) if sort else (1, 0, entity_id)
+
+
+def _record_sort_byte(row: dict[str, Any]) -> int:
+    """The display-order byte (record body[6]) of a catalog row, ``0``
+    when the row carries no record long enough."""
+
+    raw_body = row.get("raw_body")
+    if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
+        return int(raw_body[6]) & 0xFF
+    return 0
+
+
+def _bundle_display_order(entries: list[Any]) -> list[int]:
+    """Source ids of a bundle's devices or activities in display order.
+
+    A backup lists entities by id; the order the user sees is in each
+    record's ``sort``.
+    """
+
+    keyed = []
+    for entry in entries:
+        block = entry.get("device") if isinstance(entry, dict) else None
+        if not isinstance(block, dict):
+            continue
+        try:
+            entity_id = int(block.get("device_id") or 0) & 0xFF
+            sort = int(block.get("sort") or 0) & 0xFF
+        except (TypeError, ValueError):
+            continue
+        if entity_id:
+            keyed.append((_display_order_key(sort, entity_id), entity_id))
+    return [entity_id for _key, entity_id in sorted(keyed)]
+
+
 def _input_create_step_factory():
     # Imported lazily to avoid a circular import at module load: the
     # helper lives in ``x1_proxy`` because it sits next to the other
@@ -1597,11 +1637,20 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         - ``device_id_map`` -- mapping of source_device_id (string)
           to assigned device_id (int).
         - ``restored_devices`` / ``restored_activities`` -- counts.
+        - ``display_order`` -- on success, per kind (``devices`` /
+          ``activities``) what :meth:`_restore_display_order` did.
 
         On mid-bundle failure no rollback is attempted: previously
         restored devices stay on the hub and the unfinished tail is
         skipped. The caller surfaces the partial state to the user. When
         anything was written, the one terminal remote sync still goes out.
+
+        Every remote-sync trigger the restore asks for (its terminal one,
+        the display-order writes' own) is coalesced in a write batch into
+        one. Without a batch open, the restore opens its own and the
+        trigger goes out when it returns. A caller that has more to write
+        after the bundle (a replacing restore's hub name) opens the batch
+        itself, so the remotes sync once, after everything.
         """
 
         del wifi_commands_request_port  # retained for API compatibility
@@ -1614,6 +1663,9 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         # One live catalog read for the whole bundle (not one per device).
         self._refresh_destination_catalog()
         self._bundle_catalog_fresh = True
+        own_batch = not self.write_batch_open
+        if own_batch:
+            self.begin_write_batch()
         try:
             return self._restore_bundle_entities(
                 devices,
@@ -1621,9 +1673,12 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 progress_callback=progress_callback,
                 progress_offset=progress_offset,
                 progress_total_steps=progress_total_steps,
+                announce_remote_sync=own_batch,
             )
         finally:
             self._bundle_catalog_fresh = False
+            if own_batch and self.end_write_batch().get("remote_sync") == "failed":
+                self._log.warning("[RESTORE] the remote-sync trigger was not sent after the bundle restore")
 
     def _restore_bundle_entities(
         self,
@@ -1633,9 +1688,13 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         progress_callback,
         progress_offset: int,
         progress_total_steps: int | None,
+        announce_remote_sync: bool = True,
     ) -> dict[str, Any]:
-        """The devices phase, then the activities phase, then the one
-        terminal remote sync (see :meth:`restore_hub_bundle`)."""
+        """The devices phase, then the activities phase, then the bundle's
+        display order, then the request for the one terminal remote sync
+        (see :meth:`restore_hub_bundle`). ``announce_remote_sync`` reports
+        the ``remote_sync`` phase; off when the caller's batch sends the
+        trigger later."""
 
         def _progress(**progress_payload: Any) -> None:
             if callable(progress_callback):
@@ -1778,21 +1837,32 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 current_activity_id=src_act_id,
             )
 
+        # The hub numbers what it creates itself, so the bundle's display
+        # order is written once the entities exist (issue #307).
+        display_order = {
+            "devices": self._restore_display_order(
+                "devices", _bundle_display_order(devices), device_id_map
+            ),
+            "activities": self._restore_display_order(
+                "activities",
+                _bundle_display_order(activities),
+                {row["source_activity_id"]: row["activity_id"] for row in restored_activities},
+            ),
+        }
+
         # Single terminal remote sync for the entire bundle, after every
-        # write (devices, activities, favorites) has landed. The remote
-        # runs one clean full pass instead of N aborted ones.
-        _progress(
-            status="running",
-            phase="remote_sync",
-            message="Triggering the remote's sync…",
-            completed_steps=completed_steps,
-            total_steps=total_steps,
-        )
-        if not self.resync_remote():
-            self._log.warning(
-                "[RESTORE] terminal remote-sync trigger was not sent "
-                "after the bundle restore"
+        # write (devices, activities, favorites, order) has landed. The
+        # remote runs one clean full pass instead of N aborted ones. The
+        # write batch records the request and sends it when it closes.
+        if announce_remote_sync:
+            _progress(
+                status="running",
+                phase="remote_sync",
+                message="Triggering the remote's sync…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
             )
+        self.resync_remote()
 
         return {
             "status": "success",
@@ -1801,7 +1871,64 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             },
             "restored_devices": restored_devices,
             "restored_activities": restored_activities,
+            "display_order": display_order,
         }
+
+    def _restore_display_order(self, kind: str, source_order: list[int], id_map: dict[int, int]) -> str:
+        """Give the restored devices or activities the bundle's display order.
+
+        A create's sort byte does not decide where the entity lands: an
+        erased X1 numbered the restored devices in creation (id) order
+        (bench_323, 2026-10-11), and the hub renumbers on every create and
+        delete. So the order is written explicitly once the entities
+        exist, one reorder per kind, and only when the live order differs.
+
+        Only when the hub holds exactly what the bundle restored (a
+        replacing restore, or a merge onto an empty hub): next to entities
+        that were already there, where the new ones go is not the
+        bundle's to decide, and they stay where the hub put them.
+
+        Returns ``"kept"`` (already in order), ``"written"``, ``"skipped"``
+        (fewer than two restored, or the hub holds others too) or
+        ``"failed"`` (the records are all written; only their order is
+        off, so this only warns).
+        """
+
+        desired = [id_map[source_id] for source_id in source_order if source_id in id_map]
+        if len(desired) < 2:
+            return "skipped"
+        if kind == "devices":
+            refreshed = self._request_devices_and_wait()
+            entities = self.state.entities("device")
+        else:
+            refreshed = self._request_activities_and_wait()
+            entities = self.state.entities("activity")
+        if not refreshed:
+            self._log.warning("[RESTORE] %s catalog not read back; display order not checked", kind)
+            return "failed"
+        live = {
+            int(entity_id) & 0xFF: _record_sort_byte(row)
+            for entity_id, row in entities.items()
+            if isinstance(row, dict)
+        }
+        if set(live) != set(desired):
+            self._log.info(
+                "[RESTORE] %s: the hub holds entities the bundle did not restore; display order left to the hub",
+                kind,
+            )
+            return "skipped"
+        live_order = sorted(live, key=lambda entity_id: _display_order_key(live[entity_id], entity_id))
+        if live_order == desired:
+            return "kept"
+        reorder = self.reorder_devices if kind == "devices" else self.reorder_activities
+        if not reorder(desired):
+            self._log.warning(
+                "[RESTORE] %s display order could not be written; the restored entities are complete",
+                kind,
+            )
+            return "failed"
+        self._log.info("[RESTORE] %s display order restored: %s", kind, desired)
+        return "written"
 
     def _run_activity_create(
         self, request: DeviceCreateRequest
