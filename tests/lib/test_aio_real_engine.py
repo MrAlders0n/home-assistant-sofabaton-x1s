@@ -38,8 +38,10 @@ def _stub_device_restore(monkeypatch, proxy, fn) -> None:
     _restore_device_outcome, which also reports a half-made device)."""
 
     monkeypatch.setattr(proxy, "_restore_device_outcome", lambda payload: (fn(payload=payload), None))
-    # The bundle's one catalog read belongs to the device phase too.
+    # The bundle's one catalog read belongs to the device phase too, and so
+    # does the closing display-order step's read-back.
     monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
+    monkeypatch.setattr(proxy, "_settle_order", lambda kind, last_ids: "kept")
 
 def _load_lib() -> types.ModuleType:
     name = "sofabaton_real_engine_test_pkg"

@@ -777,6 +777,9 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             ):
                 _abandon("input config")
                 return None
+        # The new device last in the display order (see _settle_order); the
+        # deploy's own trigger tells the remotes.
+        self._settle_order("devices", [device_id])
         return {"device_id": device_id, "status": "success"}
 
     def _run_network_callback_create(
@@ -964,6 +967,10 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
+        # The new device last in the display order before the remotes hear
+        # of it (the X1S keeps the create's sort byte, 0; see _settle_order).
+        self._settle_order("devices", [device_id])
+
         # App-parity save tail: skipped when the deploy pipeline owns the
         # batch -- a mid-batch remote-sync trigger aborts and restarts
         # the remote's multi-minute full sync (bench 2026-08-27); the
@@ -1128,6 +1135,8 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not _step.ok:
             return None
+
+        self._settle_order("devices", [device_id])
 
         # App-parity save tail: skipped when the deploy pipeline owns the
         # batch -- see the note in :meth:`_run_wifi_create_x1_roku`. This

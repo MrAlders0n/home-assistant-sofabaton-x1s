@@ -31,6 +31,20 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   devices and activities, so the remotes started syncing while the
   restore was still writing. `restore_hub_bundle()` holds its trigger in
   the caller's write batch when one is open, and opens its own otherwise.
+- X1S and X2: adding a favorite keeps the activity's shortcut order and
+  puts the new favorite last. It rewrote the order as plain id order,
+  which undid a custom order and could drop shortcuts with a higher id.
+- `restore()` and `restore_activity()` put an activity's shortcuts
+  (favorites and macro shortcuts) back in the backup's order on every
+  hub; this was done on the X1 only. An activity with macro shortcuts and
+  no favorites gets its order written too.
+- New devices and activities go last in the display order:
+  `add_device()`, `add_activity()`, `deploy_wifi_device()` and a merging
+  `restore()` write the order after the create when the hub did not
+  already put them there. The X1S kept a created device unpositioned (or
+  tied with another one), and a later delete then shifted the whole list.
+- Updating a Wifi Device that removes commands also updates the device's
+  command display order, as editing any other device does.
 
 ## 0.2.4 (2026-10-10)
 

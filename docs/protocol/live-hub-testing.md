@@ -814,6 +814,44 @@ read-back on both hubs):
   remote_sync`, the batch opened before the erase and the one
   `REMOTE_SYNC` went out after the hub name and the cache warm.
 
+## ◇ Validated: display order on create, delete and shortcut add (X1 + X1S, 2026-10-14)
+
+Ordering audit after issue #307, `bench_332_order_probe.py` (creates
+throwaway devices, an activity and copies of one activity, deletes them
+after; the real entities are only read).
+
+What the hubs do, before the fixes:
+
+- **Device create.** The X1 appends the device (sort N+1) whatever sort
+  byte the create carries (asked for 1, got 14). The X1S stores the
+  create's byte verbatim and renumbers nothing: an empty create
+  (`create_device`, sort 0) stays unpositioned, a create carrying sort 1
+  ties with the device already at 1.
+- **Activity create.** Both append (sort N+1), also on the X1S.
+- **Device delete (X1S).** Every sort above the deleted device's drops by
+  one. Deleting an unpositioned (sort 0) device therefore shifted the whole
+  list, and the first two devices fell to 0 (seen live; the X1S order was
+  put back with a family-0x11 write the same day).
+- **Shortcut add (X1S).** The X1S/X2 favorite stage was the identity table
+  `(i, i)` for 1..new id: on an activity whose shortcuts were reordered it
+  reset the table to id order (12 shortcuts reversed, one add, read back
+  1..13). The X1 stage (the current table plus the new id) kept it.
+- **Shortcut restore (X1S).** The activity restore wrote no order on the
+  X1S/X2, so a reordered activity came back in id order.
+
+The fixes (one display-order rule for every create: what was there keeps
+its place, the new entity goes last): `create_device`, `create_activity`
+and the Wifi creates write the order after the create when the stored
+positions are not already 1..N (no write on the X1, one on the X1S); a
+merging restore puts the restored entities after the existing ones; the
+favorite stage lists the current table plus the new id on every hub; the
+activity restore writes the captured shortcut order on every hub. Live
+re-run on both hubs, all checks green: new devices and activities last
+with positions 1..N, a merged restore of one device last (the X1S tie
+renumbered in the same write), the deletes leave the order as it was, a
+reversed shortcut order survives one favorite add and a restore of the
+reordered activity, every shortcut listed. The X2 is not run yet.
+
 ## ◇ Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 
 Investigation of UI-bench BUG #4 (activity 107, FWD `0xBD`, FireTV dev 4:

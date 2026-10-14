@@ -34,8 +34,9 @@ Every wire primitive these steps map to is live-validated on X1 + X1S
 (docs/protocol/live-hub-testing.md, "in-place wifi deploy" bench program).
 
 Step ``kind`` values reuse the activity/device-sync vocabulary where one
-exists (``command_rename``, ``member_replay``, ``favorite_add/delete``,
-``binding_write/delete``); five are specific to this path:
+exists (``command_rename``, ``command_sort_rewrite`` after the deletes,
+``member_replay``, ``favorite_add/delete``, ``binding_write/delete``); five
+are specific to this path:
 
 * ``command_delete``    — ``FAMILY_FAV_DELETE [dev, command_id]`` (chunk 2)
 * ``wifi_power_config`` — family-0x12 power-row rewrite (chunk 1)
@@ -345,7 +346,8 @@ def build_wifi_inplace_plan(
                 )
             )
 
-    for cid in sorted(base_ids - des_ids):
+    removed = sorted(base_ids - des_ids)
+    for cid in removed:
         command_steps.append(
             SyncStep(
                 kind="command_delete",
@@ -358,6 +360,18 @@ def build_wifi_inplace_plan(
                     "command_id": cid,
                     "command_name": baseline.slots[cid].label,
                 },
+            )
+        )
+    if removed:
+        # The hub keeps a deleted command's slot in the device's family-0x61
+        # display-sort table (X2 bench 2026-09-16); like the device sync,
+        # one rewrite of the table follows the deletes.
+        command_steps.append(
+            SyncStep(
+                kind="command_sort_rewrite",
+                label="Updating the command order…",
+                target_device_id=dev,
+                payload={"device_id": dev, "removed_command_ids": removed},
             )
         )
 
@@ -1208,11 +1222,12 @@ def _activity_plan_steps(entry: Mapping[str, Any], edited: Mapping[str, Any]) ->
     # so a device it sees referenced for the first time would get a
     # redundant add_device_to_activity replay here.
     steps = [step for step in plan if step.kind not in ("remote_sync", "member_replay")]
-    # A moved favorite is a delete plus an add, and each add stages a sort
-    # page that names only the favorites added so far: entries of other
-    # devices drop out of the order table (bench_312, X2, 2026-10-06). The
-    # planner writes the order only when the natural order differs, so a
-    # retarget always closes its favorite moves with the whole table.
+    # A moved favorite is a delete plus an add. The X1S/X2 add used to stage
+    # the identity table, so entries of other devices dropped out of the
+    # order table (bench_312, X2, 2026-10-06); it now stages the table as it
+    # stands, but a retarget still closes its favorite moves with the whole
+    # table (the planner writes the order only when the natural order
+    # differs).
     kinds = {step.kind for step in steps}
     if ("favorite_add" in kinds or "favorite_delete" in kinds) and "favorite_order" not in kinds:
         steps.append(_quick_access_order_step(activity_id, edited))

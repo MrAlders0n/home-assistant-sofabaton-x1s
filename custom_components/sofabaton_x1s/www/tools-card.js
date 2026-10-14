@@ -3536,6 +3536,8 @@ var WIFI_INPLACE_STEP_KINDS = {
   command_payload: "wifiStepCommandPayload",
   command_rename: "wifiStepCommandRename",
   command_delete: "wifiStepCommandDelete",
+  // No name on this step: the shared entity string's device-less form.
+  command_sort_rewrite: "entityStepCommandSortRewrite",
   wifi_power_config: "wifiStepPowerConfig",
   wifi_input_config: "wifiStepInputConfig",
   member_replay: "wifiStepInputSelect",

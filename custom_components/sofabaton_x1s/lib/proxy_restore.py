@@ -131,16 +131,6 @@ def _display_order_key(sort: int, entity_id: int) -> tuple[int, int, int]:
     return (0, sort, entity_id) if sort else (1, 0, entity_id)
 
 
-def _record_sort_byte(row: dict[str, Any]) -> int:
-    """The display-order byte (record body[6]) of a catalog row, ``0``
-    when the row carries no record long enough."""
-
-    raw_body = row.get("raw_body")
-    if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
-        return int(raw_body[6]) & 0xFF
-    return 0
-
-
 def _bundle_display_order(entries: list[Any]) -> list[int]:
     """Source ids of a bundle's devices or activities in display order.
 
@@ -1877,58 +1867,19 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
     def _restore_display_order(self, kind: str, source_order: list[int], id_map: dict[int, int]) -> str:
         """Give the restored devices or activities the bundle's display order.
 
-        A create's sort byte does not decide where the entity lands: an
-        erased X1 numbered the restored devices in creation (id) order
-        (bench_323, 2026-10-11), and the hub renumbers on every create and
-        delete. So the order is written explicitly once the entities
-        exist, one reorder per kind, and only when the live order differs.
-
-        Only when the hub holds exactly what the bundle restored (a
-        replacing restore, or a merge onto an empty hub): next to entities
-        that were already there, where the new ones go is not the
-        bundle's to decide, and they stay where the hub put them.
-
-        Returns ``"kept"`` (already in order), ``"written"``, ``"skipped"``
-        (fewer than two restored, or the hub holds others too) or
-        ``"failed"`` (the records are all written; only their order is
-        off, so this only warns).
+        A create's sort byte does not decide where the entity lands (the X1
+        appends, the X1S keeps the byte verbatim and can tie; bench_323 and
+        bench_332), so the order is written once the entities exist, one
+        reorder per kind (:meth:`_settle_order`): whatever the hub already
+        held keeps its order, the restored entities follow in the bundle's.
+        On an erased hub that is the bundle's order. Returns what
+        :meth:`_settle_order` did, or ``"skipped"`` when nothing was restored.
         """
 
-        desired = [id_map[source_id] for source_id in source_order if source_id in id_map]
-        if len(desired) < 2:
+        restored = [id_map[source_id] for source_id in source_order if source_id in id_map]
+        if not restored:
             return "skipped"
-        if kind == "devices":
-            refreshed = self._request_devices_and_wait()
-            entities = self.state.entities("device")
-        else:
-            refreshed = self._request_activities_and_wait()
-            entities = self.state.entities("activity")
-        if not refreshed:
-            self._log.warning("[RESTORE] %s catalog not read back; display order not checked", kind)
-            return "failed"
-        live = {
-            int(entity_id) & 0xFF: _record_sort_byte(row)
-            for entity_id, row in entities.items()
-            if isinstance(row, dict)
-        }
-        if set(live) != set(desired):
-            self._log.info(
-                "[RESTORE] %s: the hub holds entities the bundle did not restore; display order left to the hub",
-                kind,
-            )
-            return "skipped"
-        live_order = sorted(live, key=lambda entity_id: _display_order_key(live[entity_id], entity_id))
-        if live_order == desired:
-            return "kept"
-        reorder = self.reorder_devices if kind == "devices" else self.reorder_activities
-        if not reorder(desired):
-            self._log.warning(
-                "[RESTORE] %s display order could not be written; the restored entities are complete",
-                kind,
-            )
-            return "failed"
-        self._log.info("[RESTORE] %s display order restored: %s", kind, desired)
-        return "written"
+        return self._settle_order(kind, restored)
 
     def _run_activity_create(
         self, request: DeviceCreateRequest
@@ -2192,23 +2143,23 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 slot += 1
             return slot
 
-        # X1: favorites and macro shortcuts share one id space and one
-        # family-0x61 order table, and every favorite write stages that
-        # whole table. Each write used to stage only its own id (no read
-        # back on a fresh activity), so the last favorite replaced the
-        # others and no macro was ever listed; a record the table leaves
-        # out still takes a row on the remote, covering another entry
-        # (Marcel's X1, 2026-09-30). The replay now stages the table as it
-        # stands and ends with one write of the captured display order.
-        x1 = self.hub_version == HUB_VERSION_X1
-        x1_order: list[int] = sorted(
+        # Favorites and macro shortcuts share one id space and one
+        # family-0x61 order table on every hub, and every favorite write
+        # stages that whole table. Each write used to stage only its own id
+        # (X1, no read back on a fresh activity) or the identity table
+        # (X1S/X2), so the captured order was lost and macros were left out;
+        # on the X1 a record the table leaves out still takes a row on the
+        # remote, covering another entry (Marcel's X1, 2026-09-30). The replay
+        # stages the table as it stands and ends with one write of the
+        # captured display order (bench_332, X1S, 2026-10-14: the copy came
+        # back in id order).
+        qa_order: list[int] = sorted(
             int(row.get("button_id", 0)) & 0xFF
             for row in request.macros
             if isinstance(row, dict)
             and (int(row.get("button_id", 0)) & 0xFF) not in (0, ButtonName.POWER_ON, ButtonName.POWER_OFF)
         )
-        x1_macro_ids = set(x1_order)
-        x1_new_id_by_source: dict[int, int] = {macro_id: macro_id for macro_id in x1_macro_ids}
+        qa_new_id_by_source: dict[int, int] = {macro_id: macro_id for macro_id in qa_order}
 
         next_slot = 0
         for row in sorted(
@@ -2235,7 +2186,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 slot_id=slot_id,
                 refresh_after_write=False,
                 query_existing_order=False,
-                existing_order_ids=list(x1_order) if x1 else None,
+                existing_order_ids=list(qa_order),
                 repair_order=False,
             )
             if not written:
@@ -2248,13 +2199,17 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 skipped_favorites += 1
                 continue
             restored_favorites += 1
-            if x1 and written.get("fav_id") is not None:
+            if written.get("fav_id") is not None:
                 new_fav_id = int(written["fav_id"]) & 0xFF
-                x1_order = [fav_id for fav_id in x1_order if fav_id != new_fav_id] + [new_fav_id]
-                x1_new_id_by_source[int(row.get("button_id", 0)) & 0xFF] = new_fav_id
+                qa_order = [fav_id for fav_id in qa_order if fav_id != new_fav_id] + [new_fav_id]
+                qa_new_id_by_source[int(row.get("button_id", 0)) & 0xFF] = new_fav_id
 
-        if x1 and x1_order and not self._restore_x1_quick_access_order(
-            new_activity_id, x1_order, x1_new_id_by_source, request.favorites_order
+        if qa_order and not self._restore_quick_access_order(
+            new_activity_id,
+            qa_order,
+            qa_new_id_by_source,
+            request.favorites_order,
+            staged_on_hub=restored_favorites > 0,
         ):
             # The records are all written; only their display order is off.
             # Like a refused favorite, it does not fail the restore.
@@ -2299,14 +2254,16 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             skipped_input_ordinals=skipped_input_ordinals,
         )
 
-    def _restore_x1_quick_access_order(
+    def _restore_quick_access_order(
         self,
         activity_id: int,
         staged: list[int],
         new_id_by_source: dict[int, int],
         captured_order: list[int],
+        *,
+        staged_on_hub: bool = True,
     ) -> bool:
-        """Write an X1 activity's quick-access order as the backup captured it.
+        """Write an activity's quick-access order as the backup captured it.
 
         *staged* is the table the favorites replay left on the hub (every
         record listed, in write order); *new_id_by_source* maps each source
@@ -2315,6 +2272,9 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         rank, the rest follow in source-id order (an older backup without an
         order restores the pure id order). One 0x61 write and one 0x65
         commit, only when the result differs from what is staged.
+        *staged_on_hub* False (no favorite was written, so nothing staged the
+        table: an activity with macro shortcuts only) writes it regardless,
+        as the app follows every macro create with the table.
         """
 
         desired: list[int] = []
@@ -2323,7 +2283,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             if new_id is not None and new_id in staged and new_id not in desired:
                 desired.append(new_id)
         desired += [fav_id for fav_id in staged if fav_id not in desired]
-        if desired == staged:
+        if desired == staged and staged_on_hub:
             return True
 
         act_lo = activity_id & 0xFF

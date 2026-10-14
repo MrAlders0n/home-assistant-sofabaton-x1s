@@ -60,12 +60,14 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     FAMILY_DEVICE_SORT,
     OP_REMOTE_SYNC,
 )
+from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
 from custom_components.sofabaton_x1s.lib.proxy_restore import RestoreMixin, _bundle_display_order
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
-# The conftest stubs the restore's display-order step for every test that
-# is not about it; the tests below put this (captured at import) back.
+# The conftest stubs the display-order steps for every test that is not
+# about them; the tests below put these (captured at import) back.
 _REAL_RESTORE_DISPLAY_ORDER = RestoreMixin._restore_display_order
+_REAL_SETTLE_ORDER = ActivityOpsMixin._settle_order
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +571,7 @@ def _order_restore(monkeypatch, *, hub_extra_device_ids=(), sort_step_ok=True):
 
     proxy = _proxy(monkeypatch)
     monkeypatch.setattr(RestoreMixin, "_restore_display_order", _REAL_RESTORE_DISPLAY_ORDER)
+    monkeypatch.setattr(ActivityOpsMixin, "_settle_order", _REAL_SETTLE_ORDER)
     created: dict[str, list[int]] = {"devices": list(hub_extra_device_ids), "activities": []}
 
     def _restore_device(*, payload, wifi_commands_request_port=8060):
@@ -674,9 +677,9 @@ def test_restore_keeps_an_order_the_hub_already_has(monkeypatch) -> None:
     assert [event for event in wire if event[0] == "enqueue"] == [("enqueue", OP_REMOTE_SYNC, b"")]
 
 
-def test_restore_leaves_the_order_alone_next_to_existing_entities(monkeypatch) -> None:
-    """A merge onto a hub that already holds devices: where the new ones
-    go is not the bundle's to decide."""
+def test_restore_puts_restored_entities_after_the_existing_ones(monkeypatch) -> None:
+    """A merge onto a hub that already holds a device: it keeps its place,
+    the restored ones follow in the bundle's order (as any create does)."""
 
     proxy, wire = _order_restore(monkeypatch, hub_extra_device_ids=(0x01,))
     bundle = _order_bundle({1: 2, 2: 1}, {})
@@ -684,8 +687,8 @@ def test_restore_leaves_the_order_alone_next_to_existing_entities(monkeypatch) -
     result = proxy.restore_hub_bundle(bundle)
 
     assert result["status"] == "success"
-    assert result["display_order"] == {"devices": "skipped", "activities": "skipped"}
-    assert [event for event in wire if event[0] == "step"] == []
+    assert result["display_order"] == {"devices": "written", "activities": "skipped"}
+    assert _sort_order(wire, FAMILY_DEVICE_SORT) == [0x01, 0x12, 0x11]
 
 
 def test_restore_order_write_failure_only_warns(monkeypatch, caplog) -> None:

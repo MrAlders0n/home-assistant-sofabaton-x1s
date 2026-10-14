@@ -201,20 +201,23 @@ def test_empty_device_payload_shape() -> None:
 # ── create_device wrapper ───────────────────────────────────────────────
 
 
-def _stub_tail(monkeypatch, proxy: X1Proxy) -> dict[str, int]:
-    calls = {"resync": 0, "refresh": 0}
+def _stub_tail(monkeypatch, proxy: X1Proxy) -> list[Any]:
+    """The create's tail in call order: the display-order settle (which is
+    also the catalog read-back) and the remote sync."""
+
+    events: list[Any] = []
 
     def _resync(hub_version=None):
-        calls["resync"] += 1
+        events.append("resync")
         return True
 
-    def _refresh(timeout=15.0):
-        calls["refresh"] += 1
-        return True
+    def _settle(kind, last_ids):
+        events.append(("settle", kind, list(last_ids)))
+        return "written"
 
     monkeypatch.setattr(proxy, "resync_remote", _resync)
-    monkeypatch.setattr(proxy, "_request_devices_and_wait", _refresh)
-    return calls
+    monkeypatch.setattr(proxy, "_settle_order", _settle)
+    return events
 
 
 def test_create_device_builds_empty_payload_and_syncs(monkeypatch) -> None:
@@ -237,7 +240,9 @@ def test_create_device_builds_empty_payload_and_syncs(monkeypatch) -> None:
     assert payload["device"]["name"] == "Hue Bridge"
     assert payload["device"]["device_class"] == "wifi_hue"
     assert payload["commands"] == []
-    assert calls == {"resync": 1, "refresh": 1}
+    # The new device last in the display order (the X1S keeps it at sort 0
+    # otherwise, bench_332), before the remotes hear of it.
+    assert calls == [("settle", "devices", [0x2A]), "resync"]
 
 
 def test_create_device_payload_passes_restore_validation(monkeypatch) -> None:
@@ -298,7 +303,7 @@ def test_create_device_returns_none_on_restore_failure(monkeypatch) -> None:
     calls = _stub_tail(monkeypatch, proxy)
     monkeypatch.setattr(proxy, "restore_device", lambda payload, **kw: None)
     assert proxy.create_device("TV", device_class="ir") is None
-    assert calls == {"resync": 0, "refresh": 0}
+    assert calls == []
 
 
 def test_create_device_returns_none_without_assigned_id(monkeypatch) -> None:
@@ -307,7 +312,7 @@ def test_create_device_returns_none_without_assigned_id(monkeypatch) -> None:
     calls = _stub_tail(monkeypatch, proxy)
     monkeypatch.setattr(proxy, "restore_device", lambda payload, **kw: {"status": "success", "device_id": 0})
     assert proxy.create_device("TV", device_class="ir") is None
-    assert calls == {"resync": 0, "refresh": 0}
+    assert calls == []
 
 
 # ── zero-command runs through both create pipelines ─────────────────────

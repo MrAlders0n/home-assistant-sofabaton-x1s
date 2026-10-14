@@ -464,3 +464,16 @@ def _restore_display_order_unchecked(monkeypatch):
     from custom_components.sofabaton_x1s.lib.proxy_restore import RestoreMixin
 
     monkeypatch.setattr(RestoreMixin, "_restore_display_order", lambda self, kind, source_order, id_map: "skipped")
+
+
+@pytest.fixture(autouse=True)
+def _settle_order_unchecked(monkeypatch):
+    """Device and activity creates end by reading the catalog back to put
+    the new entity last in the display order (_settle_order). Without a hub
+    that read would wait out its timeout, so by default the step reports
+    "kept". Tests of the step put the real method back (captured at import,
+    before this fixture runs)."""
+
+    from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
+
+    monkeypatch.setattr(ActivityOpsMixin, "_settle_order", lambda self, kind, last_ids: "kept")

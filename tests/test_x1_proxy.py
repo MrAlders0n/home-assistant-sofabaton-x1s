@@ -1083,6 +1083,38 @@ def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_ve
     assert [opcode for opcode, _payload in sent if (opcode & 0xFF) == 0x64] == []
 
 
+@pytest.mark.parametrize("hub_version", [HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2])
+def test_create_wifi_device_settles_the_order_before_the_save_tail(monkeypatch, hub_version) -> None:
+    """The new device goes last in the display order before the remotes hear
+    of it (the X1S keeps a create's sort byte, 0: bench_332), on the Roku
+    path (X1) and the virtual-IP path (X1S/X2), and also when the deploy
+    owns the trigger."""
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=hub_version
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_assigned_device_id", lambda timeout=5.0: 0x07)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
+    )
+    events: list = []
+    monkeypatch.setattr(
+        proxy, "_send_cmd_frame", lambda opcode, payload: events.append("sync" if (opcode & 0xFF) == 0x64 else "frame")
+    )
+    monkeypatch.setattr(proxy, "_settle_order", lambda kind, ids: events.append(("settle", kind, list(ids))) or "kept")
+
+    assert proxy.create_wifi_device(commands=["Launch One"], ip_address="192.168.1.10") is not None
+    assert events.count(("settle", "devices", [0x07])) == 1
+    assert events.index(("settle", "devices", [0x07])) < events.index("sync")
+
+    events.clear()
+    proxy.create_wifi_device(commands=["Launch One"], ip_address="192.168.1.10", send_remote_sync=False)
+    assert ("settle", "devices", [0x07]) in events and "sync" not in events
+
+
 def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
@@ -4405,6 +4437,13 @@ def test_command_to_favorite_x1s_replays_sequence(monkeypatch) -> None:
 
     requested: list[int] = []
     monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+    # A reordered activity: entry 3 first. The stage keeps that order and
+    # puts the new favorite last; it used to be the identity table 1..4,
+    # which reset a custom order to id order (bench_332, X1S, 2026-10-14).
+    order_reads: list[int] = []
+    monkeypatch.setattr(
+        proxy, "request_favorites_order", lambda act: order_reads.append(act) or [(3, 1), (1, 2), (2, 3)]
+    )
 
     cleared: list[tuple[int, bool, bool, bool]] = []
     monkeypatch.setattr(
@@ -4429,7 +4468,9 @@ def test_command_to_favorite_x1s_replays_sequence(monkeypatch) -> None:
     assert sent[0][1] == bytes.fromhex(
         "01 00 01 01 00 01 68 00 01 00 00 00 00 4e 23 03 00 00 00 00 00 00 00 00 df"
     )
-    assert sent[1][1] == bytes.fromhex("01 00 01 01 00 01 68 01 01 02 02 03 03 04 04 7e")
+    assert order_reads == [0x68]
+    assert sent[1][1] == proxy._build_favorites_reorder_payload(0x68, [3, 1, 2, 4])
+    assert list(sent[1][1][7:-1]) == [3, 1, 1, 2, 2, 3, 4, 4]
     assert sent[2][1] == b"h"
     assert ack_calls == [
         [(0x013E, None), (0x0103, None)],
@@ -4801,6 +4842,7 @@ def test_command_to_favorite_x1s_does_not_pin_ack_first_byte(monkeypatch) -> Non
     monkeypatch.setattr(proxy, "wait_for_ack_any", _wait_for_ack_any)
     monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: True)
 
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda act: [])
     result = proxy.command_to_favorite(0x65, 0x04, 0x02, slot_id=3)
 
     assert result is not None

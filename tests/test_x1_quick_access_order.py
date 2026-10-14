@@ -255,15 +255,36 @@ def test_x1_restore_skips_the_closing_write_when_the_staged_order_is_right(monke
     assert [family for _name, family, _payload in steps if family in (0x61, 0x65)] == []
 
 
-def test_x1s_restore_is_unchanged(monkeypatch) -> None:
+def test_x1s_restore_stages_the_table_and_writes_the_captured_order(monkeypatch) -> None:
+    """The X1S (and X2) take the same path since 2026-10-14: the copy of a
+    reordered activity came back in id order (bench_332, X1S)."""
+
     proxy, favorite_calls, steps = _restoring_proxy(monkeypatch, HUB_VERSION_X1S)
 
     proxy.restore_activity(
-        _restore_backup([1, 2, 3, 4]), device_id_map={11: 0x21, 12: 0x22}, send_remote_sync=False
+        _restore_backup([4, 2, 1, 3]), device_id_map={11: 0x21, 12: 0x22}, send_remote_sync=False
     )
 
-    assert all(call["existing_order_ids"] is None for call in favorite_calls)
-    assert [family for _name, family, _payload in steps if family in (0x61, 0x65)] == []
+    assert [call["existing_order_ids"] for call in favorite_calls] == [[2], [2, 1], [2, 1, 3]]
+    assert [(family, _order_ids(payload)) for _name, family, payload in steps if family == 0x61] == [
+        (0x61, [4, 2, 1, 3])
+    ]
+    assert [family for _name, family, _payload in steps][-2:] == [0x61, 0x65]
+
+
+def test_restore_writes_the_table_of_an_activity_with_macro_shortcuts_only(monkeypatch) -> None:
+    """No favorite write staged the table, so the captured order is written
+    even when it equals the macros' own order (the app follows every macro
+    create with the table)."""
+
+    proxy, favorite_calls, steps = _restoring_proxy(monkeypatch, HUB_VERSION_X1S)
+    backup = _restore_backup([2])
+    backup["favorite_slots"] = []
+
+    proxy.restore_activity(backup, device_id_map={11: 0x21, 12: 0x22}, send_remote_sync=False)
+
+    assert favorite_calls == []
+    assert [(family, _order_ids(payload)) for _name, family, payload in steps if family == 0x61] == [(0x61, [2])]
 
 
 # -- the sync-time repair ------------------------------------------------------------------------
