@@ -73,6 +73,16 @@ export class ControlPanelApi {
     });
   }
 
+  // Global setting: the panel's name in the sidebar ("" = the product name).
+  setSidebarPanelTitle(entryId: string, title: string) {
+    return this.hass.callWS<{ ok: boolean; title: string }>({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "sidebar_panel_title",
+      title,
+    });
+  }
+
   runAction(entryId: string, action: HubAction) {
     return this.hass.callWS({
       type: "sofabaton_x1s/control_panel/run_action",

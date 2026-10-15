@@ -98,6 +98,8 @@ export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   hub_click_action?: HubClickAction;
   sidebar_panel?: SidebarPanelMode;
+  /** The panel's name in the HA sidebar (the product name until renamed). */
+  sidebar_panel_title?: string;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }

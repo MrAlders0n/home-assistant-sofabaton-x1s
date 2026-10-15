@@ -51,6 +51,11 @@ export function sidebarPanelMode(snapshot: ControlPanelSnapshot): SidebarPanelMo
   return mode === "all" || mode === "admin" ? mode : "off";
 }
 
+export function sidebarPanelTitle(snapshot: ControlPanelSnapshot): string {
+  const title = String(snapshot.state?.sidebar_panel_title ?? "").trim();
+  return title || TOOLS_CARD_STRINGS.sidebarPanel.title;
+}
+
 export function hubClickAction(snapshot: ControlPanelSnapshot): HubClickAction {
   const action = snapshot.state?.hub_click_action;
   return action === "send" || action === "copy" ? action : "none";

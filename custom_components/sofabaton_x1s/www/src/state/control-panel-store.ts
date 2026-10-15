@@ -726,6 +726,38 @@ export class ControlPanelStore {
     };
   }
 
+  /**
+   * Rename the sidebar panel (global; "" restores the product name). The
+   * backend re-registers a shown panel, so the sidebar follows at once.
+   * Resolves with `null` on success (state reloaded, so the Settings tab
+   * shows the new name) or a failure message for the rename dialog.
+   */
+  async renameSidebarPanel(title: string): Promise<string | null> {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "sidebar_panel" };
+    this.emit();
+    try {
+      const result = await this.api().setSidebarPanelTitle(hub.entry_id, title);
+      if (this._snapshot.state) {
+        this._snapshot = {
+          ...this._snapshot,
+          state: { ...this._snapshot.state, sidebar_panel_title: result?.title ?? title },
+        };
+      }
+      await this.loadControlPanelState();
+      return null;
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
+
   private _applyOptimisticHubClickAction(value: HubClickAction) {
     if (!this._snapshot.state) return;
     this._snapshot = {

@@ -44,6 +44,16 @@ This setting applies to all hubs and takes effect immediately. If the panel
 is off, use the [dashboard Control Panel card](../README.md#sofabaton-control-panel)
 to enable it again.
 
+## ◇ Rename the sidebar entry
+
+While the panel is on, the **Sidebar Panel** setting shows the entry's name
+with a pencil next to it. Select the pencil, enter a new name of up to 30
+characters, and select **Save**. The sidebar updates right away.
+
+The name is the same for everyone who sees the panel. Leave it empty to go
+back to **Sofabaton X**. Renaming doesn't change the
+[navigation paths](#-link-from-a-dashboard), so existing links keep working.
+
 ## ◇ Reorder or hide the sidebar entry
 
 Use Home Assistant's [sidebar customization](https://www.home-assistant.io/dashboards/dashboards/#reorganizing-items-in-the-sidebar)

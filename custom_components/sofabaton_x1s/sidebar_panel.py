@@ -9,7 +9,9 @@ The panel is a plain custom panel: the frontend loads ``sidebar-panel.js``
 only when an admin opens the control panel) and mounts the
 ``sofabaton-x-panel`` element that module defines. Registration follows the stored setting: at every
 hub setup, when the setting flips, and the panel goes when the last hub
-unloads, together with the Lovelace resources.
+unloads, together with the Lovelace resources. The name in the sidebar is
+the stored ``sidebar_panel_title`` (the product name until someone renames
+it); a rename re-registers the panel the same way.
 """
 
 from __future__ import annotations
@@ -21,13 +23,17 @@ from homeassistant.core import HomeAssistant
 
 from . import frontend_resources, runtime
 from .const import DOMAIN
-from .ui_settings_store import SIDEBAR_PANEL_ADMIN, SIDEBAR_PANEL_OFF
+from .ui_settings_store import (
+    SIDEBAR_PANEL_ADMIN,
+    SIDEBAR_PANEL_OFF,
+    SIDEBAR_PANEL_TITLE_DEFAULT,
+)
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
 
 SIDEBAR_PANEL_URL_PATH = "sofabaton-x"
-SIDEBAR_PANEL_TITLE = "Sofabaton X"
+SIDEBAR_PANEL_TITLE = SIDEBAR_PANEL_TITLE_DEFAULT
 SIDEBAR_PANEL_ICON = "mdi:remote-tv"
 # The full-page host element sidebar-panel.js defines.
 SIDEBAR_PANEL_ELEMENT = "sofabaton-x-panel"
@@ -49,17 +55,26 @@ async def async_sync_sidebar_panel(hass: HomeAssistant) -> bool:
     if mode == SIDEBAR_PANEL_OFF:
         async_remove_sidebar_panel(hass)
     else:
-        await async_register_sidebar_panel(hass, require_admin=mode == SIDEBAR_PANEL_ADMIN)
+        await async_register_sidebar_panel(
+            hass,
+            require_admin=mode == SIDEBAR_PANEL_ADMIN,
+            title=ui_settings.sidebar_panel_title,
+        )
     return sidebar_panel_registered(hass)
 
 
-async def async_register_sidebar_panel(hass: HomeAssistant, *, require_admin: bool = False) -> None:
+async def async_register_sidebar_panel(
+    hass: HomeAssistant,
+    *,
+    require_admin: bool = False,
+    title: str = SIDEBAR_PANEL_TITLE,
+) -> None:
     """Register (or refresh) the sidebar panel.
 
     ``update=True`` keeps a repeat registration (a second hub setting up, a
-    change of mode while already on) from raising; the frontend re-reads
-    the panel list either way, so an all-users -> admins-only switch takes
-    effect live.
+    change of mode or name while already on) from raising; the frontend
+    re-reads the panel list either way, so an all-users -> admins-only
+    switch or a rename takes effect live.
     """
     domain_data = hass.data.setdefault(DOMAIN, {})
     version = await frontend_resources._async_get_integration_version(hass)
@@ -69,7 +84,7 @@ async def async_register_sidebar_panel(hass: HomeAssistant, *, require_admin: bo
     frontend.async_register_built_in_panel(
         hass,
         "custom",
-        sidebar_title=SIDEBAR_PANEL_TITLE,
+        sidebar_title=title,
         sidebar_icon=SIDEBAR_PANEL_ICON,
         frontend_url_path=SIDEBAR_PANEL_URL_PATH,
         config={
@@ -87,7 +102,7 @@ async def async_register_sidebar_panel(hass: HomeAssistant, *, require_admin: bo
         _LOGGER.info(
             "[%s] Registered the %s sidebar panel (%s, %s)",
             DOMAIN,
-            SIDEBAR_PANEL_TITLE,
+            title,
             module_url,
             "admins only" if require_admin else "all users",
         )

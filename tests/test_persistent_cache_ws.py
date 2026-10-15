@@ -39,6 +39,7 @@ class _UiSettingsStore:
         self.hub_click_action = hub_click_action
         self.set_hub_click_action_to = None
         self.sidebar_panel_mode = sidebar_panel_mode
+        self.sidebar_panel_title = "Sofabaton X"
 
     async def async_set_sidebar_panel_mode(self, mode):
         self.sidebar_panel_mode = mode
@@ -310,6 +311,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
             # Global Hub-tab click behavior from the UI settings store.
             "hub_click_action": "send",
             "sidebar_panel": "off",
+            "sidebar_panel_title": "Sofabaton X",
             "tools_frontend_version": "2026.5.1",
             "hubs": [
                 {

@@ -21,6 +21,7 @@ import {
   hubIcon,
   persistentCacheEnabled,
   sidebarPanelMode,
+  sidebarPanelTitle,
   hubActiveRefreshLabel,
   hubExternalCommandLabel,
   hubRefreshBusy,
@@ -38,6 +39,12 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderRenameDialog } from "./components/rename-dialog";
 import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
+import {
+  normalizeSidebarPanelName,
+  sanitizeSidebarPanelName,
+  SIDEBAR_PANEL_NAME_MAX,
+} from "./shared/sidebar-panel-name";
+import { phraseNameStyles } from "./components/phrase-name";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
 import { DOC_URLS } from "./shared/doc-links";
@@ -184,7 +191,7 @@ const previewStyles = css`
 `;
 
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles, previewStyles];
+  static styles = [cardStyles, previewStyles, phraseNameStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so
@@ -232,6 +239,11 @@ class SofabatonControlPanelCard extends LitElement {
   private _hubRenameDraft = "";
   private _hubRenameError = "";
   private _hubRenameBusy = false;
+  // Settings tab sidebar panel rename dialog (the pencil behind its name).
+  private _sidebarRenameOpen = false;
+  private _sidebarRenameDraft = "";
+  private _sidebarRenameError = "";
+  private _sidebarRenameBusy = false;
   private _addDeviceBusy = false;
   private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
@@ -717,6 +729,68 @@ class SofabatonControlPanelCard extends LitElement {
     });
   }
 
+  private openSidebarRename() {
+    this._sidebarRenameDraft = sidebarPanelTitle(this._snapshot);
+    this._sidebarRenameError = "";
+    this._sidebarRenameBusy = false;
+    this._sidebarRenameOpen = true;
+    this.requestUpdate();
+  }
+
+  private closeSidebarRename() {
+    if (this._sidebarRenameBusy) return;
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+  }
+
+  private handleSidebarRenameInput(value: string) {
+    this._sidebarRenameDraft = sanitizeSidebarPanelName(value);
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+  }
+
+  private async confirmSidebarRename() {
+    if (this._sidebarRenameBusy) return;
+    // Empty restores the product name (the backend stores nothing then).
+    const next = normalizeSidebarPanelName(this._sidebarRenameDraft);
+    if ((next || TOOLS_CARD_STRINGS.sidebarPanel.title) === sidebarPanelTitle(this._snapshot)) {
+      this.closeSidebarRename();
+      return;
+    }
+    this._sidebarRenameBusy = true;
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+    const error = await this._store.renameSidebarPanel(next);
+    this._sidebarRenameBusy = false;
+    if (error) {
+      this._sidebarRenameError = error;
+      this.requestUpdate();
+      return;
+    }
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this.requestUpdate();
+  }
+
+  private renderSidebarRenameDialog() {
+    return renderRenameDialog({
+      open: this._sidebarRenameOpen,
+      title: TOOLS_CARD_STRINGS.settings.renameSidebarPanel,
+      label: TOOLS_CARD_STRINGS.settings.sidebarPanelNameLabel,
+      helper: TOOLS_CARD_STRINGS.settings.sidebarPanelNameHelper,
+      value: this._sidebarRenameDraft,
+      error: this._sidebarRenameError,
+      maxLength: SIDEBAR_PANEL_NAME_MAX,
+      busy: this._sidebarRenameBusy,
+      inputId: "sb-settings-sidebar-name",
+      onInput: (value) => this.handleSidebarRenameInput(value),
+      onCancel: () => this.closeSidebarRename(),
+      onConfirm: () => void this.confirmSidebarRename(),
+    });
+  }
+
   private handleSettingToggle(setting: SettingKey, enabled: boolean) {
     void this._store.setSetting(setting, enabled);
   }
@@ -1093,6 +1167,7 @@ class SofabatonControlPanelCard extends LitElement {
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
       sidebarPanelMode: sidebarPanelMode(this._snapshot),
+      sidebarPanelTitle: sidebarPanelTitle(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -1102,6 +1177,7 @@ class SofabatonControlPanelCard extends LitElement {
       onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
+      onRenameSidebarPanel: () => this.openSidebarRename(),
     });
 
     if (this._snapshot.selectedTab === "logs") {
@@ -1250,6 +1326,7 @@ class SofabatonControlPanelCard extends LitElement {
     return html`
       <ha-card>
         ${this.renderHubRenameDialog()}
+        ${this.renderSidebarRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel()
             ? null

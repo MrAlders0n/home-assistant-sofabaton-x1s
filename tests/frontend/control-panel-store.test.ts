@@ -611,6 +611,57 @@ test("setSidebarPanelMode persists the mode through set_setting", async () => {
   assert.equal(store.snapshot.state?.sidebar_panel, "all");
 });
 
+test("renameSidebarPanel writes the name through set_setting and reloads", async () => {
+  const { store } = createStore();
+  const messages: Record<string, unknown>[] = [];
+  let title = "Sofabaton X";
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, sidebar_panel: "all", sidebar_panel_title: title }),
+        "sofabaton_x1s/control_panel/set_setting": (message) => {
+          messages.push(message);
+          title = String(message.title) || "Sofabaton X";
+          return { ok: true, title };
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  const pending = store.renameSidebarPanel("Living room");
+  assert.equal(store.snapshot.pendingSettingKey, "sidebar_panel");
+  assert.equal(await pending, null);
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].setting, "sidebar_panel_title");
+  assert.equal(messages[0].title, "Living room");
+  assert.equal(messages[0].entry_id, "hub-1");
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.sidebar_panel_title, "Living room");
+});
+
+test("renameSidebarPanel returns the failure and keeps the old name", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, sidebar_panel: "all", sidebar_panel_title: "Remote" }),
+        "sofabaton_x1s/control_panel/set_setting": () => {
+          throw new Error("backend failed");
+        },
+      },
+    }),
+  );
+  await store.loadState();
+
+  assert.equal(await store.renameSidebarPanel("Living room"), "backend failed");
+  assert.equal(store.snapshot.pendingSettingKey, null);
+  assert.equal(store.snapshot.state?.sidebar_panel_title, "Remote");
+});
+
 test("setHubClickAction applies optimistic state and rolls back on failure", async () => {
   const { store } = createStore();
   store.connected();

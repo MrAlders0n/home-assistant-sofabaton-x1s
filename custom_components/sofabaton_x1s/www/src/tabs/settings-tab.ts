@@ -17,6 +17,7 @@ import {
   proxyClientConnected,
 } from "../shared/utils/control-panel-selectors";
 import { renderSettingTile } from "../components/setting-tile";
+import { phraseWithName } from "../components/phrase-name";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 export function renderSettingsTab(params: {
@@ -26,6 +27,8 @@ export function renderSettingsTab(params: {
   hass: HassLike | null;
   persistentCacheEnabled: boolean;
   sidebarPanelMode: SidebarPanelMode;
+  /** The panel's name in the HA sidebar. */
+  sidebarPanelTitle: string;
   hubClickAction: HubClickAction;
   hubCommandBusy: boolean;
   pendingSettingKey: PendingSettingKey | null;
@@ -36,6 +39,8 @@ export function renderSettingsTab(params: {
   onRunAction: (action: HubAction) => void;
   /** Opens the hub rename dialog (the card owns the dialog state). */
   onRenameHub: () => void;
+  /** Opens the sidebar panel rename dialog (the card owns the dialog state). */
+  onRenameSidebarPanel: () => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -56,6 +61,25 @@ export function renderSettingsTab(params: {
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key: Exclude<SettingKey, "persistent_cache">) => !!params.hub?.settings?.[key];
+  // While the panel is in the sidebar its name is the user's own: a chip
+  // with the rename pencil right behind it.
+  const sidebarPanelDescription = params.sidebarPanelMode === "off"
+    ? TOOLS_CARD_STRINGS.settings.sidebarPanelDescription(params.sidebarPanelTitle)
+    : phraseWithName(
+      TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+      params.sidebarPanelTitle,
+      html`<button
+        class="icon-btn hub-rename-btn setting-inline-rename-btn"
+        ?disabled=${busy}
+        aria-label=${TOOLS_CARD_STRINGS.settings.renameSidebarPanel}
+        title=${TOOLS_CARD_STRINGS.settings.renameSidebarPanel}
+        @pointerdown=${(event: Event) => event.stopPropagation()}
+        @click=${(event: Event) => {
+          event.stopPropagation();
+          params.onRenameSidebarPanel();
+        }}
+      ><ha-icon icon="mdi:pencil"></ha-icon></button>`,
+    );
 
   return html`
     <div class="hub-tab-layout">
@@ -148,7 +172,7 @@ export function renderSettingsTab(params: {
             })}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
-              description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+              description: sidebarPanelDescription,
               classes: busy ? "disabled" : "",
               footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
               control: html`<select

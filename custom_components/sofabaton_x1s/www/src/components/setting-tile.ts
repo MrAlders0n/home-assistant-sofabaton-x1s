@@ -2,7 +2,8 @@ import { html, nothing } from "lit";
 
 export function renderSettingTile(params: {
   title: string;
-  description: string;
+  /** Text, or markup for a description with inline parts (a name chip). */
+  description: unknown;
   classes?: string;
   control: unknown;
   footerLabel?: string;

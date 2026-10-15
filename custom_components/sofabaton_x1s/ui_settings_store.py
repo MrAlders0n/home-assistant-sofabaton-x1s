@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -32,6 +33,22 @@ SIDEBAR_PANEL_MODES = (
 )
 SIDEBAR_PANEL_DEFAULT = SIDEBAR_PANEL_ALL
 
+# The panel's name in the sidebar: one name for everyone who sees the
+# panel (HA panels carry a single title). Unset means the product name.
+SIDEBAR_PANEL_TITLE_DEFAULT = "Sofabaton X"
+SIDEBAR_PANEL_TITLE_MAX = 30
+
+
+def normalize_sidebar_panel_title(value: Any) -> str:
+    """Whitespace collapsed to single spaces, control characters dropped.
+
+    The card applies the same rule (www/src/shared/sidebar-panel-name.ts).
+    """
+    kept = "".join(
+        ch for ch in str(value or "") if ch.isspace() or unicodedata.category(ch) != "Cc"
+    )
+    return " ".join(kept.split())
+
 
 class UiSettingsStore:
     """Global (all-hubs) control-panel UI settings, persisted across restarts."""
@@ -56,6 +73,11 @@ class UiSettingsStore:
             sidebar_panel = loaded.get("sidebar_panel")
             if sidebar_panel in SIDEBAR_PANEL_MODES:
                 self._data["sidebar_panel"] = sidebar_panel
+            title = loaded.get("sidebar_panel_title")
+            if isinstance(title, str):
+                title = normalize_sidebar_panel_title(title)
+                if title and len(title) <= SIDEBAR_PANEL_TITLE_MAX:
+                    self._data["sidebar_panel_title"] = title
 
     @property
     def hub_click_action(self) -> str:
@@ -78,3 +100,22 @@ class UiSettingsStore:
             raise ValueError(f"Invalid sidebar_panel mode: {mode!r}")
         self._data["sidebar_panel"] = mode
         await self._store.async_save(self._data)
+
+    @property
+    def sidebar_panel_title(self) -> str:
+        return self._data.get("sidebar_panel_title") or SIDEBAR_PANEL_TITLE_DEFAULT
+
+    async def async_set_sidebar_panel_title(self, title: str) -> str:
+        """Store the panel's sidebar name; empty or the default clears it.
+
+        Returns the name now in effect.
+        """
+        normalized = normalize_sidebar_panel_title(title)
+        if len(normalized) > SIDEBAR_PANEL_TITLE_MAX:
+            raise ValueError(f"sidebar_panel_title is longer than {SIDEBAR_PANEL_TITLE_MAX} characters")
+        if normalized and normalized != SIDEBAR_PANEL_TITLE_DEFAULT:
+            self._data["sidebar_panel_title"] = normalized
+        else:
+            self._data.pop("sidebar_panel_title", None)
+        await self._store.async_save(self._data)
+        return self.sidebar_panel_title

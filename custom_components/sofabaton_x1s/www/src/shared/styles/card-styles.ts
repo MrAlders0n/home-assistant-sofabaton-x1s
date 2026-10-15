@@ -689,6 +689,9 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-rename-btn { width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0; }
   .hub-rename-btn ha-icon { --mdc-icon-size: 15px; }
+  /* The rename pencil inside a setting's sentence, right behind the name
+     chip; the negative block margins keep the line as tall as the text. */
+  .setting-inline-rename-btn { vertical-align: middle; margin-block: -4px; margin-inline-start: 4px; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }

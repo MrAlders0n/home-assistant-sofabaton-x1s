@@ -1598,6 +1598,9 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-rename-btn { width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0; }
   .hub-rename-btn ha-icon { --mdc-icon-size: 15px; }
+  /* The rename pencil inside a setting's sentence, right behind the name
+     chip; the negative block margins keep the line as tall as the text. */
+  .setting-inline-rename-btn { vertical-align: middle; margin-block: -4px; margin-inline-start: 4px; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
@@ -1832,8 +1835,8 @@ var TOOLS_CARD_STRINGS_EN = {
     hubCommandInProgress: "Hub command in progress\u2026"
   },
   sidebarPanel: {
-    // The sidebar entry and the panel header. A product name: the same in
-    // every language.
+    // The sidebar entry's name until someone renames it. A product name:
+    // the same in every language.
     title: "Sofabaton X"
   },
   adminOnly: {
@@ -1950,11 +1953,15 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
+    // The name is the panel's sidebar name (renameable while it is shown).
+    sidebarPanelDescription: (name) => `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
+    renameSidebarPanel: "Rename sidebar panel",
+    sidebarPanelNameLabel: "Name in the sidebar",
+    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
     hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
@@ -2984,6 +2991,15 @@ var ControlPanelApi = class {
       value
     });
   }
+  // Global setting: the panel's name in the sidebar ("" = the product name).
+  setSidebarPanelTitle(entryId, title) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "sidebar_panel_title",
+      title
+    });
+  }
   runAction(entryId, action) {
     return this.hass.callWS({
       type: "sofabaton_x1s/control_panel/run_action",
@@ -3706,6 +3722,10 @@ function persistentCacheEnabled(snapshot) {
 function sidebarPanelMode(snapshot) {
   const mode = snapshot.state?.sidebar_panel;
   return mode === "all" || mode === "admin" ? mode : "off";
+}
+function sidebarPanelTitle(snapshot) {
+  const title = String(snapshot.state?.sidebar_panel_title ?? "").trim();
+  return title || TOOLS_CARD_STRINGS.sidebarPanel.title;
 }
 function hubClickAction(snapshot) {
   const action = snapshot.state?.hub_click_action;
@@ -4653,6 +4673,37 @@ var ControlPanelStore = class {
       state: { ...this._snapshot.state, sidebar_panel: value }
     };
   }
+  /**
+   * Rename the sidebar panel (global; "" restores the product name). The
+   * backend re-registers a shown panel, so the sidebar follows at once.
+   * Resolves with `null` on success (state reloaded, so the Settings tab
+   * shows the new name) or a failure message for the rename dialog.
+   */
+  async renameSidebarPanel(title) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "sidebar_panel" };
+    this.emit();
+    try {
+      const result = await this.api().setSidebarPanelTitle(hub.entry_id, title);
+      if (this._snapshot.state) {
+        this._snapshot = {
+          ...this._snapshot,
+          state: { ...this._snapshot.state, sidebar_panel_title: result?.title ?? title }
+        };
+      }
+      await this.loadControlPanelState();
+      return null;
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
+  }
   _applyOptimisticHubClickAction(value) {
     if (!this._snapshot.state) return;
     this._snapshot = {
@@ -5592,6 +5643,16 @@ function renderSettingTile(params) {
   `;
 }
 
+// custom_components/sofabaton_x1s/www/src/components/phrase-name.ts
+var NAME_SENTINEL = "\0";
+function phraseWithName(phrase, name, after = A) {
+  const [head, tail = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
+  return b2`${head}<span class="phrase-name">${name}</span>${after}${tail}`;
+}
+var phraseNameStyles = i`
+  .phrase-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+`;
+
 // custom_components/sofabaton_x1s/www/src/tabs/settings-tab.ts
 function renderSettingsTab(params) {
   if (params.loading) return b2`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
@@ -5609,6 +5670,21 @@ function renderSettingsTab(params) {
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key) => !!params.hub?.settings?.[key];
+  const sidebarPanelDescription = params.sidebarPanelMode === "off" ? TOOLS_CARD_STRINGS.settings.sidebarPanelDescription(params.sidebarPanelTitle) : phraseWithName(
+    TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+    params.sidebarPanelTitle,
+    b2`<button
+        class="icon-btn hub-rename-btn setting-inline-rename-btn"
+        ?disabled=${busy}
+        aria-label=${TOOLS_CARD_STRINGS.settings.renameSidebarPanel}
+        title=${TOOLS_CARD_STRINGS.settings.renameSidebarPanel}
+        @pointerdown=${(event) => event.stopPropagation()}
+        @click=${(event) => {
+      event.stopPropagation();
+      params.onRenameSidebarPanel();
+    }}
+      ><ha-icon icon="mdi:pencil"></ha-icon></button>`
+  );
   return b2`
     <div class="hub-tab-layout">
       <div class="settings-hub-header">
@@ -5701,7 +5777,7 @@ function renderSettingsTab(params) {
   })}
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
-    description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+    description: sidebarPanelDescription,
     classes: busy ? "disabled" : "",
     footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
     control: b2`<select
@@ -5874,6 +5950,17 @@ function renderRenameDialog(params) {
       </div>
     </div>
   `;
+}
+
+// custom_components/sofabaton_x1s/www/src/shared/sidebar-panel-name.ts
+var SIDEBAR_PANEL_NAME_MAX = 30;
+var CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]+/g;
+function sanitizeSidebarPanelName(value) {
+  const text = String(value ?? "").replace(/[\t\n\r]/g, " ").replace(CONTROL_CHARS, "");
+  return Array.from(text).slice(0, SIDEBAR_PANEL_NAME_MAX).join("");
+}
+function normalizeSidebarPanelName(value) {
+  return sanitizeSidebarPanelName(value).replace(/\s+/g, " ").trim();
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/cache-tab.ts
@@ -17689,11 +17776,6 @@ function hubEventModalTitle(key) {
   };
   return titles[key];
 }
-var NAME_SENTINEL = "\0";
-function phraseWithName(phrase, name) {
-  const [before, after = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
-  return b2`${before}<span class="hub-event-name">${name}</span>${after}`;
-}
 var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   constructor() {
     super(...arguments);
@@ -20353,7 +20435,7 @@ _SofabatonWifiCommandsTab.properties = {
   _commandsSaveError: { state: true },
   lastHubEvent: { attribute: false }
 };
-_SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, i`
+_SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -20548,9 +20630,6 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
-    /* User-chosen label inside an event phrase: a subtle tinted chip marks
-       it as the user's own name rather than part of the sentence. */
-    .hub-event-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
     .wifi-events-stale { color: var(--warning-color, #b58a00); }
     .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
     .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }
@@ -22247,6 +22326,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._hubRenameDraft = "";
     this._hubRenameError = "";
     this._hubRenameBusy = false;
+    // Settings tab sidebar panel rename dialog (the pencil behind its name).
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this._sidebarRenameError = "";
+    this._sidebarRenameBusy = false;
     this._addDeviceBusy = false;
     this._addDeviceError = null;
     this._addDeviceClass = "";
@@ -22649,6 +22733,62 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onConfirm: () => void this.confirmHubRename()
     });
   }
+  openSidebarRename() {
+    this._sidebarRenameDraft = sidebarPanelTitle(this._snapshot);
+    this._sidebarRenameError = "";
+    this._sidebarRenameBusy = false;
+    this._sidebarRenameOpen = true;
+    this.requestUpdate();
+  }
+  closeSidebarRename() {
+    if (this._sidebarRenameBusy) return;
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+  }
+  handleSidebarRenameInput(value) {
+    this._sidebarRenameDraft = sanitizeSidebarPanelName(value);
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+  }
+  async confirmSidebarRename() {
+    if (this._sidebarRenameBusy) return;
+    const next = normalizeSidebarPanelName(this._sidebarRenameDraft);
+    if ((next || TOOLS_CARD_STRINGS.sidebarPanel.title) === sidebarPanelTitle(this._snapshot)) {
+      this.closeSidebarRename();
+      return;
+    }
+    this._sidebarRenameBusy = true;
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+    const error = await this._store.renameSidebarPanel(next);
+    this._sidebarRenameBusy = false;
+    if (error) {
+      this._sidebarRenameError = error;
+      this.requestUpdate();
+      return;
+    }
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this.requestUpdate();
+  }
+  renderSidebarRenameDialog() {
+    return renderRenameDialog({
+      open: this._sidebarRenameOpen,
+      title: TOOLS_CARD_STRINGS.settings.renameSidebarPanel,
+      label: TOOLS_CARD_STRINGS.settings.sidebarPanelNameLabel,
+      helper: TOOLS_CARD_STRINGS.settings.sidebarPanelNameHelper,
+      value: this._sidebarRenameDraft,
+      error: this._sidebarRenameError,
+      maxLength: SIDEBAR_PANEL_NAME_MAX,
+      busy: this._sidebarRenameBusy,
+      inputId: "sb-settings-sidebar-name",
+      onInput: (value) => this.handleSidebarRenameInput(value),
+      onCancel: () => this.closeSidebarRename(),
+      onConfirm: () => void this.confirmSidebarRename()
+    });
+  }
   handleSettingToggle(setting, enabled) {
     void this._store.setSetting(setting, enabled);
   }
@@ -22967,6 +23107,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
       sidebarPanelMode: sidebarPanelMode(this._snapshot),
+      sidebarPanelTitle: sidebarPanelTitle(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -22975,7 +23116,8 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
       onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
       onRunAction: (action) => this.handleAction(action),
-      onRenameHub: () => this.openHubRename()
+      onRenameHub: () => this.openHubRename(),
+      onRenameSidebarPanel: () => this.openSidebarRename()
     });
     if (this._snapshot.selectedTab === "logs") {
       activeTab = renderLogsTab({
@@ -23117,6 +23259,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     return b2`
       <ha-card>
         ${this.renderHubRenameDialog()}
+        ${this.renderSidebarRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel() ? null : b2`<div class="card-topbar">
             ${this.renderBrandLabel()}
@@ -23155,7 +23298,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     `;
   }
 };
-_SofabatonControlPanelCard.styles = [cardStyles, previewStyles];
+_SofabatonControlPanelCard.styles = [cardStyles, previewStyles, phraseNameStyles];
 // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
 // drop the overlay nodes so they don't sit in the DOM forever and so
 // the next animation cleanly restarts via Lit's keyed remount.

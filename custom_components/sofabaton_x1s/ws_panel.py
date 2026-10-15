@@ -247,6 +247,7 @@ async def _ws_get_control_panel_state(
         "persistent_cache_enabled": store.enabled,
         "hub_click_action": ui_settings.hub_click_action,
         "sidebar_panel": ui_settings.sidebar_panel_mode,
+        "sidebar_panel_title": ui_settings.sidebar_panel_title,
         "tools_frontend_version": tools_frontend_version,
         "hubs": hubs,
     }
@@ -305,15 +306,18 @@ async def _ws_get_sidebar_state(hass: HomeAssistant, connection, msg: dict[str, 
                 "persistent_cache",
                 "hub_click_action",
                 "sidebar_panel",
+                "sidebar_panel_title",
                 "proxy_enabled",
                 "hex_logging_enabled",
                 "wifi_device_enabled",
             ]
         ),
         # Boolean settings pass "enabled"; the dropdown settings
-        # (hub_click_action, sidebar_panel) pass "value".
+        # (hub_click_action, sidebar_panel) pass "value"; the panel's
+        # sidebar name (sidebar_panel_title) passes "title".
         vol.Optional("enabled"): cv.boolean,
         vol.Optional("value"): vol.In(list(HUB_CLICK_ACTIONS) + list(SIDEBAR_PANEL_MODES)),
+        vol.Optional("title"): str,
     }
 )
 @websocket_api.async_response
@@ -346,6 +350,24 @@ async def _ws_control_panel_set_setting(
         # The sidebar follows the setting right away; no restart.
         await sidebar_panel.async_sync_sidebar_panel(hass)
         connection.send_result(msg["id"], {"ok": True, "value": value})
+        return
+
+    if setting == "sidebar_panel_title":
+        if "title" not in msg:
+            connection.send_error(
+                msg["id"], "invalid_format", "sidebar_panel_title requires a title"
+            )
+            return
+        ui_settings = await runtime._async_get_ui_settings_store(hass)
+        try:
+            title = await ui_settings.async_set_sidebar_panel_title(str(msg["title"]))
+        except ValueError as err:
+            connection.send_error(msg["id"], "invalid_format", str(err))
+            return
+        # A registered panel is renamed in place; an off panel just keeps
+        # the name for when it is switched on.
+        await sidebar_panel.async_sync_sidebar_panel(hass)
+        connection.send_result(msg["id"], {"ok": True, "title": title})
         return
 
     if "enabled" not in msg:

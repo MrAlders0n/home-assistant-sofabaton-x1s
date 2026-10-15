@@ -3,6 +3,7 @@ import { keyed } from "lit/directives/keyed.js";
 import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
+import { phraseNameStyles, phraseWithName } from "../components/phrase-name";
 import type {
   ControlPanelHubState,
   HassLike,
@@ -178,16 +179,6 @@ export function hubEventModalTitle(key: HubEventKey): string {
   return titles[key];
 }
 
-/** Event phrases interpolate a user-chosen label (Wifi Event name,
- *  activity name) into a translated sentence, and translations may place
- *  it anywhere (zh wraps it in quotes). Render via a sentinel split so
- *  the label gets its own chip span without touching the translations. */
-const NAME_SENTINEL = "\u0000";
-function phraseWithName(phrase: (name: string) => string, name: string) {
-  const [before, after = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
-  return html`${before}<span class="hub-event-name">${name}</span>${after}`;
-}
-
 interface WifiCommandAction {
   action: string;
   perform_action?: string;
@@ -290,7 +281,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     lastHubEvent: { attribute: false },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -485,9 +476,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
-    /* User-chosen label inside an event phrase: a subtle tinted chip marks
-       it as the user's own name rather than part of the sentence. */
-    .hub-event-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
     .wifi-events-stale { color: var(--warning-color, #b58a00); }
     .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
     .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }

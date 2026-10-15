@@ -31,8 +31,9 @@ class _Conn:
 
 
 class _UiSettings:
-    def __init__(self, mode="off"):
+    def __init__(self, mode="off", title="Sofabaton X"):
         self.sidebar_panel_mode = mode
+        self.sidebar_panel_title = title
         self.hub_click_action = "none"
 
     async def async_set_sidebar_panel_mode(self, mode):
@@ -100,6 +101,60 @@ def test_ui_settings_store_ignores_unknown_sidebar_panel_mode():
         raise AssertionError("an unknown mode must be refused")
 
 
+def test_ui_settings_store_sidebar_panel_title_defaults_and_persists():
+    hass = SimpleNamespace(data={})
+    store = UiSettingsStore(hass)
+
+    async def scenario():
+        await store.async_load()
+        assert store.sidebar_panel_title == "Sofabaton X"
+        # Whitespace collapses and control characters go, as in the card.
+        assert await store.async_set_sidebar_panel_title("  Living\troom \x07 remote ") == "Living room remote"
+        assert store.sidebar_panel_title == "Living room remote"
+        reloaded = UiSettingsStore(hass)
+        reloaded._store = store._store
+        await reloaded.async_load()
+        assert reloaded.sidebar_panel_title == "Living room remote"
+
+    asyncio.run(scenario())
+
+
+def test_ui_settings_store_sidebar_panel_title_empty_or_default_clears():
+    store = UiSettingsStore(SimpleNamespace(data={}))
+
+    async def scenario():
+        await store.async_load()
+        await store.async_set_sidebar_panel_title("Remote")
+        assert await store.async_set_sidebar_panel_title("   ") == "Sofabaton X"
+        assert "sidebar_panel_title" not in store._store._data
+        await store.async_set_sidebar_panel_title("Remote")
+        assert await store.async_set_sidebar_panel_title("Sofabaton X") == "Sofabaton X"
+        assert "sidebar_panel_title" not in store._store._data
+
+    asyncio.run(scenario())
+
+
+def test_ui_settings_store_sidebar_panel_title_length_cap():
+    store = UiSettingsStore(SimpleNamespace(data={}))
+    asyncio.run(store.async_load())
+
+    # 30 characters (not UTF-16 units) is the cap.
+    assert asyncio.run(store.async_set_sidebar_panel_title("\U0001F4FA" * 30)) == "\U0001F4FA" * 30
+    try:
+        asyncio.run(store.async_set_sidebar_panel_title("x" * 31))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a name over 30 characters must be refused")
+    assert store.sidebar_panel_title == "\U0001F4FA" * 30
+
+    # A stored name that no longer fits the rule loads as the default.
+    junk = UiSettingsStore(SimpleNamespace(data={}))
+    junk._store._data = {"sidebar_panel_title": "x" * 31}
+    asyncio.run(junk.async_load())
+    assert junk.sidebar_panel_title == "Sofabaton X"
+
+
 def test_sync_registers_custom_panel_for_all_users(monkeypatch):
     registered, removed = _patch_frontend(monkeypatch)
     _patch_ui_settings(monkeypatch, _UiSettings(mode="all"))
@@ -143,6 +198,18 @@ def test_sync_registers_admin_only_panel_and_reregisters_on_mode_change(monkeypa
     assert len(registered) == 2
     assert registered[-1]["require_admin"] is False
     assert removed == []
+
+
+def test_sync_registers_panel_under_its_stored_name(monkeypatch):
+    registered, _removed = _patch_frontend(monkeypatch)
+    _patch_ui_settings(monkeypatch, _UiSettings(mode="all", title="Remote"))
+    hass = SimpleNamespace(data={})
+
+    asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass))
+
+    assert registered[-1]["sidebar_title"] == "Remote"
+    # The URL stays put whatever the name: bookmarks keep working.
+    assert registered[-1]["frontend_url_path"] == "sofabaton-x"
 
 
 def test_sync_removes_panel_when_switched_off(monkeypatch):
@@ -226,3 +293,77 @@ def test_ws_set_setting_schema_accepts_both_dropdown_value_sets():
     schema = vol.Schema(integration._ws_control_panel_set_setting._ws_schema)
     for value in ("none", "send", "copy", "off", "all", "admin"):
         schema({"type": "sofabaton_x1s/control_panel/set_setting", "entry_id": "e", "setting": "sidebar_panel", "value": value})
+    schema({"type": "sofabaton_x1s/control_panel/set_setting", "entry_id": "e", "setting": "sidebar_panel_title", "title": "Remote"})
+
+
+def _set_title(hass, conn, msg_id, **extra):
+    asyncio.run(
+        integration._ws_control_panel_set_setting(
+            hass,
+            conn,
+            {"id": msg_id, "entry_id": "entry-1", "setting": "sidebar_panel_title", **extra},
+        )
+    )
+
+
+def test_ws_set_setting_sidebar_panel_title_renames_the_shown_panel(monkeypatch):
+    registered, removed = _patch_frontend(monkeypatch)
+    ui_settings = UiSettingsStore(SimpleNamespace(data={}))
+    asyncio.run(ui_settings.async_load())
+    asyncio.run(ui_settings.async_set_sidebar_panel_mode("admin"))
+    _patch_ui_settings(monkeypatch, ui_settings)
+    hass = SimpleNamespace(data={})
+
+    conn = _Conn()
+    _set_title(hass, conn, 10, title=" Living  room ")
+    assert conn.error is None
+    assert conn.result == (10, {"ok": True, "title": "Living room"})
+    # Renamed in place: a re-registration under the new name, mode kept.
+    assert registered[-1]["sidebar_title"] == "Living room"
+    assert registered[-1]["require_admin"] is True
+    assert removed == []
+
+    conn = _Conn()
+    _set_title(hass, conn, 11, title="")
+    assert conn.result == (11, {"ok": True, "title": "Sofabaton X"})
+    assert registered[-1]["sidebar_title"] == "Sofabaton X"
+
+
+def test_ws_set_setting_sidebar_panel_title_while_off_only_stores(monkeypatch):
+    registered, removed = _patch_frontend(monkeypatch)
+    ui_settings = UiSettingsStore(SimpleNamespace(data={}))
+    asyncio.run(ui_settings.async_load())
+    asyncio.run(ui_settings.async_set_sidebar_panel_mode("off"))
+    _patch_ui_settings(monkeypatch, ui_settings)
+    hass = SimpleNamespace(data={})
+
+    conn = _Conn()
+    _set_title(hass, conn, 12, title="Remote")
+    assert conn.result == (12, {"ok": True, "title": "Remote"})
+    assert registered == []
+    assert removed == []
+
+    # Switched on later, the panel appears under the stored name.
+    asyncio.run(ui_settings.async_set_sidebar_panel_mode("all"))
+    asyncio.run(sidebar_panel.async_sync_sidebar_panel(hass))
+    assert registered[-1]["sidebar_title"] == "Remote"
+
+
+def test_ws_set_setting_sidebar_panel_title_refuses_bad_input(monkeypatch):
+    registered, _removed = _patch_frontend(monkeypatch)
+    ui_settings = UiSettingsStore(SimpleNamespace(data={}))
+    asyncio.run(ui_settings.async_load())
+    _patch_ui_settings(monkeypatch, ui_settings)
+    hass = SimpleNamespace(data={})
+
+    conn = _Conn()
+    _set_title(hass, conn, 13)
+    assert conn.result is None
+    assert conn.error == (13, "invalid_format", "sidebar_panel_title requires a title")
+
+    conn = _Conn()
+    _set_title(hass, conn, 14, title="x" * 31)
+    assert conn.result is None
+    assert conn.error is not None and conn.error[:2] == (14, "invalid_format")
+    assert ui_settings.sidebar_panel_title == "Sofabaton X"
+    assert registered == []

@@ -1628,6 +1628,9 @@
                 mock.state.hub_click_action = String(message.value ?? "none");
               } else if (message.setting === "sidebar_panel") {
                 mock.state.sidebar_panel = String(message.value ?? "off");
+              } else if (message.setting === "sidebar_panel_title") {
+                mock.state.sidebar_panel_title = String(message.title ?? "").trim() || "Sofabaton X";
+                return respond(type, { ok: true, title: mock.state.sidebar_panel_title });
               } else {
                 const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id);
                 if (hub?.settings) hub.settings[message.setting] = Boolean(message.enabled);

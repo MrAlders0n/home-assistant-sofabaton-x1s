@@ -79,8 +79,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubCommandInProgress: "Hub command in progress…",
   },
   sidebarPanel: {
-    // The sidebar entry and the panel header. A product name: the same in
-    // every language.
+    // The sidebar entry's name until someone renames it. A product name:
+    // the same in every language.
     title: "Sofabaton X",
   },
   adminOnly: {
@@ -201,12 +201,16 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription:
-      "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
+    // The name is the panel's sidebar name (renameable while it is shown).
+    sidebarPanelDescription: (name: string) =>
+      `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
+    renameSidebarPanel: "Rename sidebar panel",
+    sidebarPanelNameLabel: "Name in the sidebar",
+    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
     hubNameHelper: "Use 1–30 characters: A–Z, a–z, 0–9, spaces or basic punctuation except backslash (\\). Other characters are removed.",
