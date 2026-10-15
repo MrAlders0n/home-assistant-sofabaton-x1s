@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
+import { openHarness } from "./fixtures/harness-ready.js";
 
 const HARNESS_URL = "/tests/playwright/fixtures/remote-card-harness.html";
 
 async function mountCard(page, scenario = "active", config = {}) {
-  await page.goto(HARNESS_URL);
+  await openHarness(page, HARNESS_URL);
   await page.evaluate(
     async ({ scenarioName, nextConfig }) => {
       await window.__remoteCardHarness.mountCard({

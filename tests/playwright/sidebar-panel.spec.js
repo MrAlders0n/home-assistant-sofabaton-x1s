@@ -343,8 +343,13 @@ test.describe("sidebar panel", () => {
     // A phone fits one favorite per row, in the hub's order.
     const tiles = r.locator(".grid .tile");
     await expect(tiles.locator("b")).toHaveText(["Netflix", "YouTube", "HDMI 1", "Night mode", "Disney+", "Scene: Movie"]);
-    const [first, second] = [await tiles.nth(0).boundingBox(), await tiles.nth(1).boundingBox()];
-    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+    // Measured once the sheet has slid in, both tiles in one frame (two boundingBox calls can straddle the slide).
+    await expect(r.locator(".sheet:not(.dsheet)")).toHaveCSS("transform", "none");
+    const [first, second] = await tiles.evaluateAll((els) => els.slice(0, 2).map((el) => {
+      const b = el.getBoundingClientRect();
+      return { top: b.top, bottom: b.bottom };
+    }));
+    expect(second.top).toBeGreaterThanOrEqual(first.bottom);
     // The pin is its own toggle button: pinning sends nothing.
     const netflix = r.getByRole("button", { name: "Pin Netflix to the dock" });
     await netflix.click();
