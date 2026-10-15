@@ -89,9 +89,9 @@ export const REMOTE_CARD_STRINGS_EN = {
     operations: {
       backup_restore: "Restoring backup",
       cache_refresh: "Refreshing hub cache",
-      entity_sync: "Syncing to hub",
+      entity_sync: "Syncing with hub",
       backup_export: "Creating backup",
-      wifi_deploy: "Deploying Wifi commands",
+      wifi_deploy: "Syncing Wifi Commands",
     } as Record<string, string>,
   },
   assist: {

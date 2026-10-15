@@ -589,7 +589,7 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiEventNameRequired: "Saisissez un nom pour le nouvel \xE9v\xE9nement Wifi.",
     macroTargetOwnGroup: "Dans cette activit\xE9",
     macroTargetCopyGroup: "Copier depuis une autre activit\xE9",
-    macroTargetCopyNote: (steps, activity) => `Copi\xE9e telle quelle depuis ${activity}, avec ${steps === 1 ? "1 \xE9tape" : `${steps} \xE9tapes`}.`,
+    macroTargetCopyNote: (steps, activity) => `Sera copi\xE9e telle quelle depuis ${activity}, avec ${steps === 1 ? "1 \xE9tape" : `${steps} \xE9tapes`}.`,
     macroTargetCreateNew: "Cr\xE9er une nouvelle macro",
     macroTargetNoExisting: "Aucune macro pour le moment. Cr\xE9ez-en une ci-dessous.",
     addShortcutActionName: "Nom",

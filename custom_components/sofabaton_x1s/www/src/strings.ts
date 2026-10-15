@@ -705,7 +705,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     macroTargetOwnGroup: "In this activity",
     macroTargetCopyGroup: "Copy from another activity",
     macroTargetCopyNote: (steps: number, activity: string) =>
-      `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
+      `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button’s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",

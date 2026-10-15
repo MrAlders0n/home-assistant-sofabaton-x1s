@@ -63,7 +63,7 @@ const REMOTE_CARD_STRINGS_DE = {
     allOff: "Alles aus",
     off: "Aus",
     modeToggle: "Zwischen Aktivitäten und Geräten wechseln",
-    numberPad: "Zifferntasten",
+    numberPad: "Ziffernblock",
     pullHandle: "Favoriten und Makros öffnen",
     pullHandleCommands: "Befehle öffnen",
     close: "Schließen",
@@ -85,7 +85,7 @@ const REMOTE_CARD_STRINGS_DE = {
       cache_refresh: "Hub-Cache wird aktualisiert",
       entity_sync: "Wird mit dem Hub synchronisiert",
       backup_export: "Backup wird erstellt",
-      wifi_deploy: "Wifi Commands werden übertragen",
+      wifi_deploy: "Wifi Commands werden synchronisiert",
     },
   },
   assist: {

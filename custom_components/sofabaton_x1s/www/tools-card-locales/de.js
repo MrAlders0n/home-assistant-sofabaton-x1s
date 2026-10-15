@@ -43,7 +43,7 @@ var TOOLS_CARD_STRINGS_DE = {
   tabs: { cache: "Hub", wifiCommands: "Automatisierung", backup: "Backup", settings: "Einstellungen", logs: "Protokolle" },
   tabDocs: { wifi_commands: "Dokumentation zur Automatisierung", backup: "Backup-Dokumentation" },
   dock: {
-    syncNow: "Sync",
+    syncNow: "Synchronisieren",
     unsyncedChanges: "Nicht synchronisierte \xC4nderungen \u2014 mit dem Hub synchronisieren, um sie anzuwenden",
     unsavedBackupChanges: "Nicht gespeicherte \xC4nderungen \u2014 bearbeitetes Backup herunterladen"
   },

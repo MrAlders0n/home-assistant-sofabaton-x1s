@@ -46,7 +46,7 @@ var TOOLS_CARD_STRINGS_NL = {
   tabs: { cache: "Hub", wifiCommands: "Automatisering", backup: "Back-up", settings: "Instellingen", logs: "Logboeken" },
   tabDocs: { wifi_commands: "Documentatie over automatisering", backup: "Documentatie over back-ups" },
   dock: {
-    syncNow: "Sync",
+    syncNow: "Synchroniseren",
     unsyncedChanges: "Niet-gesynchroniseerde wijzigingen \u2014 synchroniseer met de hub om ze toe te passen",
     unsavedBackupChanges: "Niet-opgeslagen wijzigingen \u2014 download de bewerkte back-up"
   },

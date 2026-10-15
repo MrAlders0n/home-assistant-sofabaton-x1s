@@ -248,7 +248,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     wifiEventCreateFailed: "La création de l’événement Wifi a échoué — il reste en attente et sera retenté à la prochaine création.",
     wifiEventNameRequired: "Saisissez un nom pour le nouvel événement Wifi.",
     macroTargetOwnGroup: "Dans cette activité", macroTargetCopyGroup: "Copier depuis une autre activité",
-    macroTargetCopyNote: (steps: number, activity: string) => `Copiée telle quelle depuis ${activity}, avec ${steps === 1 ? "1 étape" : `${steps} étapes`}.`,
+    macroTargetCopyNote: (steps: number, activity: string) => `Sera copiée telle quelle depuis ${activity}, avec ${steps === 1 ? "1 étape" : `${steps} étapes`}.`,
     macroTargetCreateNew: "Créer une nouvelle macro", macroTargetNoExisting: "Aucune macro pour le moment. Créez-en une ci-dessous.", addShortcutActionName: "Nom", addShortcutActionHelper: "Vous choisirez ensuite les étapes.",
     bindingOneNewNote: "Vous ne pouvez créer qu’une macro ou un événement Wifi pour les deux attributions de touches (appui court et prolongé). Choisissez ici une macro ou un événement Wifi existant.",
     addShortcutCommandHelper: "Le raccourci apparaît sous le nom de la commande.", unsaved: "Non enregistré", unsavedTooltip: "Vous avez des modifications non enregistrées. Téléchargez la sauvegarde pour les conserver.",

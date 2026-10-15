@@ -79,11 +79,11 @@ const REMOTE_CARD_STRINGS_NL = {
     working: "Bezig",
     appConnected: "De Sofabaton-app is verbonden",
     operations: {
-      backup_restore: "Back-up wordt teruggezet",
-      cache_refresh: "Hub-cache wordt vernieuwd",
-      entity_sync: "Wordt gesynchroniseerd met de hub",
+      backup_restore: "Back-up wordt hersteld",
+      cache_refresh: "Hubcache wordt vernieuwd",
+      entity_sync: "Synchronisatie met hub wordt uitgevoerd",
       backup_export: "Back-up wordt gemaakt",
-      wifi_deploy: "Wifi Commands worden uitgerold",
+      wifi_deploy: "Wifi Commands worden gesynchroniseerd",
     },
   },
   assist: {

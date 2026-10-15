@@ -26,7 +26,7 @@ export const TOOLS_CARD_STRINGS_DE = {
   tabs: { cache: "Hub", wifiCommands: "Automatisierung", backup: "Backup", settings: "Einstellungen", logs: "Protokolle" },
   tabDocs: { wifi_commands: "Dokumentation zur Automatisierung", backup: "Backup-Dokumentation" },
   dock: {
-    syncNow: "Sync",
+    syncNow: "Synchronisieren",
     unsyncedChanges: "Nicht synchronisierte Änderungen — mit dem Hub synchronisieren, um sie anzuwenden",
     unsavedBackupChanges: "Nicht gespeicherte Änderungen — bearbeitetes Backup herunterladen",
   },

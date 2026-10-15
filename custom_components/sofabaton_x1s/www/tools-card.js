@@ -2425,7 +2425,7 @@ var TOOLS_CARD_STRINGS_EN = {
     macroTargetCreateNew: "Create new macro",
     macroTargetOwnGroup: "In this activity",
     macroTargetCopyGroup: "Copy from another activity",
-    macroTargetCopyNote: (steps, activity) => `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
+    macroTargetCopyNote: (steps, activity) => `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
