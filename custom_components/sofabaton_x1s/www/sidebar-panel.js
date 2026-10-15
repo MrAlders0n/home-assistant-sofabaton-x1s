@@ -648,6 +648,15 @@ var REMOTE_CARD_STRINGS_EN = {
     pullHandle: "Open favorites and macros",
     pullHandleCommands: "Open commands",
     close: "Close",
+    pinToDock: (name) => `Pin ${name} to the dock`,
+    dockShortcut: "Dock shortcut",
+    dockSwap: "Swap sides",
+    dockOnLeft: "On the left",
+    dockOnRight: "On the right",
+    unpin: "Unpin",
+    dockFull: "The dock is full",
+    dockHoldHint: "Press and hold to change",
+    dockIcon: "Icon",
     starting: "Starting",
     poweringOff: "Powering off",
     working: "Working",
@@ -2959,6 +2968,146 @@ function isOffLabel(label, offLabel) {
   return s4 === offLabel.trim().toLowerCase() || s4 === "powered off" || s4 === "off";
 }
 
+// remote-card/src/sidebar/sidebar-dock.ts
+var DOCK_SLOTS = ["left", "right"];
+var DOCK_STORAGE_PREFIX = "sofabaton_x1s:sidebar:dock:";
+var DOCK_MONOGRAM = "monogram";
+var ICON_GUESSES = [
+  [/netflix/i, "mdi:netflix"],
+  [/youtube/i, "mdi:youtube"],
+  [/spotify/i, "mdi:spotify"],
+  [/\bplex\b/i, "mdi:plex"],
+  [/\bkodi\b/i, "mdi:kodi"],
+  [/twitch/i, "mdi:twitch"],
+  [/\bmute\b/i, "mdi:volume-mute"],
+  [/\bvol(ume)?\s*(\+|up\b)/i, "mdi:volume-plus"],
+  [/\bvol(ume)?\s*(-|−|down\b)/i, "mdi:volume-minus"],
+  [/\bpower\b|\bon\s*\/\s*off\b/i, "mdi:power"],
+  [/hdmi|\binput\b|\bsource\b/i, "mdi:video-input-hdmi"],
+  [/play\s*\/?\s*pause/i, "mdi:play-pause"],
+  [/subtitle/i, "mdi:subtitles-outline"],
+  [/\bguide\b|\bepg\b/i, "mdi:television-guide"],
+  [/\binfo\b/i, "mdi:information-outline"],
+  [/\bsettings?\b|\bsetup\b/i, "mdi:cog-outline"],
+  [/\bscene\b/i, "mdi:palette-outline"],
+  [/\blights?\b|\blamps?\b|\bdim\b/i, "mdi:lightbulb-outline"],
+  [/\bmovie|\bcinema\b|\bfilm\b/i, "mdi:movie-open-outline"],
+  [/\bsleep\b/i, "mdi:sleep"],
+  [/\bnight\b/i, "mdi:weather-night"],
+  [/\bbass\b|\bsurround\b|\bsound\b|\baudio\b/i, "mdi:surround-sound"],
+  [/\bmusic\b|\bradio\b/i, "mdi:music"],
+  [/\bgam(e|es|ing)\b/i, "mdi:gamepad-variant-outline"],
+  [/\bfan\b/i, "mdi:fan"],
+  [/\bblinds?\b|\bcurtains?\b|\bshades?\b/i, "mdi:blinds"],
+  [/\bpicture\b|\baspect\b|\bzoom\b/i, "mdi:aspect-ratio"]
+];
+function guessDockIcon(label) {
+  for (const [pattern, icon] of ICON_GUESSES) if (pattern.test(label)) return icon;
+  return null;
+}
+function dockMonogram(label) {
+  const words = label.split(/[\s\-_:/.,+()]+/u).filter(Boolean);
+  const first = (word) => Array.from(word)[0] ?? "";
+  const letters = words.length >= 2 ? first(words[0]) + first(words[1]) : first(words[0] ?? "");
+  return letters.toLocaleUpperCase();
+}
+function dockIconFor(pin, label, ownIcon) {
+  return pin.icon ?? ownIcon ?? guessDockIcon(label) ?? DOCK_MONOGRAM;
+}
+function dockScope(mode, activityId, deviceId) {
+  const id = mode === "device" ? deviceId : activityId;
+  if (id == null || id === "") return null;
+  const n4 = Number(id);
+  return Number.isFinite(n4) ? `${mode === "device" ? "device" : "activity"}:${n4}` : null;
+}
+function sameDockRef(a3, b3) {
+  return a3.kind === b3.kind && a3.commandId === b3.commandId && a3.deviceId === b3.deviceId;
+}
+function dockIsFull(slots) {
+  return DOCK_SLOTS.every((slot) => slots[slot] != null);
+}
+function dockSlotOf(slots, ref) {
+  return DOCK_SLOTS.find((slot) => slots[slot] && sameDockRef(slots[slot], ref)) ?? null;
+}
+function pinToFreeSlot(slots, ref) {
+  const slot = DOCK_SLOTS.find((s4) => !slots[s4]);
+  if (!slot) return null;
+  return { slots: { ...slots, [slot]: pinOf(ref) }, slot };
+}
+function unpinDockSlot(slots, slot) {
+  const next = { ...slots };
+  delete next[slot];
+  return next;
+}
+function moveDockSlot(slots, from, to) {
+  if (from === to || !slots[from]) return slots;
+  const next = { ...slots, [to]: slots[from] };
+  if (slots[to]) next[from] = slots[to];
+  else delete next[from];
+  return next;
+}
+function setDockIcon(slots, slot, icon) {
+  const pin = slots[slot];
+  return pin ? { ...slots, [slot]: { ...pin, icon } } : slots;
+}
+function pinOf(ref) {
+  return { kind: ref.kind, commandId: ref.commandId, deviceId: ref.deviceId, icon: null };
+}
+function cleanPin(value) {
+  if (!value || typeof value !== "object") return null;
+  const v2 = value;
+  const kind = v2.kind;
+  if (kind !== "favorites" && kind !== "macros" && kind !== "commands") return null;
+  const commandId = Number(v2.commandId);
+  const deviceId = Number(v2.deviceId);
+  if (!Number.isFinite(commandId) || !Number.isFinite(deviceId)) return null;
+  const icon = typeof v2.icon === "string" && v2.icon ? v2.icon : null;
+  return { kind, commandId, deviceId, icon };
+}
+function parseDockTable(raw) {
+  if (!raw) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const table = {};
+  for (const [scope, slots] of Object.entries(parsed)) {
+    if (!slots || typeof slots !== "object") continue;
+    const clean = {};
+    for (const slot of DOCK_SLOTS) {
+      const pin = cleanPin(slots[slot]);
+      if (pin) clean[slot] = pin;
+    }
+    if (clean.left || clean.right) table[scope] = clean;
+  }
+  return table;
+}
+function withDockSlots(table, scope, slots) {
+  const next = { ...table };
+  if (slots.left || slots.right) next[scope] = slots;
+  else delete next[scope];
+  return next;
+}
+function readDockTable(entity) {
+  try {
+    return typeof window === "undefined" ? {} : parseDockTable(window.localStorage.getItem(`${DOCK_STORAGE_PREFIX}${entity}`));
+  } catch {
+    return {};
+  }
+}
+function writeDockTable(entity, table) {
+  try {
+    if (typeof window === "undefined") return;
+    const key = `${DOCK_STORAGE_PREFIX}${entity}`;
+    if (Object.keys(table).length) window.localStorage.setItem(key, JSON.stringify(table));
+    else window.localStorage.removeItem(key);
+  } catch {
+  }
+}
+
 // remote-card/src/remote-card-gestures.ts
 var HOLD_REPEAT_DELAY_MS = 400;
 var HOLD_REPEAT_INTERVAL_MS = 250;
@@ -3561,6 +3710,11 @@ var sidebarRemoteStyles = i`
     .ok:not(.off):not(.pressed):hover { background: color-mix(in srgb, #000 8%, var(--primary-color)); }
     .bare > .seg:not(.off):not(.pressed):hover::before { opacity: 0.55; }
     .segs .s:not(.active):hover { color: var(--primary-text-color); background: var(--sb-hover); }
+    .pin:not(.on):not(.blocked):not(.pressed):hover { background: var(--sb-hover); }
+    .pin.on:not(.pressed):hover { background: color-mix(in srgb, var(--primary-color) 26%, transparent); }
+    .dock .sc:not(.pressed):hover::before, .swap:not(.pressed):hover, .unpin:not(.pressed):hover {
+      background: color-mix(in srgb, var(--primary-text-color) 10%, var(--sb-pill));
+    }
   }
 
   /* ---------- feedback ---------- */
@@ -3583,6 +3737,35 @@ var sidebarRemoteStyles = i`
   .pull .knob ha-icon { --mdc-icon-size: 22px; opacity: 0.75; }
   .pull .knob.pressed { transform: scale(0.9); }
 
+  /* ---------- dock shortcuts (sidebar-dock.ts) ----------
+     Over the pull strip, which keeps its full width and height (the layout
+     measures it): on the remote column's edges, level with the knob. Left and
+     right are the user's own picks, so they stay physical in every language.
+     The button is the 44px touch target; the circle painted inside it is 36px
+     (near the knob's 34px), centred level with the knob, so it clears the
+     bottom edge. The target reaches 4px past the column edge so the circle
+     itself lines up with it. */
+  .dock { position: relative; flex: 0 0 auto; }
+  .dock .sc {
+    position: absolute; top: 11px; width: 44px; height: 44px; border-radius: 50%; isolation: isolate;
+    display: grid; place-items: center; color: var(--primary-text-color); transition: transform 90ms ease, opacity 0.25s ease;
+  }
+  .dock .sc::before {
+    content: ""; position: absolute; inset: 4px; z-index: -1; border-radius: 50%; background: var(--sb-pill); transition: background 90ms ease;
+  }
+  .dock .sc.left { left: calc(max(var(--sb-pad), calc(50% - 280px + var(--sb-pad))) - 4px); }
+  .dock .sc.right { right: calc(max(var(--sb-pad), calc(50% - 280px + var(--sb-pad))) - 4px); }
+  .dock .sc ha-icon { --mdc-icon-size: 20px; opacity: 0.85; }
+  .dock .sc .mono { font-size: 14px; }
+  .dock .sc:focus-visible { outline-offset: -2px; }
+  .dock .sc.pressed { transform: scale(0.9); }
+  .dock .sc.pressed::before { background: color-mix(in srgb, var(--primary-text-color) 18%, var(--sb-pill)); }
+  .dock .sc.new { animation: dock-pop 420ms cubic-bezier(0.2, 0.7, 0.3, 1.3); }
+  @keyframes dock-pop { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+  .app.inert .dock .sc { opacity: 0.4; pointer-events: none; }
+  /* initials: a shortcut without an icon */
+  .mono { font-size: 15px; font-weight: 500; letter-spacing: 0.02em; line-height: 1; }
+
   /* ---------- the sheet ---------- */
   .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 6; }
   .sheet {
@@ -3595,8 +3778,8 @@ var sidebarRemoteStyles = i`
     background: linear-gradient(var(--sb-card), var(--sb-card)), linear-gradient(var(--sb-card), var(--sb-card));
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
   }
-  .app.open .scrim { opacity: 1; pointer-events: auto; }
-  .app.open .sheet { transform: none; }
+  .app.open .scrim, .app.dock-open .scrim { opacity: 1; pointer-events: auto; }
+  .app.open .sheet:not(.dsheet), .app.dock-open .dsheet { transform: none; }
   .sheet .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--divider-color); margin: 10px auto 0; flex: 0 0 auto; }
   .segs { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; flex: 0 0 auto; }
   .segs .ctl { flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--sb-pill); border-radius: 999px; padding: 3px; }
@@ -3616,7 +3799,23 @@ var sidebarRemoteStyles = i`
   .filter input::placeholder { color: var(--sb-muted); }
   .body { flex: 1; overflow-y: auto; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
   .empty { padding: 24px 8px; text-align: center; color: var(--sb-muted); font-size: 14px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  /* Favorites keep the hub's order, as the physical remote shows them: two per
+     row only when each tile still gets 240px (room for the name beside the
+     icon and the pin), one per row below that, never three. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(240px, calc((100% - 10px) / 2)), 1fr)); gap: 10px; }
+  /* A sheet item: the item's own button with the pin beside it, never inside
+     it (a missed pin must not send the command). */
+  .item { position: relative; min-width: 0; display: grid; }
+  .item > .tile, .item > .lrow { padding-inline-end: 54px; }
+  .pin {
+    position: absolute; inset-inline-end: 6px; top: 50%; translate: 0 -50%; width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--sb-muted); transition: transform 90ms ease, background 90ms ease;
+  }
+  .pin ha-icon { --mdc-icon-size: 20px; opacity: 0.75; }
+  .pin.on { color: var(--sb-accent-text); background: color-mix(in srgb, var(--primary-color) 16%, transparent); }
+  .pin.on ha-icon { opacity: 1; }
+  /* both sides taken: nothing more pins until one is unpinned */
+  .pin.blocked { opacity: 0.35; cursor: default; }
   .tile {
     display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px; height: 64px; padding: 0 12px; text-align: start;
     border-radius: 14px; background: var(--sb-pill); color: var(--primary-text-color); min-width: 0; transition: transform 90ms ease, filter 90ms ease;
@@ -3628,12 +3827,10 @@ var sidebarRemoteStyles = i`
   .t small { font-size: 12px; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list { display: grid; gap: 8px; }
   .lrow {
-    display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 14px; text-align: start;
+    display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 14px; text-align: start;
     border-radius: 14px; background: var(--sb-pill); color: var(--primary-text-color); transition: transform 90ms ease, filter 90ms ease;
   }
   .lrow .li { justify-self: center; }
-  .lrow .chev { --mdc-icon-size: 22px; opacity: 0.6; }
-  :host([dir="rtl"]) .lrow .chev { transform: scaleX(-1); }
   .rows { display: grid; gap: 6px; }
   .row {
     display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 10px; text-align: start;
@@ -3649,6 +3846,29 @@ var sidebarRemoteStyles = i`
   .row.current .ic ha-icon { opacity: 1; }
   .row.current .st { background: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 25%, transparent); }
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- the dock drawer: a dock shortcut's options ----------
+     The same sheet (look, slide, scrim), sized to its content. It opens from
+     the dock, so it never stacks on the favorites sheet. */
+  .sheet.dsheet { height: auto; max-height: 68%; }
+  .dsheet .phead { gap: 12px; }
+  .dsheet .prev { width: 44px; height: 44px; border-radius: 50%; background: var(--sb-pill); display: grid; place-items: center; flex: 0 0 auto; }
+  .dsheet .prev ha-icon { --mdc-icon-size: 22px; opacity: 0.85; }
+  .dsheet .titles .name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dsheet .titles .owner { display: block; margin-top: 1px; font-size: 12px; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dbody { display: grid; gap: 16px; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; }
+  .dbody ha-form { display: block; }
+  .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .swap, .unpin {
+    height: 40px; padding: 0 14px; border-radius: 999px; background: var(--sb-pill); display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; transition: transform 90ms ease;
+  }
+  .unpin { color: color-mix(in srgb, var(--sb-err) 70%, var(--primary-text-color)); }
+  .unpin ha-icon { --mdc-icon-size: 18px; }
+  /* the drawer covers the dock, so the swap button shows the side: the filled dot. Physical sides, like the dock. */
+  .swap { gap: 10px; direction: ltr; }
+  .swap .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--sb-muted); transition: background 0.2s, box-shadow 0.2s; }
+  .swap .dot.on { background: var(--primary-color); box-shadow: none; }
 
   /* ---------- notices ---------- */
   .notice { margin: 0 var(--sb-pad); padding: 10px 14px; border-radius: 12px; background: var(--sb-pill); color: var(--sb-muted); font-size: 13px; text-align: center; }
@@ -3707,9 +3927,11 @@ var sidebarRemoteStyles = i`
   .app.landscape .wheel-wrap { width: min(100cqh, calc((100cqw - var(--sb-wheel-box-off)) / var(--sb-wheel-box))); }
   /* with the keys beside the wheel there is no half-height to speak of: the sheet takes the full view */
   .app.landscape .sheet { height: 100%; border-radius: 0; }
+  .app.landscape .sheet.dsheet { height: auto; max-height: 100%; border-radius: 22px 22px 0 0; }
 
   @media (prefers-reduced-motion: reduce) {
-    .wheel, .pill, .face, .face-pad button, .sheet, .scrim, .remote > *, .pull, .orbit, .numtoggle { transition: none; }
+    .wheel, .pill, .face, .face-pad button, .sheet, .scrim, .remote > *, .pull, .orbit, .numtoggle, .pin, .dock .sc, .swap, .unpin { transition: none; }
+    .dock .sc.new { animation: none; }
     .ring { animation-duration: 1ms; }
     .wheel[data-tilt], .pill[data-tilt] { transform: none; }
   }
@@ -3860,6 +4082,10 @@ function applySidebarTheme(host, root) {
 
 // remote-card/src/sidebar/sidebar-remote-element.ts
 var SIDEBAR_REMOTE_TAG = "sofabaton-sidebar-remote";
+var DOCK_KEY_IDS = { left: -101, right: -102 };
+function dockSlotForKey(id) {
+  return id === DOCK_KEY_IDS.left ? "left" : id === DOCK_KEY_IDS.right ? "right" : null;
+}
 var KEY_BY_ID = {
   [ID.UP]: "up",
   [ID.DOWN]: "down",
@@ -3976,9 +4202,20 @@ var SofabatonSidebarRemote = class extends i4 {
     this._numpadOpen = false;
     this._numpadPageKey = "";
     this._outsideTap = null;
+    /** The dock shortcuts of `_dockEntity`, read once per entity (sidebar-dock.ts). */
+    this._dockEntity = "";
+    this._dockTable = {};
+    /** The dock drawer: open or not, and the side it shows (kept while it slides out). */
+    this._dockSheetOpen = false;
+    this._dockSheetSlot = null;
+    /** The side just pinned: its shortcut pops in once the sheet closes. */
+    this._justPinned = null;
     this._onKeydown = (ev) => {
       if (ev.key !== "Escape") return;
-      if (this._sheet) {
+      if (this._dockSheetOpen) {
+        this._closeDockSheet();
+        ev.preventDefault();
+      } else if (this._sheet) {
         this._openSheet(null);
         ev.preventDefault();
       } else if (this._numpadOpen) {
@@ -4024,6 +4261,9 @@ var SofabatonSidebarRemote = class extends i4 {
     if (next === this._entityId) return;
     this._entityId = next;
     this._sheet = null;
+    this._dockSheetOpen = false;
+    this._dockSheetSlot = null;
+    this._justPinned = null;
     this._numpadOpen = false;
     if (next) {
       this._store.setConfig(sidebarConfig(next));
@@ -4086,7 +4326,7 @@ var SofabatonSidebarRemote = class extends i4 {
         if (!Number.isFinite(id)) return null;
         return { id, key: KEY_BY_ID[id] ?? String(id) };
       },
-      hasLongPress: (id) => this._store.longPressAvailableForButton(id, this._scopeFor(id)),
+      hasLongPress: (id) => dockSlotForKey(id) != null || this._store.longPressAvailableForButton(id, this._scopeFor(id)),
       isEnabled: (id) => this._keyEnabled(id),
       onTap: (id, el, at) => this._send(id, el, at),
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
@@ -4139,6 +4379,8 @@ var SofabatonSidebarRemote = class extends i4 {
   }
   _keyEnabled(id) {
     if (this._busy().inert) return false;
+    const dock = dockSlotForKey(id);
+    if (dock) return this._dockShortcut(dock) != null;
     return this._store.isEnabled(id);
   }
   _control(request, el) {
@@ -4148,11 +4390,15 @@ var SofabatonSidebarRemote = class extends i4 {
     });
   }
   _send(id, el, at) {
+    const dock = dockSlotForKey(id);
+    if (dock) return this._fireDockShortcut(dock, el, at);
     this._store.triggerCommandPulse();
     this._ring(el, false, at);
     this._control(this._store.sendCommand(id, this._scopeFor(id)), el);
   }
   _sendLongPress(id, el, at) {
+    const dock = dockSlotForKey(id);
+    if (dock) return this._openDockSheet(dock);
     this._store.triggerCommandPulse();
     this._ring(el, false, at);
     this._control(this._store.sendLongPress(id, this._scopeFor(id)), el);
@@ -4242,9 +4488,10 @@ var SofabatonSidebarRemote = class extends i4 {
     if (pane === "favorites" || pane === "macros") this._lastDrawer = pane;
     const opening = pane != null && this._sheet == null;
     this._sheet = pane;
+    this._dockSheetOpen = false;
     this.requestUpdate();
     if (opening) {
-      void this.updateComplete.then(() => this.renderRoot.querySelector(".sheet .close")?.focus({ preventScroll: true }));
+      void this.updateComplete.then(() => this.renderRoot.querySelector(".sheet:not(.dsheet) .close")?.focus({ preventScroll: true }));
     }
   }
   _togglePull() {
@@ -4278,6 +4525,7 @@ var SofabatonSidebarRemote = class extends i4 {
     this._store.toggleMode();
     this._rememberView();
     this._sheet = null;
+    this._dockSheetOpen = false;
     this._numpadOpen = false;
     this.requestUpdate();
   }
@@ -4285,6 +4533,219 @@ var SofabatonSidebarRemote = class extends i4 {
     const el = this.renderRoot.querySelector(".power");
     const store = this._store;
     this._control(store.mode() === "device" ? store.toggleDevicePower() : store.setActivity(str().card.poweredOff), el);
+  }
+  // ---------- dock shortcuts (sidebar-dock.ts) ----------
+  _dockScopeNow() {
+    const store = this._store;
+    return dockScope(store.mode(), store.currentActivityId(), store.currentDeviceId());
+  }
+  _dockSlots(scope) {
+    if (this._dockEntity !== this._entityId) {
+      this._dockEntity = this._entityId;
+      this._dockTable = readDockTable(this._entityId);
+    }
+    return this._dockTable[scope] ?? {};
+  }
+  _saveDock(scope, slots) {
+    this._dockSlots(scope);
+    this._dockTable = withDockSlots(this._dockTable, scope, slots);
+    writeDockTable(this._entityId, this._dockTable);
+    this.requestUpdate();
+  }
+  /** Everything pinnable in the current scope, or null while a device's command list is still unknown. */
+  _dockItems(derived) {
+    const store = this._store;
+    if (derived.mode === "device") {
+      const deviceId = Number(derived.deviceId);
+      if (derived.deviceId == null || !Number.isFinite(deviceId)) return [];
+      if (derived.keymapEntry?.status !== "ready") return null;
+      return derived.keymapEntry.commands.map((command) => ({
+        ref: { kind: "commands", commandId: Number(command.command_id), deviceId },
+        label: command.name,
+        owner: null,
+        ownIcon: null,
+        send: () => store.sendCommand(command.command_id, store.currentDeviceId())
+      }));
+    }
+    const fallbackDevice = store.currentActivityId();
+    const items = (kind, list) => (Array.isArray(list) ? list : []).map((raw) => {
+      const model = drawerButtonModel(raw, kind, fallbackDevice);
+      return {
+        ref: { kind, commandId: model.commandId, deviceId: model.deviceId },
+        label: model.label,
+        owner: kind === "favorites" ? store.deviceNameForId(model.deviceId) : null,
+        ownIcon: model.icon,
+        send: () => store.sendDrawerItem(kind, model.commandId, model.deviceId, raw)
+      };
+    });
+    return [...items("favorites", derived.favorites), ...items("macros", derived.macros)];
+  }
+  /** The scope's slots without pins whose item is gone from the hub; as stored while the lists are unknown. */
+  _liveDockSlots(scope, items) {
+    let slots = this._dockSlots(scope);
+    if (!items) return slots;
+    for (const slot of DOCK_SLOTS) {
+      const pin = slots[slot];
+      if (pin && !items.some((it) => sameDockRef(it.ref, pin))) slots = unpinDockSlot(slots, slot);
+    }
+    return slots;
+  }
+  /** A pinned side with its live item, or null. */
+  _dockShortcut(slot, derived = this._store.deriveRuntimeState()) {
+    const scope = this._dockScopeNow();
+    if (!scope) return null;
+    const pin = this._dockSlots(scope)[slot];
+    const item = pin ? (this._dockItems(derived) ?? []).find((it) => sameDockRef(it.ref, pin)) : void 0;
+    return pin && item ? { pin, item, icon: dockIconFor(pin, item.label, item.ownIcon) } : null;
+  }
+  /** A list's pin is a toggle: pins into a free side, or unpins. A full dock pins nothing more. */
+  _pinTapped(ref) {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    const slots = this._liveDockSlots(scope, this._dockItems(this._store.deriveRuntimeState()));
+    const pinned = dockSlotOf(slots, ref);
+    if (pinned) {
+      this._haptic();
+      if (this._justPinned === pinned) this._justPinned = null;
+      this._saveDock(scope, unpinDockSlot(slots, pinned));
+      return;
+    }
+    const free = pinToFreeSlot(slots, ref);
+    if (!free) return;
+    this._haptic();
+    this._justPinned = free.slot;
+    this._saveDock(scope, free.slots);
+  }
+  /** A tap on a dock shortcut sends its item, like the sheet does. */
+  _fireDockShortcut(slot, el, at) {
+    const shortcut = this._dockShortcut(slot);
+    if (!shortcut) return;
+    this._store.triggerCommandPulse();
+    this._ring(el, false, at);
+    this._control(shortcut.item.send(), el);
+  }
+  /** A long-press (or right-click) on a dock shortcut opens its options in a drawer of its own. */
+  _openDockSheet(slot) {
+    if (!this._dockShortcut(slot) || this._busy().inert) return;
+    this._sheet = null;
+    this._dockSheetSlot = slot;
+    this._dockSheetOpen = true;
+    this.requestUpdate();
+    void this.updateComplete.then(() => this.renderRoot.querySelector(".dsheet .close")?.focus({ preventScroll: true }));
+  }
+  _closeDockSheet() {
+    if (!this._dockSheetOpen) return;
+    this._dockSheetOpen = false;
+    this.requestUpdate();
+    const slot = this._dockSheetSlot;
+    void this.updateComplete.then(() => this.renderRoot.querySelector(`.dock .sc.${slot}`)?.focus({ preventScroll: true }));
+  }
+  _moveSlot(from, to) {
+    const scope = this._dockScopeNow();
+    if (!scope || from === to) return;
+    this._dockSheetSlot = to;
+    this._saveDock(scope, moveDockSlot(this._dockSlots(scope), from, to));
+  }
+  _unpin(slot) {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    if (this._justPinned === slot) this._justPinned = null;
+    this._dockSheetOpen = false;
+    this._saveDock(scope, unpinDockSlot(this._dockSlots(scope), slot));
+  }
+  _setDockIcon(slot, icon) {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    this._saveDock(scope, setDockIcon(this._dockSlots(scope), slot, icon));
+  }
+  /** A shortcut's face: its icon, or the label's initials. */
+  _dockGlyph(icon, label) {
+    return icon === DOCK_MONOGRAM ? b2`<span class="mono">${dockMonogram(label)}</span>` : b2`<ha-icon .icon=${icon}></ha-icon>`;
+  }
+  /** The pin at the end of a sheet item: a toggle, dimmed while the dock is full. */
+  _pinButton(ref, label, slots) {
+    if (!Number.isFinite(ref.commandId) || !Number.isFinite(ref.deviceId)) return A;
+    const s4 = str();
+    const pinned = dockSlotOf(slots, ref) != null;
+    const blocked = !pinned && dockIsFull(slots);
+    return b2`<button class=${e5({ pin: true, on: pinned, blocked })} type="button" data-press
+      aria-label=${s4.sidebar.pinToDock(label)} aria-pressed=${pinned ? "true" : "false"}
+      aria-disabled=${blocked ? "true" : A} title=${blocked ? s4.sidebar.dockFull : A}
+      @click=${() => this._pinTapped(ref)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
+  }
+  _renderDock(derived, deviceMode, inert) {
+    const s4 = str();
+    const popSlot = this._sheet == null && !this._dockSheetOpen ? this._justPinned : null;
+    return b2`
+      <div class="dock">
+        <button class="pull" type="button" aria-label=${deviceMode ? s4.sidebar.pullHandleCommands : s4.sidebar.pullHandle} @click=${this._togglePull}>
+          <span class="grip"></span>
+          <span class="knob"><ha-icon .icon=${"mdi:chevron-up"}></ha-icon></span>
+        </button>
+        ${DOCK_SLOTS.map((slot) => {
+      const shortcut = this._dockShortcut(slot, derived);
+      if (!shortcut) return A;
+      const { item, icon } = shortcut;
+      return b2`<button class=${e5({ sc: true, [slot]: true, new: popSlot === slot })} type="button" data-key=${DOCK_KEY_IDS[slot]}
+            aria-label=${item.label} title=${item.label} aria-description=${s4.sidebar.dockHoldHint} aria-haspopup="dialog"
+            aria-disabled=${inert ? "true" : A}
+            @contextmenu=${(ev) => {
+        ev.preventDefault();
+        this._openDockSheet(slot);
+      }}
+            @animationend=${() => {
+        this._justPinned = null;
+        this.requestUpdate();
+      }}>${this._dockGlyph(icon, item.label)}</button>`;
+    })}
+      </div>
+    `;
+  }
+  /** The dock shortcut's options: the remote's second drawer, never stacked on the first.
+   *  It always shows the shortcut that was held: Swap sides is an action that
+   *  moves it (trading places with the other one), never a picker between the two. */
+  _renderDockSheet(derived) {
+    const s4 = str();
+    const open = this._dockSheetOpen;
+    const slot = this._dockSheetSlot;
+    const shortcut = slot ? this._dockShortcut(slot, derived) : null;
+    const label = shortcut?.item.label ?? "";
+    const automatic = shortcut ? dockIconFor({ ...shortcut.pin, icon: null }, label, shortcut.item.ownIcon) : DOCK_MONOGRAM;
+    return b2`
+      <div class="sheet dsheet" role="dialog" aria-modal="true" aria-hidden=${open ? "false" : "true"} ?inert=${!open} aria-label=${label}>
+        <div class="grip"></div>
+        ${shortcut && slot ? b2`
+            <div class="phead">
+              <span class="prev">${this._dockGlyph(shortcut.icon, label)}</span>
+              <div class="titles">
+                <span class="eyebrow">${s4.sidebar.dockShortcut}</span>
+                <span class="name">${label}</span>
+                ${shortcut.item.owner ? b2`<span class="owner">${shortcut.item.owner}</span>` : A}
+              </div>
+              <button class="close" type="button" aria-label=${s4.sidebar.close} @click=${() => this._closeDockSheet()}><ha-icon .icon=${"mdi:close"}></ha-icon></button>
+            </div>
+            <div class="dbody">
+              <ha-form
+                .hass=${this._hass}
+                .schema=${[{ name: "icon", selector: { icon: automatic === DOCK_MONOGRAM ? {} : { placeholder: automatic } } }]}
+                .data=${{ icon: shortcut.pin.icon ?? "" }}
+                .computeLabel=${() => s4.sidebar.dockIcon}
+                @value-changed=${(ev) => {
+      ev.stopPropagation();
+      const icon = String(ev.detail?.value?.icon ?? "").trim();
+      this._setDockIcon(slot, icon || null);
+    }}
+              ></ha-form>
+              <div class="pfoot">
+                <button class="swap" type="button" data-press aria-description=${slot === "left" ? s4.sidebar.dockOnLeft : s4.sidebar.dockOnRight}
+                  @click=${() => this._moveSlot(slot, slot === "left" ? "right" : "left")}>
+                  <span class=${e5({ dot: true, on: slot === "left" })}></span>${s4.sidebar.dockSwap}<span class=${e5({ dot: true, on: slot === "right" })}></span>
+                </button>
+                <button class="unpin" type="button" data-press @click=${() => this._unpin(slot)}><ha-icon .icon=${"mdi:pin-off-outline"}></ha-icon>${s4.sidebar.unpin}</button>
+              </div>
+            </div>` : A}
+      </div>
+    `;
   }
   // ---------- render ----------
   render() {
@@ -4327,7 +4788,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const allOff = (...ids) => ids.every(off);
     const playPause = isX2 ? b2`<div class=${e5({ pill: true, off: allOff(ID.PLAY, ID.PAUSE) })}>${key(ID.PLAY, { seg: true }, icon("mdi:play-outline"))}${key(ID.PAUSE, { seg: true }, icon("mdi:pause"))}</div>` : b2`<div class=${e5({ pill: true, single: true, off: allOff(ID.PAUSE) })}>${key(ID.PAUSE, { seg: true }, icon("mdi:play-pause"))}</div>`;
     return b2`
-      <div class=${e5({ app: true, landscape: this._landscape, inert: busy.inert, busy: busy.busy, pick: busy.reason === "no-device" || busy.reason === "off", "powered-off": busy.reason === "off", open: this._sheet != null })} data-mode=${derived.mode}>
+      <div class=${e5({ app: true, landscape: this._landscape, inert: busy.inert, busy: busy.busy, pick: busy.reason === "no-device" || busy.reason === "off", "powered-off": busy.reason === "off", open: this._sheet != null, "dock-open": this._dockSheetOpen })} data-mode=${derived.mode}>
         <main class="remote" aria-busy=${busy.busy ? "true" : "false"}>
           <div class="activity">
             ${modeAvailable ? b2`<button class="round mode" type="button" title=${s4.sidebar.modeToggle} aria-label=${s4.sidebar.modeToggle} @click=${this._toggleMode}>
@@ -4406,13 +4867,11 @@ var SofabatonSidebarRemote = class extends i4 {
           <div class="sp"></div>
         </main>
 
-        <button class="pull" type="button" aria-label=${deviceMode ? s4.sidebar.pullHandleCommands : s4.sidebar.pullHandle} @click=${this._togglePull}>
-          <span class="grip"></span>
-          <span class="knob">${icon("mdi:chevron-up")}</span>
-        </button>
+        ${this._renderDock(derived, deviceMode, busy.inert)}
 
-        <div class="scrim" @click=${() => this._openSheet(null)}></div>
+        <div class="scrim" @click=${() => this._dockSheetOpen ? this._closeDockSheet() : this._openSheet(null)}></div>
         ${this._renderSheet(derived, deviceMode)}
+        ${this._renderDockSheet(derived)}
       </div>
     `;
   }
@@ -4444,16 +4903,21 @@ var SofabatonSidebarRemote = class extends i4 {
     const devices = store.devices();
     const classOf = (deviceId) => deviceClassIcon(devices.find((d3) => d3.id === deviceId)?.device_class);
     const fallbackDevice = store.currentActivityId();
+    const scope = this._dockScopeNow();
+    const slots = scope ? this._liveDockSlots(scope, this._dockItems(derived)) : {};
+    const pin = (ref, label) => scope ? this._pinButton(ref, label, slots) : A;
     if (pane === "favorites") {
       const favorites = derived.favorites.map((raw) => ({ raw, model: drawerButtonModel(raw, "favorites", fallbackDevice) }));
       const custom = derived.customFavorites.map((raw) => ({ raw, model: customFavoriteButtonModel(raw, fallbackDevice) }));
       if (!favorites.length && !custom.length) return b2`<div class="empty">${s4.card.noFavorites}</div>`;
       return b2`<div class="grid">
-        ${favorites.map(({ raw, model }) => b2`
+        ${favorites.map(({ raw, model }) => b2`<div class="item">
           <button class="tile" type="button" data-press @click=${(ev) => this._drawerItem("favorites", model, raw, ev.currentTarget, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
-          </button>`)}
+          </button>
+          ${pin({ kind: "favorites", commandId: model.commandId, deviceId: model.deviceId }, model.label)}
+        </div>`)}
         ${custom.map(({ model }) => b2`
           <button class="tile" type="button" data-press @click=${(ev) => this._customFavorite(model, ev.currentTarget, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
@@ -4465,25 +4929,28 @@ var SofabatonSidebarRemote = class extends i4 {
       const macros = derived.macros.map((raw) => ({ raw, model: drawerButtonModel(raw, "macros", fallbackDevice) }));
       if (!macros.length) return b2`<div class="empty">${s4.card.noMacros}</div>`;
       return b2`<div class="list">
-        ${macros.map(({ raw, model }) => b2`
+        ${macros.map(({ raw, model }) => b2`<div class="item">
           <button class="lrow" type="button" data-press @click=${(ev) => this._drawerItem("macros", model, raw, ev.currentTarget, clickPoint(ev))}>
             <ha-icon class="li" .icon=${model.icon ?? "mdi:playlist-play"}></ha-icon>
             <span class="t"><b>${model.label}</b></span>
-            <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
-          </button>`)}
+          </button>
+          ${pin({ kind: "macros", commandId: model.commandId, deviceId: model.deviceId }, model.label)}
+        </div>`)}
       </div>`;
     }
     if (pane === "commands") {
       const commands = derived.commands;
       const deviceIcon = classOf(derived.deviceId ?? -1);
       if (!commands.length) return b2`<div class="empty">${derived.keymapLoading ? s4.sidebar.working : s4.card.noCommands}</div>`;
+      const deviceId = Number(derived.deviceId);
       return b2`<div class="list">
-        ${commands.map((command) => b2`
+        ${commands.map((command) => b2`<div class="item">
           <button class="lrow" type="button" data-press @click=${(ev) => this._command(command.command_id, ev.currentTarget, clickPoint(ev))}>
             <ha-icon class="li" .icon=${deviceIcon}></ha-icon>
             <span class="t"><b>${command.name}</b></span>
-            <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
-          </button>`)}
+          </button>
+          ${pin({ kind: "commands", commandId: Number(command.command_id), deviceId }, command.name)}
+        </div>`)}
       </div>`;
     }
     if (pane === "devices") {
@@ -5088,6 +5555,15 @@ var REMOTE_CARD_STRINGS_AR = {
     pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     close: "\u0625\u063A\u0644\u0627\u0642",
+    pinToDock: (name) => `\u062A\u062B\u0628\u064A\u062A ${isolate(name)} \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    dockShortcut: "\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A",
+    dockSwap: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062C\u0627\u0646\u0628",
+    dockOnLeft: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0633\u0627\u0631",
+    dockOnRight: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0645\u064A\u0646",
+    unpin: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A",
+    dockFull: "\u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A \u0645\u0645\u062A\u0644\u0626",
+    dockHoldHint: "\u0627\u0636\u063A\u0637 \u0645\u0637\u0648\u0644\u0627\u064B \u0644\u0644\u062A\u063A\u064A\u064A\u0631",
+    dockIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
     starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
     poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
@@ -5345,6 +5821,15 @@ var REMOTE_CARD_STRINGS_DE = {
     pullHandle: "Favoriten und Makros \xF6ffnen",
     pullHandleCommands: "Befehle \xF6ffnen",
     close: "Schlie\xDFen",
+    pinToDock: (name) => `${name} an das Dock anheften`,
+    dockShortcut: "Dock-Verkn\xFCpfung",
+    dockSwap: "Seite wechseln",
+    dockOnLeft: "Auf der linken Seite",
+    dockOnRight: "Auf der rechten Seite",
+    unpin: "L\xF6sen",
+    dockFull: "Das Dock ist voll",
+    dockHoldHint: "Gedr\xFCckt halten zum \xC4ndern",
+    dockIcon: "Symbol",
     starting: "Wird gestartet",
     poweringOff: "Wird ausgeschaltet",
     working: "Wird ausgef\xFChrt",
@@ -5582,6 +6067,15 @@ var REMOTE_CARD_STRINGS_ES = {
     pullHandle: "Abrir favoritos y macros",
     pullHandleCommands: "Abrir comandos",
     close: "Cerrar",
+    pinToDock: (name) => `Fijar ${name} en el dock`,
+    dockShortcut: "Acceso directo del dock",
+    dockSwap: "Cambiar de lado",
+    dockOnLeft: "A la izquierda",
+    dockOnRight: "A la derecha",
+    unpin: "Dejar de fijar",
+    dockFull: "El dock est\xE1 lleno",
+    dockHoldHint: "Mant\xE9n pulsado para cambiarlo",
+    dockIcon: "Icono",
     starting: "Iniciando",
     poweringOff: "Apagando",
     working: "Trabajando",
@@ -5819,6 +6313,15 @@ var REMOTE_CARD_STRINGS_FR = {
     pullHandle: "Ouvrir les favoris et les macros",
     pullHandleCommands: "Ouvrir les commandes",
     close: "Fermer",
+    pinToDock: (name) => `\xC9pingler ${name} au dock`,
+    dockShortcut: "Raccourci du dock",
+    dockSwap: "Changer de c\xF4t\xE9",
+    dockOnLeft: "\xC0 gauche",
+    dockOnRight: "\xC0 droite",
+    unpin: "D\xE9s\xE9pingler",
+    dockFull: "Le dock est plein",
+    dockHoldHint: "Appuyez longuement pour modifier",
+    dockIcon: "Ic\xF4ne",
     starting: "D\xE9marrage",
     poweringOff: "Extinction",
     working: "En cours",
@@ -6055,6 +6558,15 @@ var REMOTE_CARD_STRINGS_NL = {
     pullHandle: "Favorieten en macro's openen",
     pullHandleCommands: "Commando's openen",
     close: "Sluiten",
+    pinToDock: (name) => `${name} vastzetten in het dock`,
+    dockShortcut: "Dock-snelkoppeling",
+    dockSwap: "Van kant wisselen",
+    dockOnLeft: "Aan de linkerkant",
+    dockOnRight: "Aan de rechterkant",
+    unpin: "Losmaken",
+    dockFull: "Het dock is vol",
+    dockHoldHint: "Houd ingedrukt om te wijzigen",
+    dockIcon: "Pictogram",
     starting: "Wordt gestart",
     poweringOff: "Wordt uitgeschakeld",
     working: "Bezig",
@@ -6291,6 +6803,15 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
     pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
     close: "\u5173\u95ED",
+    pinToDock: (name) => `\u5C06 ${name} \u56FA\u5B9A\u5230\u5E95\u680F`,
+    dockShortcut: "\u5E95\u680F\u5FEB\u6377\u65B9\u5F0F",
+    dockSwap: "\u5DE6\u53F3\u4E92\u6362",
+    dockOnLeft: "\u5728\u5DE6\u4FA7",
+    dockOnRight: "\u5728\u53F3\u4FA7",
+    unpin: "\u53D6\u6D88\u56FA\u5B9A",
+    dockFull: "\u5E95\u680F\u5DF2\u6EE1",
+    dockHoldHint: "\u957F\u6309\u53EF\u66F4\u6539",
+    dockIcon: "\u56FE\u6807",
     starting: "\u6B63\u5728\u542F\u52A8",
     poweringOff: "\u6B63\u5728\u5173\u95ED",
     working: "\u5904\u7406\u4E2D",

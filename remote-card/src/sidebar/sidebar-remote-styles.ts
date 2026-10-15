@@ -328,6 +328,11 @@ export const sidebarRemoteStyles = css`
     .ok:not(.off):not(.pressed):hover { background: color-mix(in srgb, #000 8%, var(--primary-color)); }
     .bare > .seg:not(.off):not(.pressed):hover::before { opacity: 0.55; }
     .segs .s:not(.active):hover { color: var(--primary-text-color); background: var(--sb-hover); }
+    .pin:not(.on):not(.blocked):not(.pressed):hover { background: var(--sb-hover); }
+    .pin.on:not(.pressed):hover { background: color-mix(in srgb, var(--primary-color) 26%, transparent); }
+    .dock .sc:not(.pressed):hover::before, .swap:not(.pressed):hover, .unpin:not(.pressed):hover {
+      background: color-mix(in srgb, var(--primary-text-color) 10%, var(--sb-pill));
+    }
   }
 
   /* ---------- feedback ---------- */
@@ -350,6 +355,35 @@ export const sidebarRemoteStyles = css`
   .pull .knob ha-icon { --mdc-icon-size: 22px; opacity: 0.75; }
   .pull .knob.pressed { transform: scale(0.9); }
 
+  /* ---------- dock shortcuts (sidebar-dock.ts) ----------
+     Over the pull strip, which keeps its full width and height (the layout
+     measures it): on the remote column's edges, level with the knob. Left and
+     right are the user's own picks, so they stay physical in every language.
+     The button is the 44px touch target; the circle painted inside it is 36px
+     (near the knob's 34px), centred level with the knob, so it clears the
+     bottom edge. The target reaches 4px past the column edge so the circle
+     itself lines up with it. */
+  .dock { position: relative; flex: 0 0 auto; }
+  .dock .sc {
+    position: absolute; top: 11px; width: 44px; height: 44px; border-radius: 50%; isolation: isolate;
+    display: grid; place-items: center; color: var(--primary-text-color); transition: transform 90ms ease, opacity 0.25s ease;
+  }
+  .dock .sc::before {
+    content: ""; position: absolute; inset: 4px; z-index: -1; border-radius: 50%; background: var(--sb-pill); transition: background 90ms ease;
+  }
+  .dock .sc.left { left: calc(max(var(--sb-pad), calc(50% - 280px + var(--sb-pad))) - 4px); }
+  .dock .sc.right { right: calc(max(var(--sb-pad), calc(50% - 280px + var(--sb-pad))) - 4px); }
+  .dock .sc ha-icon { --mdc-icon-size: 20px; opacity: 0.85; }
+  .dock .sc .mono { font-size: 14px; }
+  .dock .sc:focus-visible { outline-offset: -2px; }
+  .dock .sc.pressed { transform: scale(0.9); }
+  .dock .sc.pressed::before { background: color-mix(in srgb, var(--primary-text-color) 18%, var(--sb-pill)); }
+  .dock .sc.new { animation: dock-pop 420ms cubic-bezier(0.2, 0.7, 0.3, 1.3); }
+  @keyframes dock-pop { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+  .app.inert .dock .sc { opacity: 0.4; pointer-events: none; }
+  /* initials: a shortcut without an icon */
+  .mono { font-size: 15px; font-weight: 500; letter-spacing: 0.02em; line-height: 1; }
+
   /* ---------- the sheet ---------- */
   .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 6; }
   .sheet {
@@ -362,8 +396,8 @@ export const sidebarRemoteStyles = css`
     background: linear-gradient(var(--sb-card), var(--sb-card)), linear-gradient(var(--sb-card), var(--sb-card));
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
   }
-  .app.open .scrim { opacity: 1; pointer-events: auto; }
-  .app.open .sheet { transform: none; }
+  .app.open .scrim, .app.dock-open .scrim { opacity: 1; pointer-events: auto; }
+  .app.open .sheet:not(.dsheet), .app.dock-open .dsheet { transform: none; }
   .sheet .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--divider-color); margin: 10px auto 0; flex: 0 0 auto; }
   .segs { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; flex: 0 0 auto; }
   .segs .ctl { flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--sb-pill); border-radius: 999px; padding: 3px; }
@@ -383,7 +417,23 @@ export const sidebarRemoteStyles = css`
   .filter input::placeholder { color: var(--sb-muted); }
   .body { flex: 1; overflow-y: auto; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
   .empty { padding: 24px 8px; text-align: center; color: var(--sb-muted); font-size: 14px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  /* Favorites keep the hub's order, as the physical remote shows them: two per
+     row only when each tile still gets 240px (room for the name beside the
+     icon and the pin), one per row below that, never three. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(240px, calc((100% - 10px) / 2)), 1fr)); gap: 10px; }
+  /* A sheet item: the item's own button with the pin beside it, never inside
+     it (a missed pin must not send the command). */
+  .item { position: relative; min-width: 0; display: grid; }
+  .item > .tile, .item > .lrow { padding-inline-end: 54px; }
+  .pin {
+    position: absolute; inset-inline-end: 6px; top: 50%; translate: 0 -50%; width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--sb-muted); transition: transform 90ms ease, background 90ms ease;
+  }
+  .pin ha-icon { --mdc-icon-size: 20px; opacity: 0.75; }
+  .pin.on { color: var(--sb-accent-text); background: color-mix(in srgb, var(--primary-color) 16%, transparent); }
+  .pin.on ha-icon { opacity: 1; }
+  /* both sides taken: nothing more pins until one is unpinned */
+  .pin.blocked { opacity: 0.35; cursor: default; }
   .tile {
     display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px; height: 64px; padding: 0 12px; text-align: start;
     border-radius: 14px; background: var(--sb-pill); color: var(--primary-text-color); min-width: 0; transition: transform 90ms ease, filter 90ms ease;
@@ -395,12 +445,10 @@ export const sidebarRemoteStyles = css`
   .t small { font-size: 12px; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list { display: grid; gap: 8px; }
   .lrow {
-    display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 14px; text-align: start;
+    display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 14px; text-align: start;
     border-radius: 14px; background: var(--sb-pill); color: var(--primary-text-color); transition: transform 90ms ease, filter 90ms ease;
   }
   .lrow .li { justify-self: center; }
-  .lrow .chev { --mdc-icon-size: 22px; opacity: 0.6; }
-  :host([dir="rtl"]) .lrow .chev { transform: scaleX(-1); }
   .rows { display: grid; gap: 6px; }
   .row {
     display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 10px; text-align: start;
@@ -416,6 +464,29 @@ export const sidebarRemoteStyles = css`
   .row.current .ic ha-icon { opacity: 1; }
   .row.current .st { background: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 25%, transparent); }
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- the dock drawer: a dock shortcut's options ----------
+     The same sheet (look, slide, scrim), sized to its content. It opens from
+     the dock, so it never stacks on the favorites sheet. */
+  .sheet.dsheet { height: auto; max-height: 68%; }
+  .dsheet .phead { gap: 12px; }
+  .dsheet .prev { width: 44px; height: 44px; border-radius: 50%; background: var(--sb-pill); display: grid; place-items: center; flex: 0 0 auto; }
+  .dsheet .prev ha-icon { --mdc-icon-size: 22px; opacity: 0.85; }
+  .dsheet .titles .name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dsheet .titles .owner { display: block; margin-top: 1px; font-size: 12px; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dbody { display: grid; gap: 16px; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; }
+  .dbody ha-form { display: block; }
+  .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .swap, .unpin {
+    height: 40px; padding: 0 14px; border-radius: 999px; background: var(--sb-pill); display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; transition: transform 90ms ease;
+  }
+  .unpin { color: color-mix(in srgb, var(--sb-err) 70%, var(--primary-text-color)); }
+  .unpin ha-icon { --mdc-icon-size: 18px; }
+  /* the drawer covers the dock, so the swap button shows the side: the filled dot. Physical sides, like the dock. */
+  .swap { gap: 10px; direction: ltr; }
+  .swap .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--sb-muted); transition: background 0.2s, box-shadow 0.2s; }
+  .swap .dot.on { background: var(--primary-color); box-shadow: none; }
 
   /* ---------- notices ---------- */
   .notice { margin: 0 var(--sb-pad); padding: 10px 14px; border-radius: 12px; background: var(--sb-pill); color: var(--sb-muted); font-size: 13px; text-align: center; }
@@ -474,9 +545,11 @@ export const sidebarRemoteStyles = css`
   .app.landscape .wheel-wrap { width: min(100cqh, calc((100cqw - var(--sb-wheel-box-off)) / var(--sb-wheel-box))); }
   /* with the keys beside the wheel there is no half-height to speak of: the sheet takes the full view */
   .app.landscape .sheet { height: 100%; border-radius: 0; }
+  .app.landscape .sheet.dsheet { height: auto; max-height: 100%; border-radius: 22px 22px 0 0; }
 
   @media (prefers-reduced-motion: reduce) {
-    .wheel, .pill, .face, .face-pad button, .sheet, .scrim, .remote > *, .pull, .orbit, .numtoggle { transition: none; }
+    .wheel, .pill, .face, .face-pad button, .sheet, .scrim, .remote > *, .pull, .orbit, .numtoggle, .pin, .dock .sc, .swap, .unpin { transition: none; }
+    .dock .sc.new { animation: none; }
     .ring { animation-duration: 1ms; }
     .wheel[data-tilt], .pill[data-tilt] { transform: none; }
   }

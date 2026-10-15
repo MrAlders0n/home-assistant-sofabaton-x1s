@@ -1885,6 +1885,15 @@ var REMOTE_CARD_STRINGS_EN = {
     pullHandle: "Open favorites and macros",
     pullHandleCommands: "Open commands",
     close: "Close",
+    pinToDock: (name) => `Pin ${name} to the dock`,
+    dockShortcut: "Dock shortcut",
+    dockSwap: "Swap sides",
+    dockOnLeft: "On the left",
+    dockOnRight: "On the right",
+    unpin: "Unpin",
+    dockFull: "The dock is full",
+    dockHoldHint: "Press and hold to change",
+    dockIcon: "Icon",
     starting: "Starting",
     poweringOff: "Powering off",
     working: "Working",
@@ -8710,6 +8719,7 @@ var mdiArrowRightBold = "M4,15V9H12V4.16L19.84,12L12,19.84V15H4Z";
 var mdiArrowULeftTop = "M20 13.5C20 17.09 17.09 20 13.5 20H6V18H13.5C16 18 18 16 18 13.5S16 9 13.5 9H7.83L10.91 12.09L9.5 13.5L4 8L9.5 2.5L10.92 3.91L7.83 7H13.5C17.09 7 20 9.91 20 13.5Z";
 var mdiArrowUp = "M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z";
 var mdiArrowUpBold = "M15,20H9V12H4.16L12,4.16L19.84,12H15V20Z";
+var mdiAspectRatio = "M19,12H17V15H14V17H19V12M7,9H10V7H5V12H7V9M21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19V5A2,2 0 0,0 21,3M21,19H3V5H21V19Z";
 var mdiAudioVideo = "M20,7H4A2,2 0 0,0 2,9V15A2,2 0 0,0 4,17H5V18C5,18.6 5.4,19 6,19H8C8.6,19 9,18.6 9,18V17H15V18C15,18.6 15.4,19 16,19H18C18.6,19 19,18.6 19,18V17H20A2,2 0 0,0 22,15V9A2,2 0 0,0 20,7M14,12H4V10H14V12M18,13A2,2 0 0,1 16,11A2,2 0 0,1 18,9A2,2 0 0,1 20,11A2,2 0 0,1 18,13M6,15H4V14H6V15M10,15H8V14H10V15M14,15H12V14H14V15Z";
 var mdiAudioVideoOff = "M22.1 21.5L2.4 1.7L1.1 3L5.1 7H4C2.9 7 2 7.9 2 9V15C2 16.1 2.9 17 4 17H5V18C5 18.6 5.4 19 6 19H8C8.6 19 9 18.6 9 18V17H15V18C15 18.6 15.4 19 16 19H17.1L20.8 22.7L22.1 21.5M6 15H4V14H6V15M4 12V10H8.1L10.1 12H4M10 15H8V14H10V15M12 15V14H12.1L13.1 15H12M14 10V10.8L20.2 17C21.2 16.9 22 16.1 22 15V9C22 7.9 21.1 7 20 7H10.2L13.2 10H14M18 9C19.1 9 20 9.9 20 11S19.1 13 18 13 16 12.1 16 11 16.9 9 18 9Z";
 var mdiBackspace = "M22,3H7C6.31,3 5.77,3.35 5.41,3.88L0,12L5.41,20.11C5.77,20.64 6.31,21 7,21H22A2,2 0 0,0 24,19V5A2,2 0 0,0 22,3M19,15.59L17.59,17L14,13.41L10.41,17L9,15.59L12.59,12L9,8.41L10.41,7L14,10.59L17.59,7L19,8.41L15.41,12";
@@ -8804,6 +8814,7 @@ var mdiFullscreen = "M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H1
 var mdiFullscreenExit = "M14,14H19V16H16V19H14V14M5,14H10V19H8V16H5V14M8,5H10V10H5V8H8V5M19,8V10H14V5H16V8H19Z";
 var mdiGamepad = "M16.5,9L13.5,12L16.5,15H22V9M9,16.5V22H15V16.5L12,13.5M7.5,9H2V15H7.5L10.5,12M15,7.5V2H9V7.5L12,10.5L15,7.5Z";
 var mdiGamepadVariant = "M7,6H17A6,6 0 0,1 23,12A6,6 0 0,1 17,18C15.22,18 13.63,17.23 12.53,16H11.47C10.37,17.23 8.78,18 7,18A6,6 0 0,1 1,12A6,6 0 0,1 7,6M6,9V11H4V13H6V15H8V13H10V11H8V9H6M15.5,12A1.5,1.5 0 0,0 14,13.5A1.5,1.5 0 0,0 15.5,15A1.5,1.5 0 0,0 17,13.5A1.5,1.5 0 0,0 15.5,12M18.5,9A1.5,1.5 0 0,0 17,10.5A1.5,1.5 0 0,0 18.5,12A1.5,1.5 0 0,0 20,10.5A1.5,1.5 0 0,0 18.5,9Z";
+var mdiGamepadVariantOutline = "M6,9H8V11H10V13H8V15H6V13H4V11H6V9M18.5,9A1.5,1.5 0 0,1 20,10.5A1.5,1.5 0 0,1 18.5,12A1.5,1.5 0 0,1 17,10.5A1.5,1.5 0 0,1 18.5,9M15.5,12A1.5,1.5 0 0,1 17,13.5A1.5,1.5 0 0,1 15.5,15A1.5,1.5 0 0,1 14,13.5A1.5,1.5 0 0,1 15.5,12M17,5A7,7 0 0,1 24,12A7,7 0 0,1 17,19C15.04,19 13.27,18.2 12,16.9C10.73,18.2 8.96,19 7,19A7,7 0 0,1 0,12A7,7 0 0,1 7,5H17M7,7A5,5 0 0,0 2,12A5,5 0 0,0 7,17C8.64,17 10.09,16.21 11,15H13C13.91,16.21 15.36,17 17,17A5,5 0 0,0 22,12A5,5 0 0,0 17,7H7Z";
 var mdiGarage = "M19,20H17V11H7V20H5V9L12,5L19,9V20M8,12H16V14H8V12M8,15H16V17H8V15M16,18V20H8V18H16Z";
 var mdiGarageOpen = "M19,20H17V11H7V20H5V9L12,5L19,9V20M8,12H16V14H8V12Z";
 var mdiGestureDoubleTap = "M10,9A1,1 0 0,1 11,8A1,1 0 0,1 12,9V13.47L13.21,13.6L18.15,15.79C18.68,16.03 19,16.56 19,17.14V21.5C18.97,22.32 18.32,22.97 17.5,23H11C10.62,23 10.26,22.85 10,22.57L5.1,18.37L5.84,17.6C6.03,17.39 6.3,17.28 6.58,17.28H6.8L10,19V9M11,5A4,4 0 0,1 15,9C15,10.5 14.2,11.77 13,12.46V11.24C13.61,10.69 14,9.89 14,9A3,3 0 0,0 11,6A3,3 0 0,0 8,9C8,9.89 8.39,10.69 9,11.24V12.46C7.8,11.77 7,10.5 7,9A4,4 0 0,1 11,5M11,3A6,6 0 0,1 17,9C17,10.7 16.29,12.23 15.16,13.33L14.16,12.88C15.28,11.96 16,10.56 16,9A5,5 0 0,0 11,4A5,5 0 0,0 6,9C6,11.05 7.23,12.81 9,13.58V14.66C6.67,13.83 5,11.61 5,9A6,6 0 0,1 11,3Z";
@@ -8882,6 +8893,9 @@ var mdiPause = "M14,19H18V5H14M6,19H10V5H6V19Z";
 var mdiPauseCircle = "M15,16H13V8H15M11,16H9V8H11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPauseCircleOutline = "M13,16V8H15V16H13M9,16V8H11V16H9M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z";
 var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z";
+var mdiPin = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
+var mdiPinOffOutline = "M8,6.2V4H7V2H17V4H16V12L18,14V16H17.8L14,12.2V4H10V8.2L8,6.2M20,20.7L18.7,22L12.8,16.1V22H11.2V16H6V14L8,12V11.3L2,5.3L3.3,4L20,20.7M8.8,14H10.6L9.7,13.1L8.8,14Z";
+var mdiPinOutline = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z";
 var mdiPlay = "M8,5.14V19.14L19,12.14L8,5.14Z";
 var mdiPlayCircle = "M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPlayCircleOutline = "M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z";
@@ -9037,6 +9051,7 @@ var MDI_ICON_PATHS = {
   "arrow-u-left-top": mdiArrowULeftTop,
   "arrow-up": mdiArrowUp,
   "arrow-up-bold": mdiArrowUpBold,
+  "aspect-ratio": mdiAspectRatio,
   "audio-video": mdiAudioVideo,
   "audio-video-off": mdiAudioVideoOff,
   "backspace": mdiBackspace,
@@ -9131,6 +9146,7 @@ var MDI_ICON_PATHS = {
   "fullscreen-exit": mdiFullscreenExit,
   "gamepad": mdiGamepad,
   "gamepad-variant": mdiGamepadVariant,
+  "gamepad-variant-outline": mdiGamepadVariantOutline,
   "garage": mdiGarage,
   "garage-open": mdiGarageOpen,
   "gesture-double-tap": mdiGestureDoubleTap,
@@ -9209,6 +9225,9 @@ var MDI_ICON_PATHS = {
   "pause-circle": mdiPauseCircle,
   "pause-circle-outline": mdiPauseCircleOutline,
   "picture-in-picture-bottom-right": mdiPictureInPictureBottomRight,
+  "pin": mdiPin,
+  "pin-off-outline": mdiPinOffOutline,
+  "pin-outline": mdiPinOutline,
   "play": mdiPlay,
   "play-circle": mdiPlayCircle,
   "play-circle-outline": mdiPlayCircleOutline,
@@ -9922,6 +9941,15 @@ var REMOTE_CARD_STRINGS_AR = {
     pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     close: "\u0625\u063A\u0644\u0627\u0642",
+    pinToDock: (name) => `\u062A\u062B\u0628\u064A\u062A ${isolate(name)} \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    dockShortcut: "\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A",
+    dockSwap: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062C\u0627\u0646\u0628",
+    dockOnLeft: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0633\u0627\u0631",
+    dockOnRight: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0645\u064A\u0646",
+    unpin: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A",
+    dockFull: "\u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A \u0645\u0645\u062A\u0644\u0626",
+    dockHoldHint: "\u0627\u0636\u063A\u0637 \u0645\u0637\u0648\u0644\u0627\u064B \u0644\u0644\u062A\u063A\u064A\u064A\u0631",
+    dockIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
     starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
     poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
@@ -10179,6 +10207,15 @@ var REMOTE_CARD_STRINGS_DE = {
     pullHandle: "Favoriten und Makros \xF6ffnen",
     pullHandleCommands: "Befehle \xF6ffnen",
     close: "Schlie\xDFen",
+    pinToDock: (name) => `${name} an das Dock anheften`,
+    dockShortcut: "Dock-Verkn\xFCpfung",
+    dockSwap: "Seite wechseln",
+    dockOnLeft: "Auf der linken Seite",
+    dockOnRight: "Auf der rechten Seite",
+    unpin: "L\xF6sen",
+    dockFull: "Das Dock ist voll",
+    dockHoldHint: "Gedr\xFCckt halten zum \xC4ndern",
+    dockIcon: "Symbol",
     starting: "Wird gestartet",
     poweringOff: "Wird ausgeschaltet",
     working: "Wird ausgef\xFChrt",
@@ -10416,6 +10453,15 @@ var REMOTE_CARD_STRINGS_ES = {
     pullHandle: "Abrir favoritos y macros",
     pullHandleCommands: "Abrir comandos",
     close: "Cerrar",
+    pinToDock: (name) => `Fijar ${name} en el dock`,
+    dockShortcut: "Acceso directo del dock",
+    dockSwap: "Cambiar de lado",
+    dockOnLeft: "A la izquierda",
+    dockOnRight: "A la derecha",
+    unpin: "Dejar de fijar",
+    dockFull: "El dock est\xE1 lleno",
+    dockHoldHint: "Mant\xE9n pulsado para cambiarlo",
+    dockIcon: "Icono",
     starting: "Iniciando",
     poweringOff: "Apagando",
     working: "Trabajando",
@@ -10653,6 +10699,15 @@ var REMOTE_CARD_STRINGS_FR = {
     pullHandle: "Ouvrir les favoris et les macros",
     pullHandleCommands: "Ouvrir les commandes",
     close: "Fermer",
+    pinToDock: (name) => `\xC9pingler ${name} au dock`,
+    dockShortcut: "Raccourci du dock",
+    dockSwap: "Changer de c\xF4t\xE9",
+    dockOnLeft: "\xC0 gauche",
+    dockOnRight: "\xC0 droite",
+    unpin: "D\xE9s\xE9pingler",
+    dockFull: "Le dock est plein",
+    dockHoldHint: "Appuyez longuement pour modifier",
+    dockIcon: "Ic\xF4ne",
     starting: "D\xE9marrage",
     poweringOff: "Extinction",
     working: "En cours",
@@ -10889,6 +10944,15 @@ var REMOTE_CARD_STRINGS_NL = {
     pullHandle: "Favorieten en macro's openen",
     pullHandleCommands: "Commando's openen",
     close: "Sluiten",
+    pinToDock: (name) => `${name} vastzetten in het dock`,
+    dockShortcut: "Dock-snelkoppeling",
+    dockSwap: "Van kant wisselen",
+    dockOnLeft: "Aan de linkerkant",
+    dockOnRight: "Aan de rechterkant",
+    unpin: "Losmaken",
+    dockFull: "Het dock is vol",
+    dockHoldHint: "Houd ingedrukt om te wijzigen",
+    dockIcon: "Pictogram",
     starting: "Wordt gestart",
     poweringOff: "Wordt uitgeschakeld",
     working: "Bezig",
@@ -11125,6 +11189,15 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
     pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
     close: "\u5173\u95ED",
+    pinToDock: (name) => `\u5C06 ${name} \u56FA\u5B9A\u5230\u5E95\u680F`,
+    dockShortcut: "\u5E95\u680F\u5FEB\u6377\u65B9\u5F0F",
+    dockSwap: "\u5DE6\u53F3\u4E92\u6362",
+    dockOnLeft: "\u5728\u5DE6\u4FA7",
+    dockOnRight: "\u5728\u53F3\u4FA7",
+    unpin: "\u53D6\u6D88\u56FA\u5B9A",
+    dockFull: "\u5E95\u680F\u5DF2\u6EE1",
+    dockHoldHint: "\u957F\u6309\u53EF\u66F4\u6539",
+    dockIcon: "\u56FE\u6807",
     starting: "\u6B63\u5728\u542F\u52A8",
     poweringOff: "\u6B63\u5728\u5173\u95ED",
     working: "\u5904\u7406\u4E2D",
