@@ -15573,6 +15573,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiStepActivityJoin: "Adding the device to an activity\u2026",
     wifiStepActivityLeave: "Removing the device from an activity\u2026",
     wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepCommandSortRewrite: "Updating the command order\u2026",
     wifiStepBindingWrite: "Assigning a button\u2026"
   },
   activities: {
