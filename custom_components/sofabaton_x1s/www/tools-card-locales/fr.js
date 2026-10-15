@@ -331,6 +331,7 @@ var TOOLS_CARD_STRINGS_FR = {
     wifiStepActivityLeave: "Retrait de l\u2019appareil d\u2019une activit\xE9\u2026",
     wifiStepHeadCommit: "Enregistrement de l\u2019appareil\u2026",
     wifiStepBindingWrite: "Attribution d\u2019une touche\u2026",
+    wifiStepCommandSortRewrite: "Mise \xE0 jour de l\u2019ordre des commandes\u2026",
     wifiUpdatedInPlace: "Appareil Wifi mis \xE0 jour.",
     wifiAlreadyCurrent: "L\u2019appareil Wifi est d\xE9j\xE0 \xE0 jour.",
     wifiDeviceRemoved: "Appareil Wifi supprim\xE9 \u2014 aucune commande configur\xE9e.",

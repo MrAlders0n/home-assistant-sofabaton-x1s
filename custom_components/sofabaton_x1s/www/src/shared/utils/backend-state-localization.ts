@@ -249,15 +249,14 @@ type WifiStepKey =
   | "wifiStepInputSelect" | "wifiStepActivityJoin" | "wifiStepActivityLeave"
   | "wifiStepHeadCommit" | "wifiStepBindingWrite"
   | "entityStepFavoriteAdd" | "entityStepFavoriteDelete" | "entityStepFavoriteOrder"
-  | "entityStepBindingDelete" | "entityStepCommandSortRewrite";
+  | "entityStepBindingDelete" | "wifiStepCommandSortRewrite";
 
 export const WIFI_INPLACE_STEP_KINDS: Record<string, WifiStepKey> = {
   command_add: "wifiStepCommandAdd",
   command_payload: "wifiStepCommandPayload",
   command_rename: "wifiStepCommandRename",
   command_delete: "wifiStepCommandDelete",
-  // No name on this step: the shared entity string's device-less form.
-  command_sort_rewrite: "entityStepCommandSortRewrite",
+  command_sort_rewrite: "wifiStepCommandSortRewrite",
   wifi_power_config: "wifiStepPowerConfig",
   wifi_input_config: "wifiStepInputConfig",
   member_replay: "wifiStepInputSelect",

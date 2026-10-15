@@ -330,6 +330,7 @@ var TOOLS_CARD_STRINGS_ES = {
     wifiStepActivityLeave: "Retirando el dispositivo de una actividad\u2026",
     wifiStepHeadCommit: "Guardando el dispositivo\u2026",
     wifiStepBindingWrite: "Asignando un bot\xF3n\u2026",
+    wifiStepCommandSortRewrite: "Actualizando el orden de los comandos\u2026",
     wifiUpdatedInPlace: "Dispositivo Wifi actualizado.",
     wifiAlreadyCurrent: "El dispositivo Wifi ya est\xE1 actualizado.",
     wifiDeviceRemoved: "Dispositivo Wifi eliminado: no hay comandos configurados.",

@@ -155,6 +155,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     wifiStepPowerConfig: "Automatisches Ein- und Ausschalten wird aktualisiert…", wifiStepInputConfig: "Eingangskonfiguration wird aktualisiert…", wifiStepInputSelect: "Eingangsauswahl wird aktualisiert…",
     wifiStepActivityJoin: "Gerät wird zu einer Aktivität hinzugefügt…", wifiStepActivityLeave: "Gerät wird aus einer Aktivität entfernt…",
     wifiStepHeadCommit: "Gerät wird gespeichert…", wifiStepBindingWrite: "Taste wird zugewiesen…",
+    wifiStepCommandSortRewrite: "Befehlsreihenfolge wird aktualisiert…",
     wifiUpdatedInPlace: "WLAN-Gerät aktualisiert.",
     wifiAlreadyCurrent: "WLAN-Gerät ist bereits aktuell.",
     wifiDeviceRemoved: "WLAN-Gerät entfernt — keine Befehle konfiguriert.",

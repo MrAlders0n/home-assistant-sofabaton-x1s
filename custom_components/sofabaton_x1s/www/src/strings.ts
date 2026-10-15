@@ -410,6 +410,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiStepActivityJoin: "Adding the device to an activity…",
     wifiStepActivityLeave: "Removing the device from an activity…",
     wifiStepHeadCommit: "Saving the device…",
+    wifiStepCommandSortRewrite: "Updating the command order…",
     wifiStepBindingWrite: "Assigning a button…",
   },
   activities: {
