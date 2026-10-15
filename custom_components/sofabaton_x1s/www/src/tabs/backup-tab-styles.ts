@@ -333,6 +333,9 @@ export const backupTabStyles = css`
       justify-content: center;
     }
     .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+    /* Back arrows and drill-in chevrons point the reading way: Home Assistant
+       sets --scale-direction to -1 for an RTL language. */
+    .rtl-flip { transform: scaleX(var(--scale-direction, 1)); }
 
     /* ── Automatic-power dropdown (device Power section) ─────────────── */
     /* Genuine overlay popup: the menu is absolutely positioned so opening

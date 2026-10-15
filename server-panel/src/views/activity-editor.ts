@@ -1264,7 +1264,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             </button>
             ${open
               ? html`<button class="member-add-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => { this._roleMenu = null; }}></button>
-                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "right")}>
+                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "end")}>
                     <button class="member-add-option" type="button" role="option" data-device="" aria-selected=${role.state === "unused" ? "true" : "false"} @click=${() => this._assignRole(role.group, null)}>${B.roleNotUsed}</button>
                     ${devices.map((device) => {
                       const mappable = roleMappableButtonCount(this._working!, device.id, role.group);

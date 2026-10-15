@@ -188,7 +188,7 @@ export class IrLearnController implements ReactiveController {
             <span class="learn-option-title">${S.learnFromHub}</span>
             <span class="learn-option-desc">${S.learnFromHubDescription}</span>
           </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
+          <ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon>
         </button>
         ${this.haOptionVisible()
           ? html`
@@ -198,7 +198,7 @@ export class IrLearnController implements ReactiveController {
                   <span class="learn-option-title">${S.learnFromHa}</span>
                   <span class="learn-option-desc">${S.learnFromHaDescription}</span>
                 </span>
-                <ha-icon icon="mdi:chevron-right"></ha-icon>
+                <ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon>
               </button>
             `
           : this.haAvailable === null

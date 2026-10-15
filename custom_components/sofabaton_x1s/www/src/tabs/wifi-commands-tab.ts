@@ -318,6 +318,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
+    /* Home Assistant sets --scale-direction to -1 for an RTL language. */
+    .rtl-flip { transform: scaleX(var(--scale-direction, 1)); }
     /* Wrapping flex rather than a two-column grid: a grid column would hold
        its place at any width and squeeze the subtitle into a ragged sliver
        (worst in German). The 240px basis drops the button onto its own row
@@ -1071,7 +1073,7 @@ class SofabatonWifiCommandsTab extends LitElement {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
                 ${this._renderTransportPill(selectedDevice)}

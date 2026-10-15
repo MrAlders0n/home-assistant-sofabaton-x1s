@@ -20529,6 +20529,9 @@ function defineCatalogView() {
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
+function isRtl(el) {
+  return getComputedStyle(el).direction === "rtl";
+}
 var viewportBox = () => ({
   left: 0,
   top: 0,
@@ -20567,20 +20570,20 @@ function overlayMenuPosition(anchor, align) {
   const spaceBelow2 = frame.bottom - rect.bottom;
   const openUp = spaceBelow2 < OVERLAY_MENU_MAX_HEIGHT + gap && rect.top - frame.top > spaceBelow2;
   const vertical = openUp ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;` : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
-  const horizontal = align === "right" ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
+  const horizontal = align === "end" !== Boolean(anchor.rtl) ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 function menuAnchorRect(event) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
 }
 function anchoredListPosition(trigger, menu = null) {
   return anchoredListStyle(
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
@@ -20597,7 +20600,8 @@ function anchoredListStyle(anchor, bounds, inner, menu) {
   const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
-  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
+  const left = menu ? Math.min(Math.max(ideal, minX), maxX - width) : anchor.left;
   return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 function moveListFocus(event, optionSelector) {
@@ -22351,7 +22355,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             ${open ? b2`<button class="member-add-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
       this._roleMenu = null;
     }}></button>
-                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "right")}>
+                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "end")}>
                     <button class="member-add-option" type="button" role="option" data-device="" aria-selected=${role.state === "unused" ? "true" : "false"} @click=${() => this._assignRole(role.group, null)}>${B2.roleNotUsed}</button>
                     ${devices.map((device) => {
       const mappable = roleMappableButtonCount(this._working, device.id, role.group);

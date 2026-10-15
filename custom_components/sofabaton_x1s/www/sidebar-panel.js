@@ -3524,6 +3524,11 @@ var sidebarRemoteStyles = i`
   .rockers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sb-gap); }
   .rockers .pill { grid-template-columns: 1fr 1fr 1fr; }
   .colors { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sb-gap); }
+  /* The UI follows the locale direction, but these rows are the physical remote's:
+     an RTL language must never swap them (the remote card does the same). It also
+     keeps the pill tilt, picked by segment index, on the side that was pressed. */
+  :host([dir="rtl"]) .numpad, :host([dir="rtl"]) .nav, :host([dir="rtl"]) .media,
+  :host([dir="rtl"]) .rockers, :host([dir="rtl"]) .colors { direction: ltr; }
   .colors button { height: calc(var(--sb-row-h) * 0.45); border-radius: 999px; transition: transform 90ms ease, filter 90ms ease; }
   .colors .red { background: color-mix(in srgb, #c0504d 85%, var(--sb-pill)); }
   .colors .green { background: color-mix(in srgb, #5f8f64 85%, var(--sb-pill)); }
@@ -3628,6 +3633,7 @@ var sidebarRemoteStyles = i`
   }
   .lrow .li { justify-self: center; }
   .lrow .chev { --mdc-icon-size: 22px; opacity: 0.6; }
+  :host([dir="rtl"]) .lrow .chev { transform: scaleX(-1); }
   .rows { display: grid; gap: 6px; }
   .row {
     display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 10px; text-align: start;
@@ -4985,9 +4991,10 @@ SofabatonXPanel.styles = i`
     /* the subview's back arrow sits where the menu button sits (ha-icon-button metrics) */
     .back { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; }
     .back ha-icon { --mdc-icon-size: 24px; }
+    :host([dir="rtl"]) .back ha-icon { transform: scaleX(-1); }
     .back:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
     .hub {
-      display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px 0 12px; border-radius: 17px; flex: 0 0 auto;
+      display: flex; align-items: center; gap: 6px; height: 34px; padding-block: 0; padding-inline: 12px 8px; border-radius: 17px; flex: 0 0 auto;
       font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; max-width: 45vw;
       background: color-mix(in srgb, currentColor 12%, transparent);
     }
@@ -5000,13 +5007,13 @@ SofabatonXPanel.styles = i`
     .dot.busy { background: var(--primary-color); animation: pulse 1.2s ease-in-out infinite; }
     @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary-color) 35%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
     .menu {
-      position: absolute; right: 8px; top: calc(100% - 4px); z-index: 8; min-width: 232px; padding: 6px 0; border-radius: 12px;
+      position: absolute; inset-inline-end: 8px; top: calc(100% - 4px); z-index: 8; min-width: 232px; padding: 6px 0; border-radius: 12px;
       background: var(--card-background-color, var(--primary-background-color)); color: var(--primary-text-color);
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12); font-size: 14px;
     }
     .mi { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 14px; height: 48px; padding: 0 16px; width: 100%; text-align: start; }
     .mi ha-icon { --mdc-icon-size: 22px; opacity: 0.7; }
-    .mi small { font-size: 11px; letter-spacing: 0.06em; color: var(--secondary-text-color); margin-left: 6px; }
+    .mi small { font-size: 11px; letter-spacing: 0.06em; color: var(--secondary-text-color); margin-inline-start: 6px; unicode-bidi: isolate; }
     .mi.current { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
     .mi.current ha-icon { opacity: 1; }
     .mi:hover { background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }

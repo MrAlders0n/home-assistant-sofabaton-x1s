@@ -37,7 +37,7 @@ export function renderDrillInRow(params: {
           <span class="selection-label">${params.label}</span>
           ${params.meta ? html`<span class="selection-sub">${params.meta}</span>` : nothing}
         </span>
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
       </button>
     </div>
   `;
@@ -157,7 +157,7 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
                 class="member-add-menu role-menu"
                 role="listbox"
                 aria-label=${label}
-                style=${overlayMenuPosition(params.menuAnchor, "right")}
+                style=${overlayMenuPosition(params.menuAnchor, "end")}
               >
                 <button
                   class="member-add-option"
@@ -203,7 +203,7 @@ export const activityEditorStyles = css`
   .member-add-menu {
     position: absolute;
     top: calc(100% + 4px);
-    left: 0;
+    inset-inline-start: 0;
     z-index: 5;
     min-width: 180px;
     max-height: 240px;
@@ -219,7 +219,7 @@ export const activityEditorStyles = css`
   .member-add-option {
     border: none;
     background: none;
-    text-align: left;
+    text-align: start;
     padding: 8px 10px;
     font-size: 0.9rem;
     color: var(--primary-text-color);
@@ -299,8 +299,8 @@ export const activityEditorStyles = css`
     font-style: italic;
   }
   .role-menu {
-    right: 0;
-    left: auto;
+    inset-inline-end: 0;
+    inset-inline-start: auto;
     min-width: 200px;
   }
   .member-add-option:disabled {

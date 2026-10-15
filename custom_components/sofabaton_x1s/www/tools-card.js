@@ -1267,8 +1267,8 @@ var cardStyles = [secondaryTabStyles, i`
   .chip-prefix { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: color-mix(in srgb, var(--primary-color) 62%, var(--secondary-text-color)); flex-shrink: 0; }
   .chip-name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip-arrow { --mdc-icon-size: 13px; color: var(--secondary-text-color); flex-shrink: 0; transform: rotate(180deg); }
-  .hub-picker-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
-  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .hub-picker-menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: start; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--sb-accent-text); }
@@ -1285,7 +1285,7 @@ var cardStyles = [secondaryTabStyles, i`
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
-  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); inset-inline-end: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
   .logs-console-wrap {
@@ -6877,6 +6877,9 @@ var backupTabStyles = i`
       justify-content: center;
     }
     .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+    /* Back arrows and drill-in chevrons point the reading way: Home Assistant
+       sets --scale-direction to -1 for an RTL language. */
+    .rtl-flip { transform: scaleX(var(--scale-direction, 1)); }
 
     /* ── Automatic-power dropdown (device Power section) ─────────────── */
     /* Genuine overlay popup: the menu is absolutely positioned so opening
@@ -8016,6 +8019,9 @@ function hubSupportsPowerInput(hubVersion) {
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
+function isRtl(el) {
+  return getComputedStyle(el).direction === "rtl";
+}
 var viewportBox = () => ({
   left: 0,
   top: 0,
@@ -8054,20 +8060,20 @@ function overlayMenuPosition(anchor, align) {
   const spaceBelow = frame.bottom - rect.bottom;
   const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && rect.top - frame.top > spaceBelow;
   const vertical = openUp ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;` : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
-  const horizontal = align === "right" ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
+  const horizontal = align === "end" !== Boolean(anchor.rtl) ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 function menuAnchorRect(event) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
 }
 function anchoredListPosition(trigger, menu = null) {
   return anchoredListStyle(
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
@@ -8084,7 +8090,8 @@ function anchoredListStyle(anchor, bounds, inner, menu) {
   const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
-  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
+  const left = menu ? Math.min(Math.max(ideal, minX), maxX - width) : anchor.left;
   return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 function moveListFocus(event, optionSelector) {
@@ -8111,7 +8118,7 @@ function renderDrillInRow(params) {
           <span class="selection-label">${params.label}</span>
           ${params.meta ? b2`<span class="selection-sub">${params.meta}</span>` : A}
         </span>
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
       </button>
     </div>
   `;
@@ -8196,7 +8203,7 @@ function renderRoleRow(role, params) {
                 class="member-add-menu role-menu"
                 role="listbox"
                 aria-label=${label}
-                style=${overlayMenuPosition(params.menuAnchor, "right")}
+                style=${overlayMenuPosition(params.menuAnchor, "end")}
               >
                 <button
                   class="member-add-option"
@@ -8240,7 +8247,7 @@ var activityEditorStyles = i`
   .member-add-menu {
     position: absolute;
     top: calc(100% + 4px);
-    left: 0;
+    inset-inline-start: 0;
     z-index: 5;
     min-width: 180px;
     max-height: 240px;
@@ -8256,7 +8263,7 @@ var activityEditorStyles = i`
   .member-add-option {
     border: none;
     background: none;
-    text-align: left;
+    text-align: start;
     padding: 8px 10px;
     font-size: 0.9rem;
     color: var(--primary-text-color);
@@ -8336,8 +8343,8 @@ var activityEditorStyles = i`
     font-style: italic;
   }
   .role-menu {
-    right: 0;
-    left: auto;
+    inset-inline-end: 0;
+    inset-inline-start: auto;
     min-width: 200px;
   }
   .member-add-option:disabled {
@@ -11049,7 +11056,7 @@ var IrLearnController = class {
             <span class="learn-option-title">${S5.learnFromHub}</span>
             <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
           </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
+          <ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon>
         </button>
         ${this.haOptionVisible() ? b2`
               <button class="learn-option" type="button" @click=${() => this.openInbox()}>
@@ -11058,7 +11065,7 @@ var IrLearnController = class {
                   <span class="learn-option-title">${S5.learnFromHa}</span>
                   <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
                 </span>
-                <ha-icon icon="mdi:chevron-right"></ha-icon>
+                <ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon>
               </button>
             ` : this.haAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
       </div>
@@ -14030,7 +14037,7 @@ var MacroStepEditorController = class {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this.closeEditor}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this.host._renderDetailCrumbs([
@@ -14807,7 +14814,7 @@ var SofabatonEditDetailView = class extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
@@ -15013,7 +15020,7 @@ var SofabatonEditDetailView = class extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeBindingsView}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
@@ -16045,7 +16052,7 @@ var SofabatonEditDetailView = class extends i4 {
             <span class="selection-label">${label}</span>
             <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
           </span>
-          <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+          <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
         </button>
       </div>
     `;
@@ -16868,7 +16875,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
           <span class="selection-label">${option.label}</span>
         </span>
         ${option.meta ? b2`<span class="selection-meta">${option.meta}</span>` : A}
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
       </button>
     `;
   }
@@ -18069,7 +18076,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
                 ${this._renderTransportPill(selectedDevice)}
@@ -20374,6 +20381,8 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
+    /* Home Assistant sets --scale-direction to -1 for an RTL language. */
+    .rtl-flip { transform: scaleX(var(--scale-direction, 1)); }
     /* Wrapping flex rather than a two-column grid: a grid column would hold
        its place at any width and squeeze the subtitle into a ragged sliver
        (worst in German). The 240px basis drops the button onto its own row

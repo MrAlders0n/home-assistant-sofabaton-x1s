@@ -396,7 +396,7 @@ export class SofabatonEditDetailView extends LitElement {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
@@ -693,7 +693,7 @@ export class SofabatonEditDetailView extends LitElement {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeBindingsView}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
@@ -2242,7 +2242,7 @@ export class SofabatonEditDetailView extends LitElement {
             <span class="selection-label">${label}</span>
             <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
           </span>
-          <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+          <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
         </button>
       </div>
     `;

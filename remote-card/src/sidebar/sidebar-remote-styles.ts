@@ -291,6 +291,11 @@ export const sidebarRemoteStyles = css`
   .rockers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sb-gap); }
   .rockers .pill { grid-template-columns: 1fr 1fr 1fr; }
   .colors { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sb-gap); }
+  /* The UI follows the locale direction, but these rows are the physical remote's:
+     an RTL language must never swap them (the remote card does the same). It also
+     keeps the pill tilt, picked by segment index, on the side that was pressed. */
+  :host([dir="rtl"]) .numpad, :host([dir="rtl"]) .nav, :host([dir="rtl"]) .media,
+  :host([dir="rtl"]) .rockers, :host([dir="rtl"]) .colors { direction: ltr; }
   .colors button { height: calc(var(--sb-row-h) * 0.45); border-radius: 999px; transition: transform 90ms ease, filter 90ms ease; }
   .colors .red { background: color-mix(in srgb, #c0504d 85%, var(--sb-pill)); }
   .colors .green { background: color-mix(in srgb, #5f8f64 85%, var(--sb-pill)); }
@@ -395,6 +400,7 @@ export const sidebarRemoteStyles = css`
   }
   .lrow .li { justify-self: center; }
   .lrow .chev { --mdc-icon-size: 22px; opacity: 0.6; }
+  :host([dir="rtl"]) .lrow .chev { transform: scaleX(-1); }
   .rows { display: grid; gap: 6px; }
   .row {
     display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 10px; text-align: start;
