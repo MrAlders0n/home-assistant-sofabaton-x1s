@@ -148,6 +148,7 @@ export const TOOLS_CARD_STRINGS_ES = {
     wifiStepPowerConfig: "Actualizando el encendido y apagado automático…", wifiStepInputConfig: "Actualizando la configuración de entradas…", wifiStepInputSelect: "Actualizando la selección de entrada…",
     wifiStepActivityJoin: "Añadiendo el dispositivo a una actividad…", wifiStepActivityLeave: "Retirando el dispositivo de una actividad…",
     wifiStepHeadCommit: "Guardando el dispositivo…", wifiStepBindingWrite: "Asignando un botón…",
+    wifiStepCommandSortRewrite: "Actualizando el orden de los comandos…",
     wifiUpdatedInPlace: "Dispositivo Wifi actualizado.",
     wifiAlreadyCurrent: "El dispositivo Wifi ya está actualizado.",
     wifiDeviceRemoved: "Dispositivo Wifi eliminado: no hay comandos configurados.",

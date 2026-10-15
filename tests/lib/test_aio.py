@@ -244,6 +244,19 @@ class FakeProxy:
         self.write_calls.append(("set_hub_name", name))
         return not self.reject
 
+    # The engine's write batch (phase 4 H2): recorded; this fake sends no
+    # remote-sync triggers to defer.
+    write_batch_open = False
+
+    def begin_write_batch(self):
+        self.write_calls.append(("begin_write_batch",))
+        self.write_batch_open = True
+
+    def end_write_batch(self, *, send_remote_sync=True):
+        self.write_calls.append(("end_write_batch",))
+        self.write_batch_open = False
+        return {"remote_sync": "sent", "remote_sync_requests": 1, "origins": ["resync_remote"]}
+
     def erase_configuration(self, *, timeout=120.0, settle_seconds=2.0):
         self.write_calls.append(("erase",))
         if self.reject:
@@ -2294,9 +2307,10 @@ def test_backup_and_restore_typed_results_and_replace() -> None:
         assert isinstance(result, models.RestoreResult) and result.ok
         assert result.device_id_map == {3: 9} and result.restored_devices == 1
         assert result.snapshot_id == (await proxy.snapshot()).snapshot_id
-        # replace=True: preflight, THEN erase, then restore.
+        # replace=True: preflight, THEN erase, then restore, all inside one
+        # write batch so the remotes sync once, at the end (issue #307).
         kinds = [c[0] for c in fake.write_calls]
-        assert kinds == ["backup", "preflight", "erase", "restore"]
+        assert kinds == ["backup", "preflight", "begin_write_batch", "erase", "restore", "end_write_batch"]
         assert result.restored["devices"][0]["device_id"] == 9
         # The rebuild only writes: the restore reads back what it made (the
         # lists once, then each entity), so the snapshot shows the hub.
@@ -3370,12 +3384,30 @@ def test_a_replacing_restore_applies_the_bundles_hub_name() -> None:
         replaced = await proxy.restore(bundle, replace=True)
         assert ("set_hub_name", "Living Room") in fake.write_calls
         assert replaced.hub_name == "Living Room" and replaced.hub_name_restored is True
+        # The remotes sync once, after the hub name too (issue #307).
+        kinds = [call[0] for call in fake.write_calls]
+        assert kinds.index("set_hub_name") < kinds.index("end_write_batch") == len(kinds) - 1
 
         # A merge keeps the hub's own name.
         fake.write_calls.clear()
         merged = await proxy.restore(bundle, replace=False)
         assert not any(call[0] == "set_hub_name" for call in fake.write_calls)
         assert merged.hub_name is None and merged.hub_name_restored is None
+
+    asyncio.run(main())
+
+
+def test_a_restore_inside_batch_writes_leaves_the_trigger_to_the_callers_batch() -> None:
+    async def main():
+        fake = _BatchFake()
+        fake.lands_catalogs = True
+        fake.write_batch_open = True  # the caller's batch_writes opened the engine batch
+        proxy = _wrap(fake)
+
+        async with proxy.batch_writes():
+            await proxy.restore({"kind": "hub_bundle", "tag": "t"}, replace=False)
+            assert not any(call[0] in ("begin_write_batch", "end_write_batch") for call in fake.write_calls)
+        assert fake.batch_calls == ["begin", ("end", True)]
 
     asyncio.run(main())
 

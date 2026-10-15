@@ -182,6 +182,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiStepPowerConfig: "正在更新自动电源控制…", wifiStepInputConfig: "正在更新输入源配置…", wifiStepInputSelect: "正在更新输入源选择…",
     wifiStepActivityJoin: "正在将设备添加到活动…", wifiStepActivityLeave: "正在从活动中移除设备…",
     wifiStepHeadCommit: "正在保存设备…", wifiStepBindingWrite: "正在分配按键…",
+    wifiStepCommandSortRewrite: "正在更新命令顺序…",
     wifiUpdatedInPlace: "Wifi 设备已更新。",
     wifiAlreadyCurrent: "Wifi 设备已是最新。",
     wifiDeviceRemoved: "已移除 Wifi 设备 — 未配置命令。",

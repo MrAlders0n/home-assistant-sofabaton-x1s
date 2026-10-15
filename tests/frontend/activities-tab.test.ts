@@ -725,6 +725,42 @@ test("a first-ever event deploy rewrites the placeholder to the hub's device id"
   assert.equal(element._wifiEventsPlaceholderId, null);
 });
 
+test("a replace deploy of the events device follows the new id in both bundles", async () => {
+  // The record had no deploy snapshot (a backup restore wiped it), so phase 1
+  // recreated the device as 12 and moved every reference off 11 (Marcel's
+  // X1, 2026-10-14: the activity sync then refused on its stale preflight
+  // and the new shortcut was never written).
+  const deployed = eventsActivityBundle(12, 12);
+  let sent: { baseline: any; edited: any } | null = null;
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/wifi_event/list": () => ({ device_id: 11, record_needs_sync: true, events: [] }),
+    "sofabaton_x1s/wifi_event/sync": () => ({ device_id: 12, record_needs_sync: false, events: [] }),
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: deployed, generation: 2 }),
+    "sofabaton_x1s/activity/sync": (message) => {
+      sent = { baseline: message.baseline, edited: message.edited };
+      throw new Error("stop here");
+    },
+  });
+  const working = eventsActivityBundle(11, 11);
+  // The user's new shortcut: event 2 of the events device as it was captured.
+  (working as any).activities[0].favorite_slots.push({ button_id: 2, device_id: 11, command_id: 2 });
+  const element = syncingEditor(hass, eventsActivityBundle(11, 11), working);
+
+  await element._requestSync();
+
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync"]);
+  for (const bundle of [sent!.baseline, sent!.edited]) {
+    assert.deepEqual(bundle.devices.map((entry: any) => entry.device.device_id), [12]);
+    assert.ok(bundle.activities[0].favorite_slots.every((slot: any) => slot.device_id === 12));
+  }
+  // the baseline now matches the hub; the user's new shortcut is still the diff
+  assert.equal(sent!.baseline.activities[0].favorite_slots.length, 1);
+  assert.deepEqual(
+    sent!.edited.activities[0].favorite_slots.map((slot: any) => [slot.device_id, slot.command_id]),
+    [[12, 1], [12, 2]],
+  );
+});
+
 // ── Wifi Events as single records (wifi-events-single-record-plan) ───
 
 function legacyEventsBundle(): BackupBundlePayload {

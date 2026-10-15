@@ -334,6 +334,7 @@ var TOOLS_CARD_STRINGS_NL = {
     wifiStepActivityLeave: "Het apparaat uit een activiteit verwijderen\u2026",
     wifiStepHeadCommit: "Apparaat opslaan\u2026",
     wifiStepBindingWrite: "Een knop toewijzen\u2026",
+    wifiStepCommandSortRewrite: "Commandovolgorde bijwerken\u2026",
     wifiUpdatedInPlace: "Wifi-apparaat bijgewerkt.",
     wifiAlreadyCurrent: "Wifi-apparaat is al up-to-date.",
     wifiDeviceRemoved: "Wifi-apparaat verwijderd \u2014 geen commando's geconfigureerd.",

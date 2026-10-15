@@ -123,6 +123,36 @@ def _key_sort_table_has_positions(msg_hex: str) -> bool:
     )
 
 
+def _display_order_key(sort: int, entity_id: int) -> tuple[int, int, int]:
+    """Display order as the remote and the app show it: the stored sort
+    byte first, rows without one (``0``) after them by id (the facade's
+    ``_catalog_order_key``, the HA cache view)."""
+
+    return (0, sort, entity_id) if sort else (1, 0, entity_id)
+
+
+def _bundle_display_order(entries: list[Any]) -> list[int]:
+    """Source ids of a bundle's devices or activities in display order.
+
+    A backup lists entities by id; the order the user sees is in each
+    record's ``sort``.
+    """
+
+    keyed = []
+    for entry in entries:
+        block = entry.get("device") if isinstance(entry, dict) else None
+        if not isinstance(block, dict):
+            continue
+        try:
+            entity_id = int(block.get("device_id") or 0) & 0xFF
+            sort = int(block.get("sort") or 0) & 0xFF
+        except (TypeError, ValueError):
+            continue
+        if entity_id:
+            keyed.append((_display_order_key(sort, entity_id), entity_id))
+    return [entity_id for _key, entity_id in sorted(keyed)]
+
+
 def _input_create_step_factory():
     # Imported lazily to avoid a circular import at module load: the
     # helper lives in ``x1_proxy`` because it sits next to the other
@@ -1597,11 +1627,20 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         - ``device_id_map`` -- mapping of source_device_id (string)
           to assigned device_id (int).
         - ``restored_devices`` / ``restored_activities`` -- counts.
+        - ``display_order`` -- on success, per kind (``devices`` /
+          ``activities``) what :meth:`_restore_display_order` did.
 
         On mid-bundle failure no rollback is attempted: previously
         restored devices stay on the hub and the unfinished tail is
         skipped. The caller surfaces the partial state to the user. When
         anything was written, the one terminal remote sync still goes out.
+
+        Every remote-sync trigger the restore asks for (its terminal one,
+        the display-order writes' own) is coalesced in a write batch into
+        one. Without a batch open, the restore opens its own and the
+        trigger goes out when it returns. A caller that has more to write
+        after the bundle (a replacing restore's hub name) opens the batch
+        itself, so the remotes sync once, after everything.
         """
 
         del wifi_commands_request_port  # retained for API compatibility
@@ -1614,6 +1653,9 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         # One live catalog read for the whole bundle (not one per device).
         self._refresh_destination_catalog()
         self._bundle_catalog_fresh = True
+        own_batch = not self.write_batch_open
+        if own_batch:
+            self.begin_write_batch()
         try:
             return self._restore_bundle_entities(
                 devices,
@@ -1621,9 +1663,12 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 progress_callback=progress_callback,
                 progress_offset=progress_offset,
                 progress_total_steps=progress_total_steps,
+                announce_remote_sync=own_batch,
             )
         finally:
             self._bundle_catalog_fresh = False
+            if own_batch and self.end_write_batch().get("remote_sync") == "failed":
+                self._log.warning("[RESTORE] the remote-sync trigger was not sent after the bundle restore")
 
     def _restore_bundle_entities(
         self,
@@ -1633,9 +1678,13 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         progress_callback,
         progress_offset: int,
         progress_total_steps: int | None,
+        announce_remote_sync: bool = True,
     ) -> dict[str, Any]:
-        """The devices phase, then the activities phase, then the one
-        terminal remote sync (see :meth:`restore_hub_bundle`)."""
+        """The devices phase, then the activities phase, then the bundle's
+        display order, then the request for the one terminal remote sync
+        (see :meth:`restore_hub_bundle`). ``announce_remote_sync`` reports
+        the ``remote_sync`` phase; off when the caller's batch sends the
+        trigger later."""
 
         def _progress(**progress_payload: Any) -> None:
             if callable(progress_callback):
@@ -1778,21 +1827,32 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 current_activity_id=src_act_id,
             )
 
+        # The hub numbers what it creates itself, so the bundle's display
+        # order is written once the entities exist (issue #307).
+        display_order = {
+            "devices": self._restore_display_order(
+                "devices", _bundle_display_order(devices), device_id_map
+            ),
+            "activities": self._restore_display_order(
+                "activities",
+                _bundle_display_order(activities),
+                {row["source_activity_id"]: row["activity_id"] for row in restored_activities},
+            ),
+        }
+
         # Single terminal remote sync for the entire bundle, after every
-        # write (devices, activities, favorites) has landed. The remote
-        # runs one clean full pass instead of N aborted ones.
-        _progress(
-            status="running",
-            phase="remote_sync",
-            message="Triggering the remote's sync…",
-            completed_steps=completed_steps,
-            total_steps=total_steps,
-        )
-        if not self.resync_remote():
-            self._log.warning(
-                "[RESTORE] terminal remote-sync trigger was not sent "
-                "after the bundle restore"
+        # write (devices, activities, favorites, order) has landed. The
+        # remote runs one clean full pass instead of N aborted ones. The
+        # write batch records the request and sends it when it closes.
+        if announce_remote_sync:
+            _progress(
+                status="running",
+                phase="remote_sync",
+                message="Triggering the remote's sync…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
             )
+        self.resync_remote()
 
         return {
             "status": "success",
@@ -1801,7 +1861,25 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             },
             "restored_devices": restored_devices,
             "restored_activities": restored_activities,
+            "display_order": display_order,
         }
+
+    def _restore_display_order(self, kind: str, source_order: list[int], id_map: dict[int, int]) -> str:
+        """Give the restored devices or activities the bundle's display order.
+
+        A create's sort byte does not decide where the entity lands (the X1
+        appends, the X1S keeps the byte verbatim and can tie; bench_323 and
+        bench_332), so the order is written once the entities exist, one
+        reorder per kind (:meth:`_settle_order`): whatever the hub already
+        held keeps its order, the restored entities follow in the bundle's.
+        On an erased hub that is the bundle's order. Returns what
+        :meth:`_settle_order` did, or ``"skipped"`` when nothing was restored.
+        """
+
+        restored = [id_map[source_id] for source_id in source_order if source_id in id_map]
+        if not restored:
+            return "skipped"
+        return self._settle_order(kind, restored)
 
     def _run_activity_create(
         self, request: DeviceCreateRequest
@@ -2065,23 +2143,23 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 slot += 1
             return slot
 
-        # X1: favorites and macro shortcuts share one id space and one
-        # family-0x61 order table, and every favorite write stages that
-        # whole table. Each write used to stage only its own id (no read
-        # back on a fresh activity), so the last favorite replaced the
-        # others and no macro was ever listed; a record the table leaves
-        # out still takes a row on the remote, covering another entry
-        # (Marcel's X1, 2026-09-30). The replay now stages the table as it
-        # stands and ends with one write of the captured display order.
-        x1 = self.hub_version == HUB_VERSION_X1
-        x1_order: list[int] = sorted(
+        # Favorites and macro shortcuts share one id space and one
+        # family-0x61 order table on every hub, and every favorite write
+        # stages that whole table. Each write used to stage only its own id
+        # (X1, no read back on a fresh activity) or the identity table
+        # (X1S/X2), so the captured order was lost and macros were left out;
+        # on the X1 a record the table leaves out still takes a row on the
+        # remote, covering another entry (Marcel's X1, 2026-09-30). The replay
+        # stages the table as it stands and ends with one write of the
+        # captured display order (bench_332, X1S, 2026-10-14: the copy came
+        # back in id order).
+        qa_order: list[int] = sorted(
             int(row.get("button_id", 0)) & 0xFF
             for row in request.macros
             if isinstance(row, dict)
             and (int(row.get("button_id", 0)) & 0xFF) not in (0, ButtonName.POWER_ON, ButtonName.POWER_OFF)
         )
-        x1_macro_ids = set(x1_order)
-        x1_new_id_by_source: dict[int, int] = {macro_id: macro_id for macro_id in x1_macro_ids}
+        qa_new_id_by_source: dict[int, int] = {macro_id: macro_id for macro_id in qa_order}
 
         next_slot = 0
         for row in sorted(
@@ -2108,7 +2186,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 slot_id=slot_id,
                 refresh_after_write=False,
                 query_existing_order=False,
-                existing_order_ids=list(x1_order) if x1 else None,
+                existing_order_ids=list(qa_order),
                 repair_order=False,
             )
             if not written:
@@ -2121,13 +2199,17 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                 skipped_favorites += 1
                 continue
             restored_favorites += 1
-            if x1 and written.get("fav_id") is not None:
+            if written.get("fav_id") is not None:
                 new_fav_id = int(written["fav_id"]) & 0xFF
-                x1_order = [fav_id for fav_id in x1_order if fav_id != new_fav_id] + [new_fav_id]
-                x1_new_id_by_source[int(row.get("button_id", 0)) & 0xFF] = new_fav_id
+                qa_order = [fav_id for fav_id in qa_order if fav_id != new_fav_id] + [new_fav_id]
+                qa_new_id_by_source[int(row.get("button_id", 0)) & 0xFF] = new_fav_id
 
-        if x1 and x1_order and not self._restore_x1_quick_access_order(
-            new_activity_id, x1_order, x1_new_id_by_source, request.favorites_order
+        if qa_order and not self._restore_quick_access_order(
+            new_activity_id,
+            qa_order,
+            qa_new_id_by_source,
+            request.favorites_order,
+            staged_on_hub=restored_favorites > 0,
         ):
             # The records are all written; only their display order is off.
             # Like a refused favorite, it does not fail the restore.
@@ -2172,14 +2254,16 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             skipped_input_ordinals=skipped_input_ordinals,
         )
 
-    def _restore_x1_quick_access_order(
+    def _restore_quick_access_order(
         self,
         activity_id: int,
         staged: list[int],
         new_id_by_source: dict[int, int],
         captured_order: list[int],
+        *,
+        staged_on_hub: bool = True,
     ) -> bool:
-        """Write an X1 activity's quick-access order as the backup captured it.
+        """Write an activity's quick-access order as the backup captured it.
 
         *staged* is the table the favorites replay left on the hub (every
         record listed, in write order); *new_id_by_source* maps each source
@@ -2188,6 +2272,9 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         rank, the rest follow in source-id order (an older backup without an
         order restores the pure id order). One 0x61 write and one 0x65
         commit, only when the result differs from what is staged.
+        *staged_on_hub* False (no favorite was written, so nothing staged the
+        table: an activity with macro shortcuts only) writes it regardless,
+        as the app follows every macro create with the table.
         """
 
         desired: list[int] = []
@@ -2196,7 +2283,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
             if new_id is not None and new_id in staged and new_id not in desired:
                 desired.append(new_id)
         desired += [fav_id for fav_id in staged if fav_id not in desired]
-        if desired == staged:
+        if desired == staged and staged_on_hub:
             return True
 
         act_lo = activity_id & 0xFF

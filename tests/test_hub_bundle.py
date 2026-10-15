@@ -53,8 +53,21 @@ import conftest  # noqa: F401
 
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib import x1_proxy as x1_proxy_module
+from custom_components.sofabaton_x1s.lib.device_create import FAMILY_REMOTE_SYNC
 from custom_components.sofabaton_x1s.lib.macros import MacroRecord
+from custom_components.sofabaton_x1s.lib.protocol_const import (
+    FAMILY_ACTIVITY_SORT,
+    FAMILY_DEVICE_SORT,
+    OP_REMOTE_SYNC,
+)
+from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
+from custom_components.sofabaton_x1s.lib.proxy_restore import RestoreMixin, _bundle_display_order
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+# The conftest stubs the display-order steps for every test that is not
+# about them; the tests below put these (captured at import) back.
+_REAL_RESTORE_DISPLAY_ORDER = RestoreMixin._restore_display_order
+_REAL_SETTLE_ORDER = ActivityOpsMixin._settle_order
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +90,7 @@ def _device_payload(
     source_device_id: int,
     name: str = "TV",
     inputs: list[dict[str, int]] | None = None,
+    sort: int | None = None,
 ) -> dict[str, Any]:
     """Build a minimal device-backup dict suitable for bundle restore.
 
@@ -93,6 +107,7 @@ def _device_payload(
             "device_id": source_device_id,
             "name": name,
             "device_class": "ir",
+            **({} if sort is None else {"sort": sort}),
         },
         "commands": [],
         "button_bindings": [],
@@ -114,6 +129,7 @@ def _activity_payload(
     *,
     source_activity_id: int,
     macro_steps: list[dict[str, int]] | None = None,
+    sort: int | None = None,
 ) -> dict[str, Any]:
     """Build a minimal activity-backup dict suitable for bundle restore."""
 
@@ -124,6 +140,7 @@ def _activity_payload(
             "entity_type": "activity",
             "device_id": source_activity_id,
             "name": f"Activity {source_activity_id}",
+            **({} if sort is None else {"sort": sort}),
         },
         "button_bindings": [],
         "favorite_slots": [],
@@ -533,6 +550,178 @@ def test_restore_bundle_sends_single_terminal_remote_sync(monkeypatch) -> None:
     assert activity_sync_flags == [False, False]
     # …and the bundle sent exactly one terminal trigger.
     assert resyncs == [True]
+
+
+# ── display order (issue #307) ──────────────────────────────────────────
+
+
+def _sort_row(sort: int) -> dict[str, Any]:
+    body = bytearray(120)
+    body[6] = sort & 0xFF
+    return {"name": "row", "raw_body": bytes(body)}
+
+
+def _order_restore(monkeypatch, *, hub_extra_device_ids=(), sort_step_ok=True):
+    """A bundle restore against a fake hub that, like the X1 (bench_323,
+    2026-10-11), numbers whatever the restore creates in creation order,
+    whatever sort byte the create carried. New ids are the source id +
+    0x10. Returns the proxy and a log of the wire events, in order:
+    ``("step", family, payload)`` for every acked step and
+    ``("enqueue", opcode, payload)`` for every queued frame."""
+
+    proxy = _proxy(monkeypatch)
+    monkeypatch.setattr(RestoreMixin, "_restore_display_order", _REAL_RESTORE_DISPLAY_ORDER)
+    monkeypatch.setattr(ActivityOpsMixin, "_settle_order", _REAL_SETTLE_ORDER)
+    created: dict[str, list[int]] = {"devices": list(hub_extra_device_ids), "activities": []}
+
+    def _restore_device(*, payload, wifi_commands_request_port=8060):
+        new_id = payload["device"]["device_id"] + 0x10
+        created["devices"].append(new_id)
+        return {"status": "success", "device_id": new_id, "command_id_map": {}}
+
+    def _restore_activity(*, payload, **kwargs):
+        new_id = payload["device"]["device_id"] + 0x10
+        created["activities"].append(new_id)
+        return {"status": "success", "activity_id": new_id}
+
+    _stub_device_restore(monkeypatch, proxy, _restore_device)
+    monkeypatch.setattr(proxy, "restore_activity", _restore_activity)
+
+    def _read_back(kind: str):
+        def _wait(*, timeout: float = 15.0) -> bool:
+            table = proxy.state.devices if kind == "devices" else proxy.state.activities
+            table.clear()
+            table.update({entity_id: _sort_row(pos) for pos, entity_id in enumerate(created[kind], start=1)})
+            setattr(proxy, f"_{kind}_catalog_ready", True)
+            return True
+
+        return _wait
+
+    monkeypatch.setattr(proxy, "_request_devices_and_wait", _read_back("devices"))
+    monkeypatch.setattr(proxy, "_request_activities_and_wait", _read_back("activities"))
+
+    wire: list[tuple[str, int, bytes]] = []
+
+    def _send_step(*, step_name, family, payload, ack_opcode, ack_first_byte=None, **_kw):
+        wire.append(("step", family, payload))
+        ok = sort_step_ok or family not in (FAMILY_DEVICE_SORT, FAMILY_ACTIVITY_SORT)
+        return types.SimpleNamespace(ok=ok)
+
+    monkeypatch.setattr(proxy, "_send_step", _send_step)
+    monkeypatch.setattr(
+        proxy, "enqueue_cmd", lambda opcode, payload=b"", **_kw: wire.append(("enqueue", opcode, payload)) or True
+    )
+    return proxy, wire
+
+
+def _sort_order(wire, family: int) -> list[int]:
+    """Entity ids of the one sort write of ``family`` (rows are
+    ``(marker, id, position)`` after the 6-byte wrappers)."""
+
+    payloads = [payload for kind, fam, payload in wire if kind == "step" and fam == family]
+    assert len(payloads) == 1, payloads
+    rows = payloads[0][6:-1]
+    return [rows[i + 1] for i in range(0, len(rows), 3)]
+
+
+def _order_bundle(device_sorts: dict[int, int], activity_sorts: dict[int, int]) -> dict[str, Any]:
+    return {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [_device_payload(source_device_id=i, name=f"Dev {i}", sort=s) for i, s in device_sorts.items()],
+        "activities": [_activity_payload(source_activity_id=i, sort=s) for i, s in activity_sorts.items()],
+    }
+
+
+def test_bundle_display_order_is_sort_then_id() -> None:
+    entries = [
+        _device_payload(source_device_id=1, sort=3),
+        _device_payload(source_device_id=2, sort=1),
+        _device_payload(source_device_id=3),
+        _device_payload(source_device_id=4, sort=2),
+        _device_payload(source_device_id=5, sort=0),
+    ]
+
+    # Sorted rows first; rows without a sort after them, by id.
+    assert _bundle_display_order(entries) == [2, 4, 1, 3, 5]
+
+
+def test_restore_writes_the_bundles_display_order(monkeypatch) -> None:
+    """The hub numbers the restored entities in creation (id) order; the
+    restore then writes the bundle's order, and the remotes get one
+    trigger after it (the reorders' own are coalesced)."""
+
+    proxy, wire = _order_restore(monkeypatch)
+    bundle = _order_bundle({1: 2, 2: 3, 3: 1}, {0x65: 2, 0x66: 1})
+
+    result = proxy.restore_hub_bundle(bundle)
+
+    assert result["status"] == "success"
+    assert result["display_order"] == {"devices": "written", "activities": "written"}
+    assert _sort_order(wire, FAMILY_DEVICE_SORT) == [0x13, 0x11, 0x12]
+    assert _sort_order(wire, FAMILY_ACTIVITY_SORT) == [0x76, 0x75]
+    # No remote sync went out mid-restore, one went out after everything.
+    assert [event for event in wire if event[0] == "step" and event[1] == FAMILY_REMOTE_SYNC] == []
+    assert [event for event in wire if event[0] == "enqueue"] == [("enqueue", OP_REMOTE_SYNC, b"")]
+    assert wire[-1] == ("enqueue", OP_REMOTE_SYNC, b"")
+
+
+def test_restore_keeps_an_order_the_hub_already_has(monkeypatch) -> None:
+    proxy, wire = _order_restore(monkeypatch)
+    bundle = _order_bundle({1: 1, 2: 2, 3: 3}, {0x65: 1, 0x66: 2})
+
+    result = proxy.restore_hub_bundle(bundle)
+
+    assert result["display_order"] == {"devices": "kept", "activities": "kept"}
+    assert [event for event in wire if event[0] == "step"] == []
+    assert [event for event in wire if event[0] == "enqueue"] == [("enqueue", OP_REMOTE_SYNC, b"")]
+
+
+def test_restore_puts_restored_entities_after_the_existing_ones(monkeypatch) -> None:
+    """A merge onto a hub that already holds a device: it keeps its place,
+    the restored ones follow in the bundle's order (as any create does)."""
+
+    proxy, wire = _order_restore(monkeypatch, hub_extra_device_ids=(0x01,))
+    bundle = _order_bundle({1: 2, 2: 1}, {})
+
+    result = proxy.restore_hub_bundle(bundle)
+
+    assert result["status"] == "success"
+    assert result["display_order"] == {"devices": "written", "activities": "skipped"}
+    assert _sort_order(wire, FAMILY_DEVICE_SORT) == [0x01, 0x12, 0x11]
+
+
+def test_restore_order_write_failure_only_warns(monkeypatch, caplog) -> None:
+    proxy, wire = _order_restore(monkeypatch, sort_step_ok=False)
+    bundle = _order_bundle({1: 2, 2: 1}, {})
+
+    with caplog.at_level(logging.WARNING):
+        result = proxy.restore_hub_bundle(bundle)
+
+    assert result["status"] == "success"
+    assert result["display_order"]["devices"] == "failed"
+    assert "display order could not be written" in caplog.text
+    # Everything else landed: the remotes still get their one trigger.
+    assert [event for event in wire if event[0] == "enqueue"] == [("enqueue", OP_REMOTE_SYNC, b"")]
+
+
+def test_restore_inside_a_caller_batch_leaves_the_trigger_to_it(monkeypatch) -> None:
+    """A caller with more to write after the bundle (HA's hub name) holds
+    the batch: the restore sends nothing, the caller's close sends one."""
+
+    proxy, wire = _order_restore(monkeypatch)
+    bundle = _order_bundle({1: 2, 2: 1}, {0x65: 2, 0x66: 1})
+    progress: list[str] = []
+
+    proxy.begin_write_batch()
+    result = proxy.restore_hub_bundle(bundle, progress_callback=lambda **p: progress.append(p.get("phase")))
+
+    assert result["status"] == "success"
+    assert [event for event in wire if event[0] == "enqueue"] == []
+    assert "remote_sync" not in progress
+    summary = proxy.end_write_batch()
+    assert summary["remote_sync"] == "sent"
+    assert [event for event in wire if event[0] == "enqueue"] == [("enqueue", OP_REMOTE_SYNC, b"")]
 
 
 def test_restore_bundle_partial_device_failure_returns_failed_at(monkeypatch) -> None:
@@ -1368,9 +1557,95 @@ def test_async_restore_backup_replace_mode_progress_counts_include_restored_step
         event for event in progress_events if event["message"] == "Restored hub name."
     )
     assert rename_event["completed_steps"] == 4
-    assert progress_events[-1]["message"] == "Hub cache warmed."
+    warmed_event = next(event for event in progress_events if event["message"] == "Hub cache warmed.")
+    assert warmed_event["completed_steps"] == 5
+    assert warmed_event["total_steps"] == 5
+    # The remotes are told last, after the hub name and the cache warm.
+    assert progress_events[-1]["phase"] == "remote_sync"
     assert progress_events[-1]["completed_steps"] == 5
     assert progress_events[-1]["total_steps"] == 5
+
+
+def test_async_restore_backup_syncs_the_remotes_once_after_everything() -> None:
+    """Issue #307: the remote used to start syncing at the end of the
+    bundle, while HA still wrote the hub name and warmed the cache. The
+    restore now holds one write batch from before the erase to after the
+    warm, so the one trigger (end_write_batch) is the last thing it sends."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Factory Default"
+    hub.version = HUB_VERSION_X1S
+    calls: list[str] = []
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    async def _set_hub_name(*_a, **_kw):
+        calls.append("set_hub_name")
+        return True
+
+    async def _refresh_hub_cache(*_a, **_kw):
+        calls.append("cache_warm")
+        return {}
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.begin_write_batch = MagicMock(side_effect=lambda: calls.append("begin_write_batch"))
+    hub._proxy.erase_configuration = MagicMock(side_effect=lambda **_kw: calls.append("erase") or True)
+    hub._proxy.restore_hub_bundle = MagicMock(
+        side_effect=lambda **_kw: calls.append("restore_hub_bundle")
+        or {"status": "success", "device_id_map": {"1": 11}, "restored_devices": [{"device_id": 11}], "restored_activities": []}
+    )
+    hub._proxy.end_write_batch = MagicMock(
+        side_effect=lambda: calls.append("end_write_batch") or {"remote_sync": "sent", "remote_sync_requests": 1, "origins": []}
+    )
+    hub.async_set_hub_name = _set_hub_name
+    hub.async_refresh_hub_cache = _refresh_hub_cache
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "hub": {"name": "Living Room Hub"},
+        "devices": [{"device": {"device_id": 1}}],
+        "activities": [],
+    }
+
+    result = _run(hub.async_restore_backup(bundle, replace_mode=True))
+
+    assert result["status"] == "success"
+    assert calls == ["begin_write_batch", "erase", "restore_hub_bundle", "set_hub_name", "cache_warm", "end_write_batch"]
+
+
+def test_async_restore_backup_closes_the_batch_when_the_erase_fails() -> None:
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Factory Default"
+    hub.version = HUB_VERSION_X1S
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(return_value=False)
+    hub._proxy.end_write_batch = MagicMock(return_value={"remote_sync": "not_needed"})
+    bundle = {"kind": "hub_bundle", "schema_version": 5, "devices": [{"device": {"device_id": 1}}], "activities": []}
+
+    with pytest.raises(HomeAssistantError):
+        _run(hub.async_restore_backup(bundle, replace_mode=True))
+
+    hub._proxy.begin_write_batch.assert_called_once()
+    hub._proxy.end_write_batch.assert_called_once()
+    hub._proxy.restore_hub_bundle.assert_not_called()
 
 
 def test_async_restore_backup_cache_warm_failure_keeps_restore_success() -> None:

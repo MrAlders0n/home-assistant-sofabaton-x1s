@@ -331,6 +331,7 @@ var TOOLS_CARD_STRINGS_DE = {
     wifiStepActivityLeave: "Ger\xE4t wird aus einer Aktivit\xE4t entfernt\u2026",
     wifiStepHeadCommit: "Ger\xE4t wird gespeichert\u2026",
     wifiStepBindingWrite: "Taste wird zugewiesen\u2026",
+    wifiStepCommandSortRewrite: "Befehlsreihenfolge wird aktualisiert\u2026",
     wifiUpdatedInPlace: "WLAN-Ger\xE4t aktualisiert.",
     wifiAlreadyCurrent: "WLAN-Ger\xE4t ist bereits aktuell.",
     wifiDeviceRemoved: "WLAN-Ger\xE4t entfernt \u2014 keine Befehle konfiguriert.",

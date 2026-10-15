@@ -777,6 +777,9 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             ):
                 _abandon("input config")
                 return None
+        # The new device last in the display order (see _settle_order); the
+        # deploy's own trigger tells the remotes.
+        self._settle_order("devices", [device_id])
         return {"device_id": device_id, "status": "success"}
 
     def _run_network_callback_create(
@@ -964,19 +967,17 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
+        # The new device last in the display order before the remotes hear
+        # of it (the X1S keeps the create's sort byte, 0; see _settle_order).
+        self._settle_order("devices", [device_id])
+
         # App-parity save tail: skipped when the deploy pipeline owns the
         # batch -- a mid-batch remote-sync trigger aborts and restarts
         # the remote's multi-minute full sync (bench 2026-08-27); the
         # pipeline sends its own single terminal trigger after all
         # writes.
         if profile.get("send_remote_sync", True):
-            _step = self._send_step(
-                step_name="save-tail-0064",
-                family=0x64,
-                payload=b"",
-                ack_opcode=0x0103,
-            )
-            if not _step.ok:
+            if not self._send_remote_sync_step("save-tail-remote-sync"):
                 return None
 
         self._cache_created_wifi_device(
@@ -1135,16 +1136,14 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
+        self._settle_order("devices", [device_id])
+
         # App-parity save tail: skipped when the deploy pipeline owns the
-        # batch -- see the note in :meth:`_run_wifi_create_x1_roku`.
+        # batch -- see the note in :meth:`_run_wifi_create_x1_roku`. This
+        # path also runs on the X2, so the trigger is the hub's own form
+        # (the all-remotes broadcast there), never a bare 0x0064.
         if profile.get("send_remote_sync", True):
-            _step = self._send_step(
-                step_name="save-tail-0064",
-                family=0x64,
-                payload=b"",
-                ack_opcode=0x0103,
-            )
-            if not _step.ok:
+            if not self._send_remote_sync_step("save-tail-remote-sync"):
                 return None
 
         self._cache_created_wifi_device(

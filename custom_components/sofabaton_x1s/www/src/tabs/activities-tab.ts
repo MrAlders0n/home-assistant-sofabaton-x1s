@@ -516,6 +516,13 @@ class SofabatonActivitiesTab extends LitElement {
       return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
     };
     if (!referencesEvents(this._working)) return true;
+    // The deployed events device the bundles were captured with (not the
+    // placeholder of a first-ever event).
+    const capturedEventsId = (this._baseline?.devices ?? [])
+      .map((entry) => entry?.device)
+      .filter((device) => isWifiEventsBrand(String(device?.brand ?? "")))
+      .map((device) => Number(device?.device_id ?? -1))
+      .find((id) => id > 0 && id !== placeholderId) ?? null;
 
     let state = await this.api().listWifiEvents(entityId);
     const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
@@ -535,6 +542,15 @@ class SofabatonActivitiesTab extends LitElement {
       }
     }
     const realId = state.device_id;
+    // A replace deploy recreated the device under a new id (no deploy
+    // snapshot to update in place, e.g. after a backup restore; a transport
+    // switch) and moved every reference onto it, in every activity, in
+    // place. Follow it in both bundles first: the baseline must match the
+    // hub again, or this activity's stale preflight refuses the sync and the
+    // user's new shortcut is never written (Marcel's X1, 2026-10-14).
+    if (deployed && realId != null && capturedEventsId != null && realId !== capturedEventsId) {
+      await this._followWifiEventsDeviceReplace(capturedEventsId, realId);
+    }
     // The deploy may have retired the long records of the old layout and
     // moved every reference to one onto its event, in every activity.
     // Follow it in both bundles, or this activity's stale preflight and
@@ -561,6 +577,26 @@ class SofabatonActivitiesTab extends LitElement {
       this._wifiEventsPlaceholderId = null;
     }
     return true;
+  }
+
+  /** Follow a replace deploy of the Wifi Events device (old id -> new id)
+   *  in the baseline and the working bundle: the device block is swapped for
+   *  the deployed one and every activity's references move to the new id,
+   *  as the hub-side retarget did. The user's own edits stay as they are. */
+  private async _followWifiEventsDeviceReplace(oldId: number, newId: number) {
+    const res = await this.api().getStructuralBundle(this.hub!.entry_id);
+    const entry = (res?.bundle?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === newId,
+    );
+    for (const key of ["_baseline", "_working"] as const) {
+      let bundle = removeBundleDevice(this[key], oldId);
+      if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+      for (const activity of bundle?.activities ?? []) {
+        bundle = rewriteWifiEventPlaceholderRefs(bundle, Number(activity?.device?.device_id ?? -1), newId, oldId);
+      }
+      this[key] = bundle;
+    }
+    this._recomputeDirty();
   }
 
   /** Apply the hub-side long-record retirement to the baseline and the

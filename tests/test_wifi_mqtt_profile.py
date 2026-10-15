@@ -220,6 +220,10 @@ def test_create_wifi_mqtt_device_maps_defs_to_slot_layout():
             captured["inputs"] = dict(payload)
             return True
 
+        def _settle_order(self, kind, last_ids):
+            captured["settle"] = (kind, list(last_ids))
+            return "written"
+
     defs = []
     for idx, name in enumerate(["Lights", "Scenes"]):
         defs.append(
@@ -260,6 +264,9 @@ def test_create_wifi_mqtt_device_maps_defs_to_slot_layout():
         "power_off_command_id": 2,
     }
     assert captured["inputs"] == {"device_id": 0x0B, "input_command_ids": [2]}
+    # The new device last in the display order (the X1S keeps a create's
+    # sort byte, 0; bench_332).
+    assert captured["settle"] == ("devices", [0x0B])
 
 
 REAL_MAC = "FC:01:2C:39:D3:D0"

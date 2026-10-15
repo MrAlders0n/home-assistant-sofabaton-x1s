@@ -66,10 +66,13 @@ def test_command_add():
 def test_command_delete():
     baseline = snapshot(slots={**snapshot().slots, 4: slot(4, "Old")})
     plan = build_wifi_inplace_plan(baseline, snapshot())
-    assert kinds(plan) == ["command_delete"]
+    assert kinds(plan) == ["command_delete", "command_sort_rewrite"]
     # command_name is progress-only: it feeds the control panel's localized
     # step copy; the delete write ignores it.
     assert plan.steps[0].payload == {"device_id": DEV, "command_id": 4, "command_name": "Old"}
+    # The hub keeps a deleted command's slot in the device's display-sort
+    # table; one rewrite follows the deletes, as in the device sync.
+    assert plan.steps[1].payload == {"device_id": DEV, "removed_command_ids": [4]}
 
 
 def test_command_rename_label_only():
@@ -271,6 +274,7 @@ def test_full_executor_order():
         "command_add",        # cmd 5
         "command_rename",     # cmd 1 label
         "command_delete",     # cmd 6
+        "command_sort_rewrite",  # the deleted slot out of the display-sort table
         "wifi_power_config",  # power 1->7
         "wifi_input_config",  # input list 3->8 (ordinal 1 unchanged: no replay)
         "favorite_add",       # ACT_A fav 4 (fav 1 unchanged)

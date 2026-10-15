@@ -331,6 +331,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiStepActivityLeave: "\u6B63\u5728\u4ECE\u6D3B\u52A8\u4E2D\u79FB\u9664\u8BBE\u5907\u2026",
     wifiStepHeadCommit: "\u6B63\u5728\u4FDD\u5B58\u8BBE\u5907\u2026",
     wifiStepBindingWrite: "\u6B63\u5728\u5206\u914D\u6309\u952E\u2026",
+    wifiStepCommandSortRewrite: "\u6B63\u5728\u66F4\u65B0\u547D\u4EE4\u987A\u5E8F\u2026",
     wifiUpdatedInPlace: "Wifi \u8BBE\u5907\u5DF2\u66F4\u65B0\u3002",
     wifiAlreadyCurrent: "Wifi \u8BBE\u5907\u5DF2\u662F\u6700\u65B0\u3002",
     wifiDeviceRemoved: "\u5DF2\u79FB\u9664 Wifi \u8BBE\u5907 \u2014 \u672A\u914D\u7F6E\u547D\u4EE4\u3002",

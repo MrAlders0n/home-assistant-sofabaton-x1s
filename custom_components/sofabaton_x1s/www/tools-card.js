@@ -2155,6 +2155,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiStepActivityJoin: "Adding the device to an activity\u2026",
     wifiStepActivityLeave: "Removing the device from an activity\u2026",
     wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepCommandSortRewrite: "Updating the command order\u2026",
     wifiStepBindingWrite: "Assigning a button\u2026"
   },
   activities: {
@@ -3536,6 +3537,7 @@ var WIFI_INPLACE_STEP_KINDS = {
   command_payload: "wifiStepCommandPayload",
   command_rename: "wifiStepCommandRename",
   command_delete: "wifiStepCommandDelete",
+  command_sort_rewrite: "wifiStepCommandSortRewrite",
   wifi_power_config: "wifiStepPowerConfig",
   wifi_input_config: "wifiStepInputConfig",
   member_replay: "wifiStepInputSelect",
@@ -21390,6 +21392,7 @@ var SofabatonActivitiesTab = class extends i4 {
       return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
     };
     if (!referencesEvents(this._working)) return true;
+    const capturedEventsId = (this._baseline?.devices ?? []).map((entry) => entry?.device).filter((device) => isWifiEventsBrand(String(device?.brand ?? ""))).map((device) => Number(device?.device_id ?? -1)).find((id) => id > 0 && id !== placeholderId) ?? null;
     let state = await this.api().listWifiEvents(entityId);
     const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
       (entry) => Number(entry?.device?.device_id ?? -1) === placeholderId
@@ -21408,6 +21411,9 @@ var SofabatonActivitiesTab = class extends i4 {
       }
     }
     const realId = state.device_id;
+    if (deployed && realId != null && capturedEventsId != null && realId !== capturedEventsId) {
+      await this._followWifiEventsDeviceReplace(capturedEventsId, realId);
+    }
     if (deployed && realId != null) this._retireWifiEventLongRecords(realId, state.slot_count);
     if (hasPlaceholder && placeholderId != null && realId != null) {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -21428,6 +21434,25 @@ var SofabatonActivitiesTab = class extends i4 {
       this._wifiEventsPlaceholderId = null;
     }
     return true;
+  }
+  /** Follow a replace deploy of the Wifi Events device (old id -> new id)
+   *  in the baseline and the working bundle: the device block is swapped for
+   *  the deployed one and every activity's references move to the new id,
+   *  as the hub-side retarget did. The user's own edits stay as they are. */
+  async _followWifiEventsDeviceReplace(oldId, newId) {
+    const res = await this.api().getStructuralBundle(this.hub.entry_id);
+    const entry = (res?.bundle?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === newId
+    );
+    for (const key of ["_baseline", "_working"]) {
+      let bundle = removeBundleDevice(this[key], oldId);
+      if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+      for (const activity of bundle?.activities ?? []) {
+        bundle = rewriteWifiEventPlaceholderRefs(bundle, Number(activity?.device?.device_id ?? -1), newId, oldId);
+      }
+      this[key] = bundle;
+    }
+    this._recomputeDirty();
   }
   /** Apply the hub-side long-record retirement to the baseline and the
    *  working bundle alike: the user's own edits (the diff) stay as they are. */

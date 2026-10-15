@@ -184,6 +184,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     wifiStepPowerConfig: "Automatisch in- en uitschakelen bijwerken…", wifiStepInputConfig: "Ingangsconfiguratie bijwerken…", wifiStepInputSelect: "Ingangsselectie bijwerken…",
     wifiStepActivityJoin: "Het apparaat aan een activiteit toevoegen…", wifiStepActivityLeave: "Het apparaat uit een activiteit verwijderen…",
     wifiStepHeadCommit: "Apparaat opslaan…", wifiStepBindingWrite: "Een knop toewijzen…",
+    wifiStepCommandSortRewrite: "Commandovolgorde bijwerken…",
     wifiUpdatedInPlace: "Wifi-apparaat bijgewerkt.",
     wifiAlreadyCurrent: "Wifi-apparaat is al up-to-date.",
     wifiDeviceRemoved: "Wifi-apparaat verwijderd — geen commando's geconfigureerd.",
