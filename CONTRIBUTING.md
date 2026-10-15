@@ -33,7 +33,7 @@ The default branch is `main`; day-to-day development happens on `dev`. Target PR
 ## ◇ Prerequisites
 
 - **Python 3.11+** (development and CI primarily use 3.13)
-- **Node 20+** (only needed for frontend work)
+- **Node 22+** (only needed for frontend work; CI uses 24)
 
 Python setup (Windows shown; the checked-in `pytest.cmd` wrapper picks up
 `.venv-py313`, then `.venv-py313-smoke`, then `.venv`):

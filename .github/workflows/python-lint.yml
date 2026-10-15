@@ -56,7 +56,7 @@ jobs:
           python-version: "3.13"
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
       - name: The environment pyproject.toml points pyright at (.venv-py313)
         run: |
           python -m venv .venv-py313

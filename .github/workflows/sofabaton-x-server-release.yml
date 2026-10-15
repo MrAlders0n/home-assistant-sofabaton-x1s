@@ -92,7 +92,7 @@ jobs:
     permissions:
       id-token: write  # OIDC for PyPI trusted publishing
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: sofabaton-x-server-dist
           path: dist/
@@ -120,7 +120,7 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: sofabaton-x-server-dist
           path: release-wheels/
@@ -152,8 +152,8 @@ jobs:
             echo "EOT"
           } >> "$GITHUB_OUTPUT"
           echo "version=$VERSION"; echo "$IMAGES"; echo "$TAGS"
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
       - name: Build for this runner and smoke-test before anything is pushed
         run: |
           docker build -f sofabaton-x-server/Dockerfile --build-arg WHEEL_SOURCE=release -t sofabaton-x-server:release .
@@ -163,20 +163,20 @@ jobs:
           docker logs sbx | tail -5
           docker rm -f sbx
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Log in to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Tags and labels
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.names.outputs.images }}
           tags: ${{ steps.names.outputs.tags }}
@@ -185,7 +185,7 @@ jobs:
             org.opencontainers.image.description=Self-hosted hub management, web remote and local API for Sofabaton X1 / X1S / X2
             org.opencontainers.image.licenses=MIT
       - name: Build for amd64 + arm64 and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: sofabaton-x-server/Dockerfile

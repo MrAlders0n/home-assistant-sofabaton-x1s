@@ -15,7 +15,7 @@ await build({
   external: ["typescript"],
   format: "esm",
   platform: "node",
-  target: "node20",
+  target: "node22",
   sourcemap: false,
   legalComments: "none",
 });

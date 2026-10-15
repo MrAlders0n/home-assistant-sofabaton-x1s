@@ -33,11 +33,17 @@ function main() {
   const work = mkdtempSync(join(tmpdir(), "server-types-"));
   const generated = join(work, "openapi.d.ts");
   try {
-    const run = spawnSync(
-      "npx",
-      ["--prefer-offline", "-y", GENERATOR, input, "--default-non-nullable", "false", "-o", generated],
-      { cwd: root, stdio: "inherit", shell: process.platform === "win32" },
-    );
+    const args = ["--prefer-offline", "-y", GENERATOR, input, "--default-non-nullable", "false", "-o", generated];
+    // npx is npx.cmd on Windows and only runs through a shell; the shell gets
+    // one quoted command line, since args beside shell: true is DEP0190.
+    const run =
+      process.platform === "win32"
+        ? spawnSync(["npx", ...args].map((a) => (/\s/.test(a) ? `"${a}"` : a)).join(" "), {
+            cwd: root,
+            stdio: "inherit",
+            shell: true,
+          })
+        : spawnSync("npx", args, { cwd: root, stdio: "inherit" });
     if (run.status !== 0) {
       console.error(`${GENERATOR} failed (${run.status})`);
       process.exit(run.status ?? 1);
