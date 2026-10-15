@@ -1,5 +1,5 @@
 name: Bug report
-description: Report something that is broken in the Home Assistant integration or sofabaton-x
+description: Report something that is broken in the Home Assistant integration, sofabaton-x, or sofabaton-x-server
 labels: [bug]
 body:
   - type: markdown
@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for taking the time to report this. Please share what you can; logs and version details are helpful, but do not worry if you cannot collect everything.
 
-        If you are using the standalone `sofabaton-x` package, Home Assistant diagnostics and `switch.<hub>_hex_logging` do not apply.
+        If you are using the standalone `sofabaton-x` package or `sofabaton-x-server`, Home Assistant diagnostics and `switch.<hub>_hex_logging` do not apply.
   - type: dropdown
     id: affected_area
     attributes:
@@ -16,6 +16,7 @@ body:
       options:
         - Home Assistant integration
         - Standalone sofabaton-x package / CLI
+        - sofabaton-x-server (control panel, web remote, API)
         - Documentation
         - Not sure
     validations:

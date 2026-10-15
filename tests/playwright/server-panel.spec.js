@@ -2251,7 +2251,7 @@ test.describe("control panel, views", () => {
     await editor.locator('.macro-picker-option[data-value="copy:102:1"]').click();
     await expect(editor.locator("#sb-add-macro-target .macro-picker-chip")).toHaveText("Music");
     await expect(editor.locator("#sb-add-macro-name")).toHaveCount(0);
-    await expect(editor.locator("#add-shortcut-dialog .decoded-field-helper")).toHaveText("Copied from Music as it is, with 1 step.");
+    await expect(editor.locator("#add-shortcut-dialog .decoded-field-helper")).toHaveText("Will be copied unchanged from Music, with 1 step.");
     await page.screenshot({ path: shot(testInfo, "activity-macro-copy") });
     await editor.locator("#add-shortcut-save").click();
     await expect(editor.locator("#step-title")).toHaveCount(0);
