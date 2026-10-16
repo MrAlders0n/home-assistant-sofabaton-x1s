@@ -134,6 +134,25 @@ def light_job(view: Optional[JobView]) -> Optional[JobView]:
 
 
 @dataclass(frozen=True)
+class CacheVersion:
+    """Which state of the hub's cache a client's rows come from.
+
+    ``epoch`` is when the server started this hub's proxy (ms since the
+    epoch): a re-enable or a server restart starts a new one, and a newer
+    epoch outranks any generation of an older one. ``generation`` is the
+    library's cache generation, which moves whenever the cache may have
+    changed (a hub read ending, a write, a clear, an import).
+    ``snapshot_id`` is the content id of the snapshot at that generation,
+    the value ``If-Match`` takes: rows holding another id are out of date
+    when this version is newer than theirs (``GET /hubs/{id}/snapshot``
+    reports its ``engine_generation``)."""
+
+    epoch: int
+    generation: int
+    snapshot_id: str
+
+
+@dataclass(frozen=True)
 class HubView:
     """What ``/hubs`` returns per hub: the record, a status snapshot and
     the hub's jobs (``active_job``: the one queued or running now;
@@ -155,6 +174,8 @@ class HubView:
     # told to call back. ``config.local_address`` is set when it is manual.
     # None while no proxy runs.
     local_address: Optional[str] = None
+    # The cache's current version (hub_updates.py); None while no proxy runs.
+    cache: Optional[CacheVersion] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

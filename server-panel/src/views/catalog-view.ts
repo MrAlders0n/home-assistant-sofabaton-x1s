@@ -34,6 +34,7 @@ import {
   type SnapshotDocument,
   type SnapshotEntity,
 } from "../panel-api";
+import { Coalescer, FOLLOW_DEBOUNCE_MS, FOLLOW_MAX_WAIT_MS, loadedVersion, needsReload, type LoadedVersion } from "../cache-follow";
 import type { HubContext } from "../panel-context";
 import type { Gate } from "../panel-selectors";
 import { formatWhen } from "../panel-state";
@@ -364,6 +365,10 @@ export class SbPanelCatalog extends LitElement {
   private _loadedGate: Gate | null = null;
   private _loadSeq = 0;
   private _lastJobId: string | null = null;
+  /** The cache version the lists came from: a newer one reads them again (cache-follow.ts). */
+  private _loadedVersion: LoadedVersion | null = null;
+  /** Re-reads for a change made elsewhere, coalesced: a quarter second after the last, at most 1.5 s apart. */
+  private readonly _follow = new Coalescer(() => this._followChange(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
   private _pendingScroll: string | null = null;
   private _devices: Device[] = [];
   private _activities: Activity[] = [];
@@ -381,6 +386,7 @@ export class SbPanelCatalog extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._sorter.cancel();
+    this._follow.cancel();
   }
 
   protected willUpdate(changed: PropertyValues): void {
@@ -413,15 +419,20 @@ export class SbPanelCatalog extends LitElement {
         // Work still running for the previous hub reports there, not here (CR-F5a-6).
         this._refresh = null;
         this._sorter.cancel();
+        this._follow.cancel();
+        this._loadedVersion = null;
         if (id) void this._load();
       } else {
         // A job that ended elsewhere (another tab, the API console) may have
-        // changed the cache: re-read it once per finished job.
+        // changed the cache: re-read once per finished job. And any newer
+        // cache version (a change with no job: another client's first look
+        // at a device, the vendor app's session) re-reads too. Both coalesced.
         const jobId = this.hub?.last_job?.job_id ?? null;
         if (jobId && jobId !== this._lastJobId) {
           this._lastJobId = jobId;
-          if (!this._refresh) void this._reloadAll();
+          this._follow.poke();
         }
+        if (needsReload(this._loadedVersion, this.hub?.cache)) this._follow.poke();
       }
     }
     // A load that ran while the hub could not answer (disabled: a 409; not
@@ -465,10 +476,14 @@ export class SbPanelCatalog extends LitElement {
     if (!hubId) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    const versionAtStart = this.hub?.cache ?? null;
     this._loading = true;
     try {
       const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
+      // Even a failed read counts as this version: the next change tries again, never a loop.
+      this._loadedVersion = loadedVersion(versionAtStart, snapshot.ok ? snapshot.body : null);
+      if (!snapshot.ok) this._loadedVersion = { ...this._loadedVersion, snapshotId: versionAtStart?.snapshot_id ?? null };
       const failed = [devices, activities].find((r) => !r.ok);
       if (failed) {
         this._notice = problemText(failed);
@@ -488,12 +503,20 @@ export class SbPanelCatalog extends LitElement {
     }
   }
 
-  /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
-  private async _reloadAll(): Promise<void> {
+  /** The lists and every loaded drawer again (after a refresh, or a change made elsewhere).
+   *  `keepOpen` leaves the open drawer's rows in place until the new ones arrive (no "Loading…" flash). */
+  private async _reloadAll({ keepOpen = false }: { keepOpen?: boolean } = {}): Promise<void> {
     await this._load();
     const open = this.openEntry;
-    this._details = {};
-    if (open) await this._loadDetail(open);
+    const openKey = open ? entryKey(open.kind, open.id) : null;
+    this._details = keepOpen && openKey && this._details[openKey] ? { [openKey]: this._details[openKey] } : {};
+    if (open) await this._loadDetail(open, { quiet: keepOpen });
+  }
+
+  /** A change made elsewhere: read the lists and the open drawer again, unless this view's own work is about to. */
+  private _followChange(): void {
+    if (!this._loadedFor || this._refresh || this._reorder?.syncing || this._add?.busy) return;
+    void this._reloadAll({ keepOpen: true });
   }
 
   private _toggle(entry: CatalogEntry): void {
@@ -506,11 +529,11 @@ export class SbPanelCatalog extends LitElement {
     if (!this._details[key]) void this._loadDetail(entry);
   }
 
-  private async _loadDetail(entry: CatalogEntry): Promise<void> {
+  private async _loadDetail(entry: CatalogEntry, { quiet = false }: { quiet?: boolean } = {}): Promise<void> {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
     const key = entryKey(entry.kind, entry.id);
-    this._detailLoading = key;
+    if (!quiet) this._detailLoading = key;
     this._detailNotice = null;
     let detail: Detail | null = null;
     try {
@@ -549,6 +572,7 @@ export class SbPanelCatalog extends LitElement {
 
   private async _reloadProvenance(hubId: string): Promise<void> {
     try {
+      // The lists stay what _load read: _loadedVersion stays theirs, so a move since then still reloads them.
       const snapshot = await this.api.snapshot(hubId);
       if (this._loadedFor !== hubId || !snapshot.ok) return;
       this._snapshot = snapshot.body;

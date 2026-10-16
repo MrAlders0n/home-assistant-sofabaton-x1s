@@ -5,6 +5,13 @@
 // little persisted preferences. It talks to the API client and the event
 // stream and nothing else; timers, storage and the clock are injectable
 // so the node tests drive it deterministically.
+//
+// Cache freshness (2026-10-16, the HA card's model): the stream carries a
+// `hub_update` (the hub's whole view, its cache version included) on every
+// change, which replaces the hub's record at once, so locks, gates and the
+// dock follow within the server's coalescing window; the views re-read
+// their rows when the cache version moves (cache-follow.ts). The REST poll
+// stays as a safety net, every 10 s while the push is live.
 
 import type { ApiResponse, ApplySummary, HubView, JobView, Operation, PanelApi, SeenHub, ServerInfo } from "./panel-api";
 import { TERMINAL_JOB_STATES, problemText } from "./panel-api";
@@ -13,6 +20,7 @@ import { loadPrefs, nextTheme, savePrefs, type ThemeChoice } from "./panel-state
 import type { PanelStream, StreamMessage } from "./panel-stream";
 import { isHubRefreshTrigger } from "./panel-stream";
 import { noticeForJob } from "./panel-selectors";
+import { reconcileHubView } from "./cache-follow";
 
 export interface HubNotice {
   tone: "success" | "error" | "neutral" | "info";
@@ -47,20 +55,18 @@ export interface PressEvent {
 }
 
 /** An editor's unsaved work on a hub (decision 8): what it edits (`scope`,
- *  the tab and subtab), the snapshot it was taken from, and the editor's
- *  own data. Mirrored to local storage so a reload keeps it. */
+ *  the tab and subtab), the snapshot it was taken from, the editor's own
+ *  data and what that data was before the edit (`base`), so the editor can
+ *  carry the edit over to a newer snapshot (bundle-rebase.ts) instead of
+ *  asking. Mirrored to local storage so a reload keeps it. */
 export interface Draft {
   scope: string;
   snapshotId: string;
   data: unknown;
+  /** The data as the snapshot had it when the edit started; absent in drafts stored before 2026-10-16. */
+  base?: unknown;
   updatedAt: number;
-  /** The user chose to keep editing after the hub moved on (the stale prompt). */
-  acceptedStale?: boolean;
 }
-
-/** Whether a restored draft still matches the hub: not yet checked, fresh,
- *  stale (the prompt), or kept (stale, but the user chose to go on). */
-export type DraftCheck = "unchecked" | "fresh" | "stale" | "kept";
 
 /** One hub as the panel tracks it: the server's view plus the panel's own bits. */
 export interface HubRuntime {
@@ -75,7 +81,6 @@ export interface HubRuntime {
   lastPress: PressEvent | null;
   /** The editor's unsaved work on this hub, if any (decision 8). */
   draft: Draft | null;
-  draftCheck: DraftCheck;
 }
 
 export interface PanelSnapshot {
@@ -121,7 +126,10 @@ export interface PanelStoreOptions {
   setTimer?: (fn: () => void, ms: number) => TimerHandle;
   clearTimer?: (handle: TimerHandle) => void;
   isVisible?: () => boolean;
+  /** The REST poll without the push... */
   tickMs?: number;
+  /** ...and while `hub_update` frames arrive (a safety net only). */
+  pushTickMs?: number;
   debounceMs?: number;
   noticeTtlMs?: number;
   errorNoticeTtlMs?: number;
@@ -150,6 +158,7 @@ export class PanelStore {
   private readonly _clearTimer: (handle: TimerHandle) => void;
   private readonly _isVisible: () => boolean;
   private readonly _tickMs: number;
+  private readonly _pushTickMs: number;
   private readonly _debounceMs: number;
   private readonly _noticeTtlMs: number;
   private readonly _errorNoticeTtlMs: number;
@@ -167,6 +176,10 @@ export class PanelStore {
   private _retryDelay: number;
   private readonly _noticeTimers = new Map<string, TimerHandle>();
   private _hubsKey = "";
+  /** The newest hub_update seq per hub on this connection; an older frame is dropped. */
+  private readonly _updateSeq = new Map<string, number>();
+  /** hub_update frames arrive on this connection: the poll slows down. */
+  private _pushLive = false;
   /** The last hub tab and subtab, for the preferences and for tool pages that lead back. */
   private _lastHubTab: { tab: HubTab; sub: string };
 
@@ -179,6 +192,7 @@ export class PanelStore {
     this._clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
     this._isVisible = options.isVisible ?? (() => typeof document === "undefined" || document.visibilityState === "visible");
     this._tickMs = options.tickMs ?? 5000;
+    this._pushTickMs = options.pushTickMs ?? 10000;
     this._debounceMs = options.debounceMs ?? 300;
     this._noticeTtlMs = options.noticeTtlMs ?? 6000;
     this._errorNoticeTtlMs = options.errorNoticeTtlMs ?? 8000;
@@ -237,6 +251,7 @@ export class PanelStore {
   connect(): void {
     if (this._connected) return;
     this._connected = true;
+    this._stream.hubUpdates = true;
     this._offStream = [
       this._stream.onState((connected) => this._onStreamState(connected)),
       this._stream.onMessage((message) => this._onStreamMessage(message)),
@@ -279,7 +294,12 @@ export class PanelStore {
         void this.refreshSeen();
       }
       this._scheduleTick();
-    }, this._tickMs);
+    }, this.pushLive ? this._pushTickMs : this._tickMs);
+  }
+
+  /** True while `hub_update` frames keep the hub records current. */
+  get pushLive(): boolean {
+    return this._pushLive && this._snapshot.stream.connected;
   }
 
   // -- selection, route, theme, message ----------------------------------------------------------
@@ -297,10 +317,7 @@ export class PanelStore {
     }
     this._set(patch);
     this._savePrefs();
-    if (hubId) {
-      void this._loadApplies(hubId);
-      void this._checkDraft(hubId);
-    }
+    if (hubId) void this._loadApplies(hubId);
   }
 
   /** Go somewhere (decision 9). A hub route without a hub takes the selected one; a hub in it becomes the selection. */
@@ -360,10 +377,7 @@ export class PanelStore {
     // A selection the list just moved (first hub, re-key, removal) read
     // its applies in selectHub already; an unchanged one is re-read here.
     const selected = this._snapshot.selectedHubId;
-    if (selected && selected === selectedBefore) {
-      await this._loadApplies(selected);
-      await this._checkDraft(selected);
-    }
+    if (selected && selected === selectedBefore) await this._loadApplies(selected);
   }
 
   /** Reload the hub list soon, coalescing bursts of triggers. */
@@ -418,7 +432,7 @@ export class PanelStore {
     const draft = loadDraft(this._storage, fromId);
     if (draft && !loadDraft(this._storage, toId)) {
       saveDraft(this._storage, toId, draft);
-      this._patchRuntime(toId, { draft, draftCheck: draft.acceptedStale ? "kept" : "unchecked" });
+      this._patchRuntime(toId, { draft });
     }
     saveDraft(this._storage, fromId, null);
     if (fromId in this._acks) {
@@ -473,9 +487,10 @@ export class PanelStore {
       this._hubsKey = key;
       const runtimes: HubRuntime[] = hubs.map((hub) => {
         const old = previous.get(hub.hub_id);
-        if (old) return { ...old, hub };
+        // A list answer may have been built before a job event the record already holds.
+        if (old) return { ...old, hub: reconcileHubView(old.hub, hub) };
         const draft = loadDraft(this._storage, hub.hub_id);
-        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft, draftCheck: draft?.acceptedStale ? "kept" : "unchecked" };
+        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft };
       });
       this._set({ hubs: runtimes, listLoaded: true });
       for (const hub of hubs) if (hub.last_job) this._noteFinished(hub.hub_id, hub.last_job, { onLoad: !previous.has(hub.hub_id) });
@@ -504,6 +519,9 @@ export class PanelStore {
   // -- the stream ------------------------------------------------------------------------------
 
   private _onStreamState(connected: boolean): void {
+    // A new connection numbers its hub updates afresh (a restarted server starts over).
+    this._updateSeq.clear();
+    this._pushLive = false;
     this._set({ stream: { ...this._snapshot.stream, connected } });
     // Every (re)connect is a resync point: whatever happened while deaf is re-read.
     if (connected) void this.refreshAll();
@@ -527,6 +545,11 @@ export class PanelStore {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "hub_update":
+        if (typeof data.hub_id === "string" && data.hub && typeof data.hub === "object") {
+          this._onHubUpdate(data.hub_id, typeof data.seq === "number" ? data.seq : 0, data.hub as HubView);
+        }
         return;
       case "dropped":
         // The server skipped frames for us: re-read everything (api-reference,
@@ -555,6 +578,36 @@ export class PanelStore {
       void this.refreshAll();
     }
     if (instanceId && instanceId !== previous) this._set({ server: { ...this._snapshot.server, instanceId } });
+  }
+
+  /** A pushed hub view: the hub's record follows it at once (locks, gates, the dock, the cache version). */
+  private _onHubUpdate(hubId: string, seq: number, hub: HubView): void {
+    const last = this._updateSeq.get(hubId);
+    if (last !== undefined && seq <= last) return;
+    this._updateSeq.set(hubId, seq);
+    if (!this._pushLive) {
+      this._pushLive = true;
+      this._scheduleTick();
+    }
+    const runtime = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
+    if (!runtime || hub.hub_id !== hubId) {
+      // A hub this panel does not list yet (just added, just re-keyed): the list call adds it.
+      this.refreshSoon();
+      return;
+    }
+    const next = reconcileHubView(runtime.hub, hub);
+    if (JSON.stringify(next) === JSON.stringify(runtime.hub)) return;
+    // The record no longer matches the last list answer: the next one applies even when it repeats it.
+    this._hubsKey = "";
+    const previousLast = runtime.hub.last_job?.job_id ?? null;
+    const cancelRequestedJobId = runtime.cancelRequestedJobId && next.active_job?.job_id !== runtime.cancelRequestedJobId ? null : runtime.cancelRequestedJobId;
+    this._patchRuntime(hubId, { hub: next, cancelRequestedJobId });
+    const finished = next.last_job;
+    // A job end the stream reported only through the view (its job_event was dropped).
+    if (finished && finished.job_id !== previousLast) {
+      this._noteFinished(hubId, finished, { onLoad: false });
+      if (APPLY_JOB_KINDS.has(finished.kind)) void this._loadApplies(hubId);
+    }
   }
 
   /** A job frame mutates the hub's record directly; a terminal one reloads the hub afterwards. */
@@ -738,36 +791,12 @@ export class PanelStore {
   /** An editor's unsaved work: kept on the record and mirrored to storage. Null clears it. */
   setDraft(hubId: string, draft: Omit<Draft, "updatedAt"> | null): void {
     const full: Draft | null = draft ? { ...draft, updatedAt: this._now() } : null;
-    if (this._patchRuntime(hubId, { draft: full, draftCheck: full ? "fresh" : "unchecked" })) saveDraft(this._storage, hubId, full);
+    if (this._patchRuntime(hubId, { draft: full })) saveDraft(this._storage, hubId, full);
   }
 
   /** Drop the hub's draft, in memory and in storage. */
   discardDraft(hubId: string): void {
     this.setDraft(hubId, null);
-  }
-
-  /** The stale prompt's "Keep editing": the draft stays, marked as accepted so a reload does not ask again. */
-  keepStaleDraft(hubId: string): void {
-    const runtime = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
-    if (!runtime?.draft) return;
-    const draft: Draft = { ...runtime.draft, acceptedStale: true };
-    this._patchRuntime(hubId, { draft, draftCheck: "kept" });
-    saveDraft(this._storage, hubId, draft);
-  }
-
-  /** A restored draft is checked against the hub's current snapshot once: the same id is fresh, another is stale (the prompt). */
-  private async _checkDraft(hubId: string): Promise<void> {
-    const runtime = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
-    if (!runtime?.draft || runtime.draftCheck !== "unchecked") return;
-    try {
-      const response = await this._api.snapshot(hubId);
-      if (!response.ok || !response.body) return;
-      const current = this._snapshot.hubs.find((r) => r.hub.hub_id === hubId);
-      if (!current?.draft || current.draftCheck !== "unchecked") return;
-      this._patchRuntime(hubId, { draftCheck: response.body.snapshot_id === current.draft.snapshotId ? "fresh" : "stale" });
-    } catch {
-      // unchecked: the banner shows, the prompt waits for a check that works
-    }
   }
 }
 
@@ -813,8 +842,8 @@ export function loadDraft(storage: Pick<StorageLike, "getItem"> | null, hubId: s
       scope: data.scope,
       snapshotId: data.snapshotId,
       data: data.data,
+      ...(data.base !== undefined ? { base: data.base } : {}),
       updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
-      ...(data.acceptedStale ? { acceptedStale: true } : {}),
     };
   } catch {
     return null;

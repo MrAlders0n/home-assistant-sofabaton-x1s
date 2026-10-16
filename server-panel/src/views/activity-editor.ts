@@ -1180,7 +1180,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
             </div>`,
           })}
           <div class="detail-scroll">
-            ${this._renderDeleteErrorBanner()}
+            ${this._renderEditorBanners()}
             ${this._renderPowerSection(activityId)}
             ${this._renderRolesSection(activityId)}
             ${this._renderShortcutsSection()}

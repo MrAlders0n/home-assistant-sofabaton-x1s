@@ -117,7 +117,7 @@ def test_ws_message_types_are_openapi_components(tmp_path: Path) -> None:
     with client:
         spec = client.get(f"{API_PREFIX}/openapi.json").json()
     schemas = spec["components"]["schemas"]
-    for name in ("WsHello", "WsHubEvent", "WsServerEvent", "WsDropped", "HubEvent",
+    for name in ("WsHello", "WsHubEvent", "WsServerEvent", "WsDropped", "WsHubUpdate", "CacheVersion", "HubEvent",
                  "ActivityChanged", "ConnectionState", "StatusChanged", "CatalogReady"):
         assert name in schemas, name
     assert "/api/v1/events" in spec["info"]["description"]

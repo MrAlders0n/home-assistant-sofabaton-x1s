@@ -299,6 +299,19 @@ class FakeProxy:
                            engine_generation=self._seq, complete=bundle["complete"],
                            hub=bundle["hub"], devices=entities["device"], activities=entities["activity"], bundle=bundle)
 
+    @property
+    def cache_generation(self) -> int:
+        # The fake's projection reports the event counter as its generation;
+        # move_cache() moves it without an event (a hub read nobody announced).
+        return self._seq
+
+    async def peek_snapshot(self) -> HubSnapshot:
+        self.peeks = getattr(self, "peeks", 0) + 1
+        return await self.snapshot()
+
+    def move_cache(self) -> None:
+        self._seq += 1
+
     async def refresh(self, *, device_id=None, activity_id=None, progress=None, timeout=10.0):
         self._maybe_fail()
         if self.refuse:

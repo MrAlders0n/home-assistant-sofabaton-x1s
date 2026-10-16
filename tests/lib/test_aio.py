@@ -1766,6 +1766,29 @@ def test_snapshot_id_is_content_only() -> None:
     asyncio.run(main())
 
 
+def test_peek_snapshot_is_the_projection_without_handing_it_out() -> None:
+    # A change watcher (the server's cache version) projects whenever the
+    # generation moves; it must not count as a consumer that already holds
+    # the id, or the next write would skip its snapshot_changed.
+    async def main():
+        fake = _catalog_fake(fetched_devices=(5, 7), fetched_activities=(101,))
+        proxy = _wrap(fake)
+        held = await proxy.snapshot()
+        assert proxy.cache_generation == fake.state.generation
+        fake.detail["device"][7] = [{"button_id": 9}]
+        fake.bump_cache_generation()
+        assert proxy.cache_generation == fake.state.generation
+        peeked = await proxy.peek_snapshot()
+        assert peeked.snapshot_id != held.snapshot_id
+        assert peeked.engine_generation == proxy.cache_generation
+        assert proxy._last_snapshot_id == held.snapshot_id
+        # snapshot() itself still hands the id out.
+        assert (await proxy.snapshot()).snapshot_id == peeked.snapshot_id
+        assert proxy._last_snapshot_id == peeked.snapshot_id
+
+    asyncio.run(main())
+
+
 def test_refresh_whole_reads_catalogs_once_then_every_entity() -> None:
     async def main():
         fake = _catalog_fake()

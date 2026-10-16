@@ -26,6 +26,9 @@ export type HubConfig = Schemas["HubConfig"];
  *  (server panel state plan, decision 1); older fixtures may omit them. */
 export type HubView = Schemas["HubView"];
 
+/** `HubView.cache`: the state of the hub's cache (epoch, generation, snapshot_id); see cache-follow.ts. */
+export type CacheVersion = Schemas["CacheVersion"];
+
 /** One row of `GET /discovery/hubs` (openapi `SeenHub`). */
 export type SeenHub = Schemas["SeenHub"];
 

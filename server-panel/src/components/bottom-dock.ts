@@ -33,7 +33,6 @@ export function renderBottomDock(params: {
   onShowDetails?: (label: string, detail: string) => void;
   onResume: (applyId: string) => void;
   onDiscard: (applyId: string) => void;
-  onKeepDraft: () => void;
   onDiscardDraft: () => void;
   /** Set while the screen behind an "Unsynced changes" banner can sync right
    *  now: the dock then offers the editor's own Sync, so a change made deep
@@ -86,7 +85,7 @@ export function renderBottomDock(params: {
     tone = "dock--warn";
     center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
     actions = confirmActions;
-  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+  } else if (model.kind === "dirty" && params.confirming === "draft") {
     tone = "dock--warn";
     center = status("Discard your unsaved changes? The hub is not changed.");
     actions = confirmActions;
@@ -96,12 +95,6 @@ export function renderBottomDock(params: {
     actions = html`
       ${model.resumable ? html`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : nothing}
       <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
-  } else if (model.kind === "draft_stale") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = html`
-      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
     center = status(model.text);

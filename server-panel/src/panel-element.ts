@@ -837,7 +837,7 @@ export class SofabatonServerPanel extends LitElement {
     if (!this._dockConfirm) return;
     const runtime = selectedRuntime(this._snapshot);
     const kind = dockModel(this._snapshot, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false }).kind;
-    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty" || kind === "draft_stale";
+    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty";
     if (!matches) this._dockConfirm = null;
   }
 
@@ -954,9 +954,6 @@ export class SofabatonServerPanel extends LitElement {
           },
           onDiscard: () => {
             this._dockConfirm = "apply";
-          },
-          onKeepDraft: () => {
-            if (s.selectedHubId) this.store.keepStaleDraft(s.selectedHubId);
           },
           onDiscardDraft: () => {
             this._dockConfirm = "draft";

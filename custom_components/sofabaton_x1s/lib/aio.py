@@ -2706,6 +2706,28 @@ class AsyncXProxy:
             self._last_snapshot_id = snap.snapshot_id
         return snap
 
+    @property
+    def cache_generation(self) -> int:
+        """The cache generation: a counter that moves whenever the cache may
+        have changed (every hub read that ends, every cache clear and
+        import, every write this facade drove). Pure state read, no
+        executor. A change watcher compares it to learn when to look again
+        (:meth:`peek_snapshot`); it never goes back within one proxy, but
+        an imported state document carries its own.
+        """
+
+        return int(getattr(self._proxy.state, "generation", 0) or 0)
+
+    async def peek_snapshot(self) -> HubSnapshot:
+        """:meth:`snapshot` for an observer: the same projection, but it
+        does not count as handed out, so the next write still announces its
+        move with ``snapshot_changed``. Meant for a change watcher that
+        projects whenever :attr:`cache_generation` moves (the server's
+        cache version); clients that edit should use :meth:`snapshot`.
+        """
+
+        return await self.snapshot(_announce=False)
+
     def _project_snapshot(self) -> HubSnapshot:
         # Executor thread: pure state reads through the engine.
         proxy = self._proxy
