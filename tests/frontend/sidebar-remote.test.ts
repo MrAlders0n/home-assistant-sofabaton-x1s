@@ -221,7 +221,8 @@ test("strings: the dock pin names its item in every built-in language", () => {
   for (const lang of ["en", "ar", "de", "es", "fr", "nl", "zh-Hans"]) {
     setRemoteCardLanguage(lang);
     assert.ok(str().sidebar.pinToDock("Netflix").includes("Netflix"), lang);
-    assert.ok(str().sidebar.dockHoldHint, lang);
+    assert.ok(str().sidebar.pinnedToDock("Netflix").includes("Netflix"), lang);
+    assert.notEqual(str().sidebar.pinnedToDock("Netflix"), str().sidebar.pinToDock("Netflix"), lang);
   }
   setRemoteCardLanguage("en");
 });

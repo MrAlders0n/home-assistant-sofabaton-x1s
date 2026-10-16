@@ -40,8 +40,8 @@ interface DockItem {
   send: () => Promise<void>;
 }
 
-/** The dock shortcuts are keys to the press controller (a tap sends, a hold
- *  opens the options), under ids no hub key uses. */
+/** The dock shortcuts are keys to the press controller (a tap sends), under
+ *  ids no hub key uses. */
 const DOCK_KEY_IDS: Record<DockSlot, number> = { left: -101, right: -102 };
 
 function dockSlotForKey(id: number): DockSlot | null {
@@ -152,6 +152,8 @@ export class SofabatonSidebarRemote extends LitElement {
   /** The dock drawer: open or not, and the side it shows (kept while it slides out). */
   private _dockSheetOpen = false;
   private _dockSheetSlot: DockSlot | null = null;
+  /** The pin that opened the dock drawer: focus goes back to it on close. */
+  private _dockSheetOpener: HTMLElement | null = null;
   /** The side just pinned: its shortcut pops in once the sheet closes. */
   private _justPinned: DockSlot | null = null;
 
@@ -201,6 +203,7 @@ export class SofabatonSidebarRemote extends LitElement {
     this._sheet = null;
     this._dockSheetOpen = false;
     this._dockSheetSlot = null;
+    this._dockSheetOpener = null;
     this._justPinned = null;
     this._numpadOpen = false;
     if (next) {
@@ -287,7 +290,7 @@ export class SofabatonSidebarRemote extends LitElement {
         if (!Number.isFinite(id)) return null;
         return { id, key: KEY_BY_ID[id] ?? String(id) };
       },
-      hasLongPress: (id) => dockSlotForKey(id) != null || this._store.longPressAvailableForButton(id, this._scopeFor(id)),
+      hasLongPress: (id) => dockSlotForKey(id) == null && this._store.longPressAvailableForButton(id, this._scopeFor(id)),
       isEnabled: (id) => this._keyEnabled(id),
       onTap: (id, el, at) => this._send(id, el, at),
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
@@ -374,8 +377,6 @@ export class SofabatonSidebarRemote extends LitElement {
   }
 
   private _sendLongPress(id: number, el: Element, at?: { x: number; y: number }): void {
-    const dock = dockSlotForKey(id);
-    if (dock) return this._openDockSheet(dock);
     this._store.triggerCommandPulse();
     this._ring(el, false, at);
     this._control(this._store.sendLongPress(id, this._scopeFor(id)), el);
@@ -609,20 +610,16 @@ export class SofabatonSidebarRemote extends LitElement {
     return pin && item ? { pin, item, icon: dockIconFor(pin, item.label, item.ownIcon) } : null;
   }
 
-  /** A list's pin is a toggle: pins into a free side, or unpins. A full dock pins nothing more. */
-  private _pinTapped(ref: DockRef): void {
+  /** A list's pin: an unpinned item pins into a free side (a full dock pins
+   *  nothing more); a pinned one opens its options, Unpin among them. */
+  private _pinTapped(ref: DockRef, el: HTMLElement): void {
     const scope = this._dockScopeNow();
     if (!scope) return;
     // The list in front of the user is the truth here: a pin whose item is
     // gone from the hub no longer holds its side.
     const slots = this._liveDockSlots(scope, this._dockItems(this._store.deriveRuntimeState()));
     const pinned = dockSlotOf(slots, ref);
-    if (pinned) {
-      this._haptic();
-      if (this._justPinned === pinned) this._justPinned = null;
-      this._saveDock(scope, unpinDockSlot(slots, pinned));
-      return;
-    }
+    if (pinned) return this._openDockSheet(pinned, el);
     const free = pinToFreeSlot(slots, ref);
     if (!free) return;
     this._haptic();
@@ -639,29 +636,33 @@ export class SofabatonSidebarRemote extends LitElement {
     this._control(shortcut.item.send(), el);
   }
 
-  /** A long-press (or right-click) on a dock shortcut opens its options in a drawer of its own. */
-  private _openDockSheet(slot: DockSlot): void {
+  /** A pinned item's pin opens the shortcut's options in a drawer stacked on the sheet. */
+  private _openDockSheet(slot: DockSlot, opener: HTMLElement): void {
     if (!this._dockShortcut(slot) || this._busy().inert) return;
-    this._sheet = null;
     this._dockSheetSlot = slot;
+    this._dockSheetOpener = opener;
     this._dockSheetOpen = true;
     this.requestUpdate();
     void this.updateComplete.then(() => (this.renderRoot.querySelector(".dsheet .close") as HTMLElement | null)?.focus({ preventScroll: true }));
   }
 
+  /** Back to the sheet underneath, focus on the pin that opened the drawer. */
   private _closeDockSheet(): void {
     if (!this._dockSheetOpen) return;
+    // The slot stays set so the content slides out with the drawer.
     this._dockSheetOpen = false;
     this.requestUpdate();
-    // The slot stays set so the content slides out with the drawer.
-    const slot = this._dockSheetSlot;
-    void this.updateComplete.then(() => (this.renderRoot.querySelector(`.dock .sc.${slot}`) as HTMLElement | null)?.focus({ preventScroll: true }));
+    const opener = this._dockSheetOpener;
+    this._dockSheetOpener = null;
+    void this.updateComplete.then(() => { if (opener?.isConnected) opener.focus({ preventScroll: true }); });
   }
 
   private _moveSlot(from: DockSlot, to: DockSlot): void {
     const scope = this._dockScopeNow();
     if (!scope || from === to) return;
     this._dockSheetSlot = to;
+    // A shortcut still waiting to pop in moves with it (the two trade places).
+    if (this._justPinned) this._justPinned = this._justPinned === from ? to : from;
     this._saveDock(scope, moveDockSlot(this._dockSlots(scope), from, to));
   }
 
@@ -669,8 +670,9 @@ export class SofabatonSidebarRemote extends LitElement {
     const scope = this._dockScopeNow();
     if (!scope) return;
     if (this._justPinned === slot) this._justPinned = null;
-    this._dockSheetOpen = false;
+    this._haptic();
     this._saveDock(scope, unpinDockSlot(this._dockSlots(scope), slot));
+    this._closeDockSheet();
   }
 
   private _setDockIcon(slot: DockSlot, icon: string | null): void {
@@ -686,16 +688,17 @@ export class SofabatonSidebarRemote extends LitElement {
       : html`<ha-icon .icon=${icon}></ha-icon>`;
   }
 
-  /** The pin at the end of a sheet item: a toggle, dimmed while the dock is full. */
+  /** The pin at the end of a sheet item: pins it, or, once pinned, opens the
+   *  shortcut's options. Dimmed while the dock is full. */
   private _pinButton(ref: DockRef, label: string, slots: DockSlots): TemplateResult | typeof nothing {
     if (!Number.isFinite(ref.commandId) || !Number.isFinite(ref.deviceId)) return nothing;
     const s = str();
     const pinned = dockSlotOf(slots, ref) != null;
     const blocked = !pinned && dockIsFull(slots);
     return html`<button class=${classMap({ pin: true, on: pinned, blocked })} type="button" data-press
-      aria-label=${s.sidebar.pinToDock(label)} aria-pressed=${pinned ? "true" : "false"}
+      aria-label=${pinned ? s.sidebar.pinnedToDock(label) : s.sidebar.pinToDock(label)} aria-haspopup=${pinned ? "dialog" : nothing}
       aria-disabled=${blocked ? "true" : nothing} title=${blocked ? s.sidebar.dockFull : nothing}
-      @click=${() => this._pinTapped(ref)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
+      @click=${(ev: Event) => this._pinTapped(ref, ev.currentTarget as HTMLElement)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
   }
 
   private _renderDock(derived: Derived, deviceMode: boolean, inert: boolean): TemplateResult {
@@ -711,20 +714,18 @@ export class SofabatonSidebarRemote extends LitElement {
           const shortcut = this._dockShortcut(slot, derived);
           if (!shortcut) return nothing;
           const { item, icon } = shortcut;
-          // A key to the press controller: a tap sends, a hold opens the options.
+          // A key to the press controller: a tap sends. Its options are on the item's pin in the sheet.
           return html`<button class=${classMap({ sc: true, [slot]: true, new: popSlot === slot })} type="button" data-key=${DOCK_KEY_IDS[slot]}
-            aria-label=${item.label} title=${item.label} aria-description=${s.sidebar.dockHoldHint} aria-haspopup="dialog"
-            aria-disabled=${inert ? "true" : nothing}
-            @contextmenu=${(ev: Event) => { ev.preventDefault(); this._openDockSheet(slot); }}
+            aria-label=${item.label} title=${item.label} aria-disabled=${inert ? "true" : nothing}
             @animationend=${() => { this._justPinned = null; this.requestUpdate(); }}>${this._dockGlyph(icon, item.label)}</button>`;
         })}
       </div>
     `;
   }
 
-  /** The dock shortcut's options: the remote's second drawer, never stacked on the first.
-   *  It always shows the shortcut that was held: Swap sides is an action that
-   *  moves it (trading places with the other one), never a picker between the two. */
+  /** The dock shortcut's options: a second drawer, stacked on the sheet whose
+   *  pin opened it. It always shows that pin's shortcut: Swap sides is an action
+   *  that moves it (trading places with the other one), never a picker between the two. */
   private _renderDockSheet(derived: Derived): TemplateResult {
     const s = str();
     const open = this._dockSheetOpen;
@@ -922,8 +923,9 @@ export class SofabatonSidebarRemote extends LitElement {
 
         ${this._renderDock(derived, deviceMode, busy.inert)}
 
-        <div class="scrim" @click=${() => (this._dockSheetOpen ? this._closeDockSheet() : this._openSheet(null))}></div>
+        <div class="scrim" @click=${() => this._openSheet(null)}></div>
         ${this._renderSheet(derived, deviceMode)}
+        <div class="scrim dscrim" @click=${() => this._closeDockSheet()}></div>
         ${this._renderDockSheet(derived)}
       </div>
     `;
@@ -946,7 +948,7 @@ export class SofabatonSidebarRemote extends LitElement {
       : pane === "favorites" ? s.card.favoritesTab : pane === "macros" ? s.card.macrosTab : s.sidebar.activities;
     const eyebrow = pane === "commands" ? (this._store.deviceNameForId(derived.deviceId) ?? "") : "";
     return html`
-      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>
+      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} ?inert=${this._dockSheetOpen} aria-label=${title}>
         <div class="grip"></div>
         ${headed
           ? html`<div class="phead"><div class="titles">${eyebrow ? html`<span class="eyebrow">${eyebrow}</span>` : nothing}<span>${title}</span></div>${close}</div>`

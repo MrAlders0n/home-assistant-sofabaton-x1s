@@ -649,13 +649,13 @@ var REMOTE_CARD_STRINGS_EN = {
     pullHandleCommands: "Open commands",
     close: "Close",
     pinToDock: (name) => `Pin ${name} to the dock`,
+    pinnedToDock: (name) => `${name}, pinned to the dock`,
     dockShortcut: "Dock shortcut",
     dockSwap: "Swap sides",
     dockOnLeft: "On the left",
     dockOnRight: "On the right",
     unpin: "Unpin",
     dockFull: "The dock is full",
-    dockHoldHint: "Press and hold to change",
     dockIcon: "Icon",
     starting: "Starting",
     poweringOff: "Powering off",
@@ -3778,7 +3778,7 @@ var sidebarRemoteStyles = i`
     background: linear-gradient(var(--sb-card), var(--sb-card)), linear-gradient(var(--sb-card), var(--sb-card));
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
   }
-  .app.open .scrim, .app.dock-open .scrim { opacity: 1; pointer-events: auto; }
+  .app.open .scrim:not(.dscrim), .app.dock-open .dscrim { opacity: 1; pointer-events: auto; }
   .app.open .sheet:not(.dsheet), .app.dock-open .dsheet { transform: none; }
   .sheet .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--divider-color); margin: 10px auto 0; flex: 0 0 auto; }
   .segs { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; flex: 0 0 auto; }
@@ -3848,9 +3848,11 @@ var sidebarRemoteStyles = i`
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---------- the dock drawer: a dock shortcut's options ----------
-     The same sheet (look, slide, scrim), sized to its content. It opens from
-     the dock, so it never stacks on the favorites sheet. */
-  .sheet.dsheet { height: auto; max-height: 68%; }
+     The same sheet (look, slide, scrim), sized to its content. A pinned
+     item's pin opens it, so it stacks on the sheet with a scrim of its own
+     between them (both above the rings, 8: nothing on them rings). */
+  .scrim.dscrim { z-index: 9; }
+  .sheet.dsheet { height: auto; max-height: 68%; z-index: 10; }
   .dsheet .phead { gap: 12px; }
   .dsheet .prev { width: 44px; height: 44px; border-radius: 50%; background: var(--sb-pill); display: grid; place-items: center; flex: 0 0 auto; }
   .dsheet .prev ha-icon { --mdc-icon-size: 22px; opacity: 0.85; }
@@ -4208,6 +4210,8 @@ var SofabatonSidebarRemote = class extends i4 {
     /** The dock drawer: open or not, and the side it shows (kept while it slides out). */
     this._dockSheetOpen = false;
     this._dockSheetSlot = null;
+    /** The pin that opened the dock drawer: focus goes back to it on close. */
+    this._dockSheetOpener = null;
     /** The side just pinned: its shortcut pops in once the sheet closes. */
     this._justPinned = null;
     this._onKeydown = (ev) => {
@@ -4263,6 +4267,7 @@ var SofabatonSidebarRemote = class extends i4 {
     this._sheet = null;
     this._dockSheetOpen = false;
     this._dockSheetSlot = null;
+    this._dockSheetOpener = null;
     this._justPinned = null;
     this._numpadOpen = false;
     if (next) {
@@ -4326,7 +4331,7 @@ var SofabatonSidebarRemote = class extends i4 {
         if (!Number.isFinite(id)) return null;
         return { id, key: KEY_BY_ID[id] ?? String(id) };
       },
-      hasLongPress: (id) => dockSlotForKey(id) != null || this._store.longPressAvailableForButton(id, this._scopeFor(id)),
+      hasLongPress: (id) => dockSlotForKey(id) == null && this._store.longPressAvailableForButton(id, this._scopeFor(id)),
       isEnabled: (id) => this._keyEnabled(id),
       onTap: (id, el, at) => this._send(id, el, at),
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
@@ -4397,8 +4402,6 @@ var SofabatonSidebarRemote = class extends i4 {
     this._control(this._store.sendCommand(id, this._scopeFor(id)), el);
   }
   _sendLongPress(id, el, at) {
-    const dock = dockSlotForKey(id);
-    if (dock) return this._openDockSheet(dock);
     this._store.triggerCommandPulse();
     this._ring(el, false, at);
     this._control(this._store.sendLongPress(id, this._scopeFor(id)), el);
@@ -4598,18 +4601,14 @@ var SofabatonSidebarRemote = class extends i4 {
     const item = pin ? (this._dockItems(derived) ?? []).find((it) => sameDockRef(it.ref, pin)) : void 0;
     return pin && item ? { pin, item, icon: dockIconFor(pin, item.label, item.ownIcon) } : null;
   }
-  /** A list's pin is a toggle: pins into a free side, or unpins. A full dock pins nothing more. */
-  _pinTapped(ref) {
+  /** A list's pin: an unpinned item pins into a free side (a full dock pins
+   *  nothing more); a pinned one opens its options, Unpin among them. */
+  _pinTapped(ref, el) {
     const scope = this._dockScopeNow();
     if (!scope) return;
     const slots = this._liveDockSlots(scope, this._dockItems(this._store.deriveRuntimeState()));
     const pinned = dockSlotOf(slots, ref);
-    if (pinned) {
-      this._haptic();
-      if (this._justPinned === pinned) this._justPinned = null;
-      this._saveDock(scope, unpinDockSlot(slots, pinned));
-      return;
-    }
+    if (pinned) return this._openDockSheet(pinned, el);
     const free = pinToFreeSlot(slots, ref);
     if (!free) return;
     this._haptic();
@@ -4624,34 +4623,40 @@ var SofabatonSidebarRemote = class extends i4 {
     this._ring(el, false, at);
     this._control(shortcut.item.send(), el);
   }
-  /** A long-press (or right-click) on a dock shortcut opens its options in a drawer of its own. */
-  _openDockSheet(slot) {
+  /** A pinned item's pin opens the shortcut's options in a drawer stacked on the sheet. */
+  _openDockSheet(slot, opener) {
     if (!this._dockShortcut(slot) || this._busy().inert) return;
-    this._sheet = null;
     this._dockSheetSlot = slot;
+    this._dockSheetOpener = opener;
     this._dockSheetOpen = true;
     this.requestUpdate();
     void this.updateComplete.then(() => this.renderRoot.querySelector(".dsheet .close")?.focus({ preventScroll: true }));
   }
+  /** Back to the sheet underneath, focus on the pin that opened the drawer. */
   _closeDockSheet() {
     if (!this._dockSheetOpen) return;
     this._dockSheetOpen = false;
     this.requestUpdate();
-    const slot = this._dockSheetSlot;
-    void this.updateComplete.then(() => this.renderRoot.querySelector(`.dock .sc.${slot}`)?.focus({ preventScroll: true }));
+    const opener = this._dockSheetOpener;
+    this._dockSheetOpener = null;
+    void this.updateComplete.then(() => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    });
   }
   _moveSlot(from, to) {
     const scope = this._dockScopeNow();
     if (!scope || from === to) return;
     this._dockSheetSlot = to;
+    if (this._justPinned) this._justPinned = this._justPinned === from ? to : from;
     this._saveDock(scope, moveDockSlot(this._dockSlots(scope), from, to));
   }
   _unpin(slot) {
     const scope = this._dockScopeNow();
     if (!scope) return;
     if (this._justPinned === slot) this._justPinned = null;
-    this._dockSheetOpen = false;
+    this._haptic();
     this._saveDock(scope, unpinDockSlot(this._dockSlots(scope), slot));
+    this._closeDockSheet();
   }
   _setDockIcon(slot, icon) {
     const scope = this._dockScopeNow();
@@ -4662,16 +4667,17 @@ var SofabatonSidebarRemote = class extends i4 {
   _dockGlyph(icon, label) {
     return icon === DOCK_MONOGRAM ? b2`<span class="mono">${dockMonogram(label)}</span>` : b2`<ha-icon .icon=${icon}></ha-icon>`;
   }
-  /** The pin at the end of a sheet item: a toggle, dimmed while the dock is full. */
+  /** The pin at the end of a sheet item: pins it, or, once pinned, opens the
+   *  shortcut's options. Dimmed while the dock is full. */
   _pinButton(ref, label, slots) {
     if (!Number.isFinite(ref.commandId) || !Number.isFinite(ref.deviceId)) return A;
     const s4 = str();
     const pinned = dockSlotOf(slots, ref) != null;
     const blocked = !pinned && dockIsFull(slots);
     return b2`<button class=${e5({ pin: true, on: pinned, blocked })} type="button" data-press
-      aria-label=${s4.sidebar.pinToDock(label)} aria-pressed=${pinned ? "true" : "false"}
+      aria-label=${pinned ? s4.sidebar.pinnedToDock(label) : s4.sidebar.pinToDock(label)} aria-haspopup=${pinned ? "dialog" : A}
       aria-disabled=${blocked ? "true" : A} title=${blocked ? s4.sidebar.dockFull : A}
-      @click=${() => this._pinTapped(ref)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
+      @click=${(ev) => this._pinTapped(ref, ev.currentTarget)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
   }
   _renderDock(derived, deviceMode, inert) {
     const s4 = str();
@@ -4687,12 +4693,7 @@ var SofabatonSidebarRemote = class extends i4 {
       if (!shortcut) return A;
       const { item, icon } = shortcut;
       return b2`<button class=${e5({ sc: true, [slot]: true, new: popSlot === slot })} type="button" data-key=${DOCK_KEY_IDS[slot]}
-            aria-label=${item.label} title=${item.label} aria-description=${s4.sidebar.dockHoldHint} aria-haspopup="dialog"
-            aria-disabled=${inert ? "true" : A}
-            @contextmenu=${(ev) => {
-        ev.preventDefault();
-        this._openDockSheet(slot);
-      }}
+            aria-label=${item.label} title=${item.label} aria-disabled=${inert ? "true" : A}
             @animationend=${() => {
         this._justPinned = null;
         this.requestUpdate();
@@ -4701,9 +4702,9 @@ var SofabatonSidebarRemote = class extends i4 {
       </div>
     `;
   }
-  /** The dock shortcut's options: the remote's second drawer, never stacked on the first.
-   *  It always shows the shortcut that was held: Swap sides is an action that
-   *  moves it (trading places with the other one), never a picker between the two. */
+  /** The dock shortcut's options: a second drawer, stacked on the sheet whose
+   *  pin opened it. It always shows that pin's shortcut: Swap sides is an action
+   *  that moves it (trading places with the other one), never a picker between the two. */
   _renderDockSheet(derived) {
     const s4 = str();
     const open = this._dockSheetOpen;
@@ -4869,8 +4870,9 @@ var SofabatonSidebarRemote = class extends i4 {
 
         ${this._renderDock(derived, deviceMode, busy.inert)}
 
-        <div class="scrim" @click=${() => this._dockSheetOpen ? this._closeDockSheet() : this._openSheet(null)}></div>
+        <div class="scrim" @click=${() => this._openSheet(null)}></div>
         ${this._renderSheet(derived, deviceMode)}
+        <div class="scrim dscrim" @click=${() => this._closeDockSheet()}></div>
         ${this._renderDockSheet(derived)}
       </div>
     `;
@@ -4886,7 +4888,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const title = pane === "devices" ? s4.sidebar.devices : pane === "commands" ? s4.card.commandsTab : pane === "favorites" ? s4.card.favoritesTab : pane === "macros" ? s4.card.macrosTab : s4.sidebar.activities;
     const eyebrow = pane === "commands" ? this._store.deviceNameForId(derived.deviceId) ?? "" : "";
     return b2`
-      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>
+      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} ?inert=${this._dockSheetOpen} aria-label=${title}>
         <div class="grip"></div>
         ${headed ? b2`<div class="phead"><div class="titles">${eyebrow ? b2`<span class="eyebrow">${eyebrow}</span>` : A}<span>${title}</span></div>${close}</div>` : b2`<div class="segs"><div class="ctl" role="tablist">
               ${tabs.map((tab) => b2`<button class=${e5({ s: true, active: pane === tab.pane })} role="tab" aria-selected=${pane === tab.pane ? "true" : "false"} type="button" @click=${() => this._openSheet(tab.pane)}>${icon(tab.icon)}${tab.label}</button>`)}
@@ -5556,13 +5558,13 @@ var REMOTE_CARD_STRINGS_AR = {
     pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     close: "\u0625\u063A\u0644\u0627\u0642",
     pinToDock: (name) => `\u062A\u062B\u0628\u064A\u062A ${isolate(name)} \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    pinnedToDock: (name) => `${isolate(name)}\u060C \u0645\u062B\u0628\u0651\u062A \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
     dockShortcut: "\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A",
     dockSwap: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062C\u0627\u0646\u0628",
     dockOnLeft: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0633\u0627\u0631",
     dockOnRight: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0645\u064A\u0646",
     unpin: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A",
     dockFull: "\u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A \u0645\u0645\u062A\u0644\u0626",
-    dockHoldHint: "\u0627\u0636\u063A\u0637 \u0645\u0637\u0648\u0644\u0627\u064B \u0644\u0644\u062A\u063A\u064A\u064A\u0631",
     dockIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
     starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
     poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
@@ -5825,13 +5827,13 @@ var REMOTE_CARD_STRINGS_DE = {
     pullHandleCommands: "Befehle \xF6ffnen",
     close: "Schlie\xDFen",
     pinToDock: (name) => `${name} an das Dock anheften`,
+    pinnedToDock: (name) => `${name}, an das Dock angeheftet`,
     dockShortcut: "Dock-Verkn\xFCpfung",
     dockSwap: "Seite wechseln",
     dockOnLeft: "Auf der linken Seite",
     dockOnRight: "Auf der rechten Seite",
     unpin: "L\xF6sen",
     dockFull: "Das Dock ist voll",
-    dockHoldHint: "Gedr\xFCckt halten zum \xC4ndern",
     dockIcon: "Symbol",
     starting: "Wird gestartet",
     poweringOff: "Wird ausgeschaltet",
@@ -6071,13 +6073,13 @@ var REMOTE_CARD_STRINGS_ES = {
     pullHandleCommands: "Abrir comandos",
     close: "Cerrar",
     pinToDock: (name) => `Fijar ${name} en el dock`,
+    pinnedToDock: (name) => `${name}, fijado en el dock`,
     dockShortcut: "Acceso directo del dock",
     dockSwap: "Cambiar de lado",
     dockOnLeft: "A la izquierda",
     dockOnRight: "A la derecha",
     unpin: "Dejar de fijar",
     dockFull: "El dock est\xE1 lleno",
-    dockHoldHint: "Mant\xE9n pulsado para cambiarlo",
     dockIcon: "Icono",
     starting: "Iniciando",
     poweringOff: "Apagando",
@@ -6317,13 +6319,13 @@ var REMOTE_CARD_STRINGS_FR = {
     pullHandleCommands: "Ouvrir les commandes",
     close: "Fermer",
     pinToDock: (name) => `\xC9pingler ${name} au dock`,
+    pinnedToDock: (name) => `${name}, \xE9pingl\xE9 au dock`,
     dockShortcut: "Raccourci du dock",
     dockSwap: "Changer de c\xF4t\xE9",
     dockOnLeft: "\xC0 gauche",
     dockOnRight: "\xC0 droite",
     unpin: "D\xE9s\xE9pingler",
     dockFull: "Le dock est plein",
-    dockHoldHint: "Appuyez longuement pour modifier",
     dockIcon: "Ic\xF4ne",
     starting: "D\xE9marrage",
     poweringOff: "Extinction",
@@ -6562,13 +6564,13 @@ var REMOTE_CARD_STRINGS_NL = {
     pullHandleCommands: "Commando's openen",
     close: "Sluiten",
     pinToDock: (name) => `${name} vastzetten in het dock`,
+    pinnedToDock: (name) => `${name}, vastgezet in het dock`,
     dockShortcut: "Dock-snelkoppeling",
     dockSwap: "Van kant wisselen",
     dockOnLeft: "Aan de linkerkant",
     dockOnRight: "Aan de rechterkant",
     unpin: "Losmaken",
     dockFull: "Het dock is vol",
-    dockHoldHint: "Houd ingedrukt om te wijzigen",
     dockIcon: "Pictogram",
     starting: "Wordt gestart",
     poweringOff: "Wordt uitgeschakeld",
@@ -6807,13 +6809,13 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
     close: "\u5173\u95ED",
     pinToDock: (name) => `\u5C06 ${name} \u56FA\u5B9A\u5230\u5E95\u680F`,
+    pinnedToDock: (name) => `${name}\uFF0C\u5DF2\u56FA\u5B9A\u5230\u5E95\u680F`,
     dockShortcut: "\u5E95\u680F\u5FEB\u6377\u6309\u952E",
     dockSwap: "\u5DE6\u53F3\u4E92\u6362",
     dockOnLeft: "\u5728\u5DE6\u4FA7",
     dockOnRight: "\u5728\u53F3\u4FA7",
     unpin: "\u53D6\u6D88\u56FA\u5B9A",
     dockFull: "\u5E95\u680F\u5DF2\u6EE1",
-    dockHoldHint: "\u957F\u6309\u53EF\u66F4\u6539",
     dockIcon: "\u56FE\u6807",
     starting: "\u6B63\u5728\u542F\u52A8",
     poweringOff: "\u6B63\u5728\u5173\u95ED",

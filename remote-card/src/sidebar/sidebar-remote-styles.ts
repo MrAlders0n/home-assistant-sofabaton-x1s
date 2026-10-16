@@ -396,7 +396,7 @@ export const sidebarRemoteStyles = css`
     background: linear-gradient(var(--sb-card), var(--sb-card)), linear-gradient(var(--sb-card), var(--sb-card));
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
   }
-  .app.open .scrim, .app.dock-open .scrim { opacity: 1; pointer-events: auto; }
+  .app.open .scrim:not(.dscrim), .app.dock-open .dscrim { opacity: 1; pointer-events: auto; }
   .app.open .sheet:not(.dsheet), .app.dock-open .dsheet { transform: none; }
   .sheet .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--divider-color); margin: 10px auto 0; flex: 0 0 auto; }
   .segs { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; flex: 0 0 auto; }
@@ -466,9 +466,11 @@ export const sidebarRemoteStyles = css`
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* ---------- the dock drawer: a dock shortcut's options ----------
-     The same sheet (look, slide, scrim), sized to its content. It opens from
-     the dock, so it never stacks on the favorites sheet. */
-  .sheet.dsheet { height: auto; max-height: 68%; }
+     The same sheet (look, slide, scrim), sized to its content. A pinned
+     item's pin opens it, so it stacks on the sheet with a scrim of its own
+     between them (both above the rings, 8: nothing on them rings). */
+  .scrim.dscrim { z-index: 9; }
+  .sheet.dsheet { height: auto; max-height: 68%; z-index: 10; }
   .dsheet .phead { gap: 12px; }
   .dsheet .prev { width: 44px; height: 44px; border-radius: 50%; background: var(--sb-pill); display: grid; place-items: center; flex: 0 0 auto; }
   .dsheet .prev ha-icon { --mdc-icon-size: 22px; opacity: 0.85; }

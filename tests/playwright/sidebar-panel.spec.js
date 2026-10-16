@@ -350,25 +350,37 @@ test.describe("sidebar panel", () => {
       return { top: b.top, bottom: b.bottom };
     }));
     expect(second.top).toBeGreaterThanOrEqual(first.bottom);
-    // The pin is its own toggle button: pinning sends nothing.
+    // The pin pins: it sends nothing, and a pinned item's pin says so (and opens its options).
     const netflix = r.getByRole("button", { name: "Pin Netflix to the dock" });
     await netflix.click();
-    await expect(netflix).toHaveAttribute("aria-pressed", "true");
+    const netflixPinned = r.getByRole("button", { name: "Netflix, pinned to the dock" });
+    await expect(netflixPinned).toHaveAttribute("aria-haspopup", "dialog");
     await r.getByRole("tab", { name: "Macros" }).click();
     await r.getByRole("button", { name: "Pin Movie night to the dock" }).click();
     await r.getByRole("tab", { name: "Favorites" }).click();
-    // Both sides taken: the other pins dim and do nothing; nothing stacks on the sheet.
+    // Both sides taken: the other pins dim and do nothing.
     const youtube = r.getByRole("button", { name: "Pin YouTube to the dock" });
     await expect(youtube).toHaveAttribute("aria-disabled", "true");
     await expect(youtube).toHaveAttribute("title", "The dock is full");
     await youtube.click({ force: true });
-    await expect(youtube).toHaveAttribute("aria-pressed", "false");
+    await expect(youtube).toBeVisible();
     await expect(r.locator(".app")).not.toHaveClass(/dock-open/);
-    // Unpinning frees the side for the next pin.
-    await netflix.click();
-    await expect(netflix).toHaveAttribute("aria-pressed", "false");
+    // A pinned item's pin opens the shortcut's drawer, stacked on the sheet,
+    // which goes inert under a scrim of its own.
+    await netflixPinned.click();
+    const drawer = r.locator(".dsheet");
+    await expect(r.locator(".app")).toHaveClass(/dock-open/);
+    await expect(r.locator(".app")).toHaveClass(/(^|\s)open(\s|$)/);
+    await expect(r.locator(".sheet:not(.dsheet)")).toHaveAttribute("inert", "");
+    await expect(r.locator(".dscrim")).toHaveCSS("opacity", "1");
+    await expect(drawer.locator(".phead .name")).toHaveText("Netflix");
+    // Unpinning frees the side for the next pin, and lands back on the sheet, on the pin.
+    await drawer.getByRole("button", { name: "Unpin" }).click();
+    await expect(r.locator(".app")).not.toHaveClass(/dock-open/);
+    await expect(r.locator(".app")).toHaveClass(/(^|\s)open(\s|$)/);
+    await expect(netflix).toBeFocused();
     await youtube.click();
-    await expect(youtube).toHaveAttribute("aria-pressed", "true");
+    await expect(r.getByRole("button", { name: "YouTube, pinned to the dock" })).toBeVisible();
     expect(await sent()).toEqual([]);
     await r.locator(".sheet .close").first().click();
     // The dock: the favorite's guessed icon; a tap sends it like the sheet does.
@@ -379,16 +391,21 @@ test.describe("sidebar panel", () => {
     await expect(left.locator("ha-icon")).toHaveJSProperty("icon", "mdi:youtube");
     await left.click();
     await expect.poll(sent).toEqual([{ entity_id: "remote.souterrain", command: 601, device: 3 }]);
-    // A hold opens the shortcut's drawer, the same sheet the favorites use, and sends nothing.
+    // Nothing hides behind the dock: a hold is a tap, a right-click opens nothing.
     const box = await left.boundingBox();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.waitForTimeout(700);
     await page.mouse.up();
-    const drawer = r.locator(".dsheet");
+    await expect.poll(async () => (await sent()).length).toBe(2);
+    await left.click({ button: "right" });
+    await expect(r.locator(".app")).not.toHaveClass(/dock-open/);
+    expect(await sent()).toHaveLength(2);
+    // The options are on the pin: the same sheet look and motion as the favorites.
+    await r.locator(".pull").click();
+    const youtubePinned = r.getByRole("button", { name: "YouTube, pinned to the dock" });
+    await youtubePinned.click();
     await expect(r.locator(".app")).toHaveClass(/dock-open/);
-    await expect(r.locator(".app")).not.toHaveClass(/(^|\s)open(\s|$)/);
-    expect(await sent()).toHaveLength(1);
     const motion = await drawer.evaluate((el) => {
       const main = el.parentElement.querySelector(".sheet:not(.dsheet)");
       return [getComputedStyle(el).transition, getComputedStyle(main).transition];
@@ -418,13 +435,18 @@ test.describe("sidebar panel", () => {
     await swap.click();
     await expect(right).toHaveAttribute("aria-label", "YouTube");
     await page.keyboard.press("Escape");
+    // Escape closes the drawer only, back on the pin that opened it.
     await expect(r.locator(".app")).not.toHaveClass(/dock-open/);
-    // A macro has no device line: it lives in the one activity.
-    await left.click({ button: "right" });
+    await expect(r.locator(".app")).toHaveClass(/(^|\s)open(\s|$)/);
+    await expect(youtubePinned).toBeFocused();
+    // A macro has no device line: it lives in the one activity. The drawer's own scrim closes it too.
+    await r.getByRole("tab", { name: "Macros" }).click();
+    await r.getByRole("button", { name: "Movie night, pinned to the dock" }).click();
     await expect(drawer.locator(".phead .name")).toHaveText("Movie night");
     await expect(drawer.locator(".phead .owner")).toHaveCount(0);
-    await page.keyboard.press("Escape");
+    await r.locator(".dscrim").click({ position: { x: 20, y: 20 } });
     await expect(r.locator(".app")).not.toHaveClass(/dock-open/);
+    await expect(r.locator(".app")).toHaveClass(/(^|\s)open(\s|$)/);
     // Kept in this browser across reloads; another activity has its own (empty) dock.
     await open(page, "switch_ms=300");
     await expect(remote(page).locator(".dock .sc")).toHaveCount(2);
@@ -435,7 +457,7 @@ test.describe("sidebar panel", () => {
     await expect(remote(page).locator(".dock .sc")).toHaveCount(0);
   });
 
-  test("device mode pins the device's commands; right-click opens the drawer, Unpin empties the side", async ({ page }) => {
+  test("device mode pins the device's commands; the pinned pin's drawer unpins and empties the side", async ({ page }) => {
     await open(page);
     const r = remote(page);
     await r.locator(".mode").click();
@@ -449,14 +471,15 @@ test.describe("sidebar panel", () => {
     await shortcut.click();
     await expect.poll(() => page.evaluate(() => window.__sidebarHarness.serviceCalls.map((c) => c.data)))
       .toEqual([{ entity_id: "remote.souterrain", command: 13, device: 1 }]);
-    await shortcut.click({ button: "right" });
+    await r.locator(".pull").click();
+    await r.getByRole("button", { name: "Sleep, pinned to the dock" }).click();
     await expect(r.locator(".app")).toHaveClass(/dock-open/);
     await expect(r.locator(".dsheet .phead .owner")).toHaveCount(0);
     await r.locator(".dsheet").getByRole("button", { name: "Unpin" }).click();
     await expect(r.locator(".app")).not.toHaveClass(/dock-open/);
+    await expect(r.getByRole("button", { name: "Pin Sleep to the dock" })).toBeFocused();
+    await r.locator(".sheet .close").first().click();
     await expect(r.locator(".dock .sc")).toHaveCount(0);
-    await r.locator(".pull").click();
-    await expect(r.getByRole("button", { name: "Pin Sleep to the dock" })).toHaveAttribute("aria-pressed", "false");
   });
 
   test("the activity picker starts an activity and the remote veils until the hub reports it", async ({ page }) => {
