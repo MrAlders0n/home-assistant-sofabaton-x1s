@@ -21363,6 +21363,7 @@ function rebaseBundle(base, mine, theirs) {
 
 // custom_components/sofabaton_x1s/www/src/tabs/activities-tab.ts
 var S4 = TOOLS_CARD_STRINGS.activities;
+var FOLLOW_SETTLE_MS = 600;
 var WIFI_EVENTS_DEVICE_KEY = "haevents";
 var SofabatonActivitiesTab = class extends i4 {
   constructor() {
@@ -21407,6 +21408,9 @@ var SofabatonActivitiesTab = class extends i4 {
     /** The cacheVersion the baseline was captured at. */
     this._capturedVersion = "";
     this._rebasing = false;
+    /** Work on the hub held this editor back; it follows once it settles. */
+    this._heldForWork = false;
+    this._settleTimer = null;
     /** An edit of the user's was also changed elsewhere; theirs was kept. */
     this._changedElsewhere = false;
     this._progressUnsub = null;
@@ -21653,6 +21657,7 @@ var SofabatonActivitiesTab = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._teardownProgressSubscription();
+    this._clearSettle();
   }
   updated(changed) {
     if (changed.has("hub")) {
@@ -21678,10 +21683,27 @@ var SofabatonActivitiesTab = class extends i4 {
   // the work has ended (the card reloads the hub's rows at that moment).
   _maybeFollowCache() {
     if (this._stage !== "editing" || this._rebasing) return;
-    if (this.hub?.runtime_state?.kind === "operation_running") return;
+    if (this.hub?.runtime_state?.kind === "operation_running") {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => {
+        this._settleTimer = null;
+        this._heldForWork = false;
+        this._maybeFollowCache();
+      }, FOLLOW_SETTLE_MS);
+      return;
+    }
     const version = String(this.cacheVersion || "");
     if (!version || version === this._capturedVersion) return;
     void this._followCache(version);
+  }
+  _clearSettle() {
+    if (this._settleTimer) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
   }
   async _followCache(version) {
     if (!this.hub || this._entityId == null) return;
@@ -22199,6 +22221,8 @@ var SofabatonActivitiesTab = class extends i4 {
     this._exitAfterSync = false;
     this._changedElsewhere = false;
     this._capturedVersion = "";
+    this._heldForWork = false;
+    this._clearSettle();
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
     }

@@ -1013,10 +1013,33 @@ test("an open editor follows the cache only once the hub's work has ended", asyn
   element._maybeFollowCache();
   assert.deepEqual(types(calls), []);
 
+  // The work ends; the hub's last rows land a moment later (live, X1S:
+  // idle at version 21, version 22 0.2 s after). One follow, after both.
   element.hub = { entry_id: "hub-1", runtime_state: { kind: "idle" } };
   element._maybeFollowCache();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(types(calls), []);
+  element.cacheVersion = "1:3";
+  element._maybeFollowCache();
+  await new Promise((resolve) => setTimeout(resolve, 800));
 
   assert.deepEqual(types(calls), ["cache/structural_bundle"]);
-  assert.equal(element._capturedVersion, "1:2");
+  assert.equal(element._capturedVersion, "1:3");
+});
+
+test("an editor nothing held back follows a change at once", async () => {
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: eventsActivityBundle(null, null), generation: 2 }),
+  });
+  const base = eventsActivityBundle(null, null);
+  const element = syncingEditor(hass, base, structuredClone(base));
+  element._dirty = false;
+  element._capturedVersion = "1:1";
+  element.cacheVersion = "1:2";
+  element.hub = { entry_id: "hub-1", runtime_state: { kind: "idle" } };
+
+  element._maybeFollowCache();
+
+  assert.deepEqual(types(calls), ["cache/structural_bundle"]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
 });

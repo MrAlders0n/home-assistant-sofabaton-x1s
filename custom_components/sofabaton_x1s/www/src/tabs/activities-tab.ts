@@ -47,6 +47,10 @@ import { rebaseBundle } from "./bundle-rebase";
 type ActivitiesStage = "list" | "capturing" | "editing" | "syncing" | "sync_failed" | "needs_refresh" | "deleting";
 
 const S = TOOLS_CARD_STRINGS.activities;
+/** After the hub's work ends, its last rows land a moment later (the card
+ *  reloads the hub's rows at the end): an editor held during the work
+ *  waits this long for them, then follows once. */
+const FOLLOW_SETTLE_MS = 600;
 /** The reserved Wifi Events record's store key (command_config.py). */
 const WIFI_EVENTS_DEVICE_KEY = "haevents";
 
@@ -251,6 +255,9 @@ class SofabatonActivitiesTab extends LitElement {
   /** The cacheVersion the baseline was captured at. */
   private _capturedVersion = "";
   private _rebasing = false;
+  /** Work on the hub held this editor back; it follows once it settles. */
+  private _heldForWork = false;
+  private _settleTimer: ReturnType<typeof setTimeout> | null = null;
   /** An edit of the user's was also changed elsewhere; theirs was kept. */
   private _changedElsewhere = false;
 
@@ -271,6 +278,7 @@ class SofabatonActivitiesTab extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._teardownProgressSubscription();
+    this._clearSettle();
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -303,10 +311,29 @@ class SofabatonActivitiesTab extends LitElement {
 
   private _maybeFollowCache() {
     if (this._stage !== "editing" || this._rebasing) return;
-    if (this.hub?.runtime_state?.kind === "operation_running") return;
+    if (this.hub?.runtime_state?.kind === "operation_running") {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      // Restarted by every version that lands within the window.
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => {
+        this._settleTimer = null;
+        this._heldForWork = false;
+        this._maybeFollowCache();
+      }, FOLLOW_SETTLE_MS);
+      return;
+    }
     const version = String(this.cacheVersion || "");
     if (!version || version === this._capturedVersion) return;
     void this._followCache(version);
+  }
+
+  private _clearSettle() {
+    if (this._settleTimer) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
   }
 
   private async _followCache(version: string) {
@@ -1162,6 +1189,8 @@ class SofabatonActivitiesTab extends LitElement {
     this._exitAfterSync = false;
     this._changedElsewhere = false;
     this._capturedVersion = "";
+    this._heldForWork = false;
+    this._clearSettle();
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
     }
