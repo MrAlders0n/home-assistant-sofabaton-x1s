@@ -19019,12 +19019,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     `;
   }
   _renderActivityEventLine(activity, flash) {
-    const idKey = String(activity.id);
-    const entry = this._activityEventEntry(idKey);
+    const idKey2 = String(activity.id);
+    const entry = this._activityEventEntry(idKey2);
     const renderPhase = (phase) => {
       const action = entry[phase];
       const configured = this._commandHasCustomAction(action);
-      const target = { kind: "activity", id: idKey, phase };
+      const target = { kind: "activity", id: idKey2, phase };
       return b2`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
           ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesActivityPhase(flash, activity.id, phase), flash)}</span>${configured ? b2`<button
             class="hub-event-clear"
@@ -20285,9 +20285,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     event?.stopPropagation();
     if (!this._activitySelectionEnabled(this._activeCommandDraft())) return;
     const current = new Set((this._activeCommandDraft()?.activities || []).map((id) => String(id)));
-    const idKey = String(activityId);
-    if (current.has(idKey) && current.size > 1) current.delete(idKey);
-    else current.add(idKey);
+    const idKey2 = String(activityId);
+    if (current.has(idKey2) && current.size > 1) current.delete(idKey2);
+    else current.add(idKey2);
     this._updateActiveCommandDraft({ activities: Array.from(current) });
     this._commandSaveError = "";
   }
@@ -21275,50 +21275,78 @@ function same(a3, b3) {
   if (a3 === void 0 || b3 === void 0) return false;
   return JSON.stringify(a3) === JSON.stringify(b3);
 }
-function rowId(row) {
-  if (!isPlainObject2(row) || !isPlainObject2(row.device)) return null;
-  const id = Number(row.device.device_id);
-  return Number.isFinite(id) ? id : null;
-}
-function isRowList(value) {
-  return Array.isArray(value) && value.every((row) => rowId(row) != null);
-}
 function clone(value) {
   return value === void 0 ? value : structuredClone(value);
+}
+function idKey(value) {
+  const id = Number(value);
+  return value != null && Number.isFinite(id) ? String(id) : null;
+}
+var LIST_ROW_KEYS = {
+  commands: (row) => idKey(row.command_id),
+  button_bindings: (row) => idKey(row.button_id),
+  macros: (row) => idKey(row.button_id),
+  favorite_slots: (row) => {
+    const device = idKey(row.device_id);
+    const command = idKey(row.command_id);
+    return device && command ? `${device}:${command}` : null;
+  }
+};
+var ENTITY_ROW_KEY = (row) => isPlainObject2(row.device) ? idKey(row.device.device_id) : null;
+function keyedRows(list, key) {
+  if (list === void 0 || list === null) return /* @__PURE__ */ new Map();
+  if (!Array.isArray(list)) return null;
+  const rows = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Map();
+  for (const row of list) {
+    if (!isPlainObject2(row)) return null;
+    const base = key(row);
+    if (base == null) return null;
+    const n4 = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n4);
+    rows.set(n4 === 1 ? base : `${base}#${n4}`, row);
+  }
+  return rows;
+}
+function mergeKeyedList(base, mine, theirs, key, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  const baseRows = keyedRows(base, key);
+  const mineRows = keyedRows(mine, key);
+  const theirRows = keyedRows(theirs, key);
+  if (!baseRows || !mineRows || !theirRows) return mergeWhole(base, mine, theirs, overlap);
+  const out = [];
+  for (const [rowKey, row] of mineRows) {
+    const merged = mergeValue(baseRows.get(rowKey), row, theirRows.get(rowKey), overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  for (const [rowKey, row] of theirRows) {
+    if (mineRows.has(rowKey)) continue;
+    const merged = mergeValue(baseRows.get(rowKey), void 0, row, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  return out;
+}
+function mergeWhole(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  overlap.hit = true;
+  return mine;
 }
 function mergeValue(base, mine, theirs, overlap) {
   if (same(mine, base)) return clone(theirs);
   if (same(theirs, base) || same(mine, theirs)) return mine;
   if (isPlainObject2(base) && isPlainObject2(mine) && isPlainObject2(theirs)) {
     const out = {};
-    const keys = /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)]);
-    for (const key of keys) {
-      const value = mergeValue(base[key], mine[key], theirs[key], overlap);
+    for (const key of /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)])) {
+      const rowKey = LIST_ROW_KEYS[key];
+      const value = rowKey ? mergeKeyedList(base[key], mine[key], theirs[key], rowKey, overlap) : mergeValue(base[key], mine[key], theirs[key], overlap);
       if (value !== void 0) out[key] = value;
     }
     return out;
   }
   overlap.hit = true;
   return mine;
-}
-function mergeRows(base, mine, theirs, overlap) {
-  const byId = (rows) => new Map(rows.map((row) => [rowId(row), row]));
-  const baseRows = byId(base);
-  const mineRows = byId(mine);
-  const out = [];
-  for (const row of theirs) {
-    const id = rowId(row);
-    const merged = mergeValue(baseRows.get(id), mineRows.get(id), row, overlap);
-    if (merged !== void 0) out.push(merged);
-  }
-  const theirIds = new Set(theirs.map((row) => rowId(row)));
-  for (const row of mine) {
-    const id = rowId(row);
-    if (theirIds.has(id)) continue;
-    const merged = mergeValue(baseRows.get(id), row, void 0, overlap);
-    if (merged !== void 0) out.push(merged);
-  }
-  return out;
 }
 function rebaseBundle(base, mine, theirs) {
   const overlap = { hit: false };
@@ -21327,11 +21355,7 @@ function rebaseBundle(base, mine, theirs) {
   const m3 = mine;
   const t4 = theirs;
   for (const key of /* @__PURE__ */ new Set([...Object.keys(t4), ...Object.keys(m3)])) {
-    if ((key === "devices" || key === "activities") && isRowList(b3[key] ?? []) && isRowList(m3[key] ?? []) && isRowList(t4[key] ?? [])) {
-      out[key] = mergeRows(b3[key] ?? [], m3[key] ?? [], t4[key] ?? [], overlap);
-      continue;
-    }
-    const value = mergeValue(b3[key], m3[key], t4[key], overlap);
+    const value = key === "devices" || key === "activities" ? mergeKeyedList(b3[key], m3[key], t4[key], ENTITY_ROW_KEY, overlap) : mergeValue(b3[key], m3[key], t4[key], overlap);
     if (value !== void 0) out[key] = value;
   }
   return { bundle: out, overlap: overlap.hit };
@@ -21640,7 +21664,7 @@ var SofabatonActivitiesTab = class extends i4 {
       this._hubEntryId = nextEntryId;
     }
     this._maybeAutoOpen();
-    if (changed.has("cacheVersion") || changed.has("_stage")) this._maybeFollowCache();
+    if (changed.has("cacheVersion") || changed.has("_stage") || changed.has("hub")) this._maybeFollowCache();
     this._notifyDirtyDock();
   }
   // ── Following the cache ─────────────────────────────────────────────
@@ -21648,9 +21672,13 @@ var SofabatonActivitiesTab = class extends i4 {
   // (another tab, a refresh, a write elsewhere) the editor follows it: a
   // clean editor re-captures, a dirty one keeps the user's edits on top of
   // the new capture (bundle-rebase.ts). Never mid sync, delete or capture:
-  // those end in their own re-capture.
+  // those end in their own re-capture. Nor while the hub works for someone
+  // else: the cache passes through partial states then (a command re-read
+  // clears the table before it refills), so the editor follows once, when
+  // the work has ended (the card reloads the hub's rows at that moment).
   _maybeFollowCache() {
     if (this._stage !== "editing" || this._rebasing) return;
+    if (this.hub?.runtime_state?.kind === "operation_running") return;
     const version = String(this.cacheVersion || "");
     if (!version || version === this._capturedVersion) return;
     void this._followCache(version);

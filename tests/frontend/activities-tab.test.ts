@@ -996,3 +996,27 @@ test("a withdrawn wish follows the transport the hub has after the failure", asy
   const sent = calls.filter((call) => String(call.type).endsWith("set_transport")).map((call) => call.transport);
   assert.deepEqual(sent, ["mqtt", "mqtt"]);
 });
+
+test("an open editor follows the cache only once the hub's work has ended", async () => {
+  // Mid job the cache passes through partial states (a command re-read
+  // clears the table before it refills): the editor waits for the end.
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: eventsActivityBundle(null, null), generation: 2 }),
+  });
+  const base = eventsActivityBundle(null, null);
+  const element = syncingEditor(hass, base, structuredClone(base));
+  element._dirty = false;
+  element._capturedVersion = "1:1";
+  element.cacheVersion = "1:2";
+  element.hub = { entry_id: "hub-1", runtime_state: { kind: "operation_running", operation: "hub_write" } };
+
+  element._maybeFollowCache();
+  assert.deepEqual(types(calls), []);
+
+  element.hub = { entry_id: "hub-1", runtime_state: { kind: "idle" } };
+  element._maybeFollowCache();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.deepEqual(types(calls), ["cache/structural_bundle"]);
+  assert.equal(element._capturedVersion, "1:2");
+});

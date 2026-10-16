@@ -287,7 +287,7 @@ class SofabatonActivitiesTab extends LitElement {
       this._hubEntryId = nextEntryId;
     }
     this._maybeAutoOpen();
-    if (changed.has("cacheVersion") || changed.has("_stage")) this._maybeFollowCache();
+    if (changed.has("cacheVersion") || changed.has("_stage") || changed.has("hub")) this._maybeFollowCache();
     this._notifyDirtyDock();
   }
 
@@ -296,10 +296,14 @@ class SofabatonActivitiesTab extends LitElement {
   // (another tab, a refresh, a write elsewhere) the editor follows it: a
   // clean editor re-captures, a dirty one keeps the user's edits on top of
   // the new capture (bundle-rebase.ts). Never mid sync, delete or capture:
-  // those end in their own re-capture.
+  // those end in their own re-capture. Nor while the hub works for someone
+  // else: the cache passes through partial states then (a command re-read
+  // clears the table before it refills), so the editor follows once, when
+  // the work has ended (the card reloads the hub's rows at that moment).
 
   private _maybeFollowCache() {
     if (this._stage !== "editing" || this._rebasing) return;
+    if (this.hub?.runtime_state?.kind === "operation_running") return;
     const version = String(this.cacheVersion || "");
     if (!version || version === this._capturedVersion) return;
     void this._followCache(version);

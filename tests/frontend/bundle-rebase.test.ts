@@ -99,3 +99,100 @@ test("a partial sync: what landed is no longer a diff, what did not still is", (
   assert.equal(activity(landed).device.name, activity(out).device.name);
   assert.notDeepEqual(activity(landed).favorite_slots, activity(out).favorite_slots);
 });
+
+// -- lists merged row by row (server panel live check, X1S, 2026-10-16) ---------
+//
+// The editor had "Mute" renamed to "Mute A" while another client renamed
+// "Input" to "Input B" on the same device. With the command list taken
+// whole, the user's list won and the next Sync wrote "Input" back.
+
+function deviceBundle(commands: Array<[number, string]>, extra: Record<string, unknown> = {}): BackupBundlePayload {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    devices: [{
+      device: { device_id: 10, name: "Amp" },
+      commands: commands.map(([command_id, name]) => ({ command_id, name })),
+      button_bindings: [],
+      macros: [],
+      ...extra,
+    }],
+    activities: [],
+  } as unknown as BackupBundlePayload;
+}
+
+function commandNames(b: BackupBundlePayload): Record<number, string> {
+  const rows = (b.devices as unknown as Array<{ commands: Array<{ command_id: number; name: string }> }>)[0].commands;
+  return Object.fromEntries(rows.map((row) => [row.command_id, row.name]));
+}
+
+test("renames of two different commands both survive", () => {
+  const base = deviceBundle([[1, "Mute"], [2, "Input"], [3, "Power"]]);
+  const mine = deviceBundle([[1, "Mute A"], [2, "Input"], [3, "Power"]]);
+  const theirs = deviceBundle([[1, "Mute"], [2, "Input B"], [3, "Power"]]);
+  const { bundle: out, overlap } = rebaseBundle(base, mine, theirs);
+  assert.deepEqual(commandNames(out), { 1: "Mute A", 2: "Input B", 3: "Power" });
+  assert.equal(overlap, false);
+});
+
+test("a rename of the same command on both sides keeps the user's and says so", () => {
+  const base = deviceBundle([[1, "Mute"], [2, "Input"]]);
+  const mine = deviceBundle([[1, "Mute A"], [2, "Input"]]);
+  const theirs = deviceBundle([[1, "Mute C"], [2, "Input"]]);
+  const { bundle: out, overlap } = rebaseBundle(base, mine, theirs);
+  assert.deepEqual(commandNames(out), { 1: "Mute A", 2: "Input" });
+  assert.equal(overlap, true);
+});
+
+test("a command deleted elsewhere goes while the user's rename of another stays", () => {
+  const base = deviceBundle([[1, "Mute"], [2, "Input"], [3, "Power"]]);
+  const mine = deviceBundle([[1, "Mute A"], [2, "Input"], [3, "Power"]]);
+  const theirs = deviceBundle([[1, "Mute"], [3, "Power"]]);
+  const { bundle: out, overlap } = rebaseBundle(base, mine, theirs);
+  assert.deepEqual(commandNames(out), { 1: "Mute A", 3: "Power" });
+  assert.equal(overlap, false);
+});
+
+test("bindings on different buttons from both sides both land", () => {
+  const binding = (button_id: number, command_id: number) => ({ button_id, device_id: 10, command_id });
+  const base = deviceBundle([[1, "Mute"]], { button_bindings: [binding(0xB6, 1)] });
+  const mine = deviceBundle([[1, "Mute"]], { button_bindings: [binding(0xB6, 1), binding(0xBE, 1)] });
+  const theirs = deviceBundle([[1, "Mute"]], { button_bindings: [binding(0xB6, 1), binding(0xBF, 1)] });
+  const { bundle: out, overlap } = rebaseBundle(base, mine, theirs);
+  const buttons = ((out.devices as unknown as Array<{ button_bindings: Array<{ button_id: number }> }>)[0].button_bindings)
+    .map((row) => row.button_id).sort((a, b) => a - b);
+  assert.deepEqual(buttons, [0xB6, 0xBE, 0xBF]);
+  assert.equal(overlap, false);
+});
+
+test("a favorite reordered here and renamed elsewhere keeps both", () => {
+  // The editor renumbers favorite button_ids on a reorder; favorites are
+  // matched by the command they point at.
+  const fav = (button_id: number, device_id: number, command_id: number, name: string) =>
+    ({ button_id, device_id, command_id, name });
+  const base = bundle();
+  (base.activities as any)[0].favorite_slots = [fav(1, 1, 1, "Power"), fav(2, 2, 5, "Input")];
+  (base.activities as any)[0].favorites_order = [1, 2];
+  const mine = structuredClone(base);
+  (mine.activities as any)[0].favorite_slots = [fav(1, 2, 5, "Input"), fav(2, 1, 1, "Power")];
+  (mine.activities as any)[0].favorites_order = [1, 2];
+  const theirs = structuredClone(base);
+  (theirs.activities as any)[0].favorite_slots[1].name = "HDMI";
+  const { bundle: out, overlap } = rebaseBundle(base, mine, theirs);
+  const slots = (out.activities as any)[0].favorite_slots as Array<ReturnType<typeof fav>>;
+  assert.deepEqual(slots, [fav(1, 2, 5, "HDMI"), fav(2, 1, 1, "Power")]);
+  assert.equal(overlap, false);
+});
+
+test("a macro edited here and another added elsewhere both stay", () => {
+  const macro = (button_id: number, name: string) => ({ button_id, name, steps: [] });
+  const base = bundle();
+  (base.activities as any)[0].macros = [macro(2, "Movie")];
+  const mine = structuredClone(base);
+  (mine.activities as any)[0].macros = [macro(2, "Movie night")];
+  const theirs = structuredClone(base);
+  (theirs.activities as any)[0].macros = [macro(2, "Movie"), macro(3, "Party")];
+  const { bundle: out, overlap } = rebaseBundle(base, mine, theirs);
+  assert.deepEqual((out.activities as any)[0].macros, [macro(2, "Movie night"), macro(3, "Party")]);
+  assert.equal(overlap, false);
+});
