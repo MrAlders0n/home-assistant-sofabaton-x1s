@@ -6,6 +6,32 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+Requires the library release with `AsyncXProxy.cache_generation` and
+`peek_snapshot()` (an older library leaves `cache` null and the push runs
+on events alone).
+
+### Added
+
+- Every hub view (`GET /hubs`, `GET /hubs/{id}`) carries `cache`: the
+  cache version (`epoch`, `generation`, `snapshot_id`). A client that
+  holds rows from another `snapshot_id` with an older version re-reads
+  them. The id only moves when the content does.
+- `/api/v1/events?hub_updates=true` adds `hub_update` messages: the hub's
+  whole view, one per hub right after `hello`, then whenever the hub, its
+  jobs or its cache changed, coalesced per hub (0.15 s after the last
+  change, at most 0.5 s after the first). A cache that moves without an
+  event (another client's first look at a device, the vendor app's
+  session) is found by a watcher while such a client is connected. The
+  control panel uses it: open tabs lock within a fraction of a second when
+  another client starts a job, the Hub tab lists, Wifi Devices and the
+  Backup tab's device list follow changes made elsewhere, and an open
+  device or activity editor carries a change made elsewhere into its
+  working copy (the user's edit wins where both changed the same thing,
+  and one line says so). A draft from an older snapshot is carried over
+  the same way when the editor opens; the "older snapshot" prompt in the
+  dock is gone. A Sync refused because the snapshot moved is carried over
+  and sent once more.
+
 ## 0.2.5 (2026-10-10)
 
 Changes since `sofabaton-x-server-v0.2.4`. Requires

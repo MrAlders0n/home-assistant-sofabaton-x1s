@@ -13,6 +13,13 @@ Message shapes (JSON objects, ``type`` discriminates):
 * ``dropped``      this client fell behind and ``count`` older messages
                    were discarded (sent before the next message that
                    does get through)
+* ``hub_update``   only with ``?hub_updates=true``: the hub's whole view
+                   (what ``GET /hubs/{id}`` returns, its ``cache``
+                   version included), one per hub right after ``hello``
+                   and then whenever the hub, its jobs or its cache
+                   changed (hub_updates.py). ``seq`` orders them across
+                   the stream: ignore one older than the last seen for
+                   that hub.
 
 Each client owns a bounded queue; a slow consumer loses the oldest
 messages rather than stalling the relay or the hub proxies. The
@@ -30,13 +37,14 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from fastapi.encoders import jsonable_encoder
 
 from sofabaton import HubEvent
 
 from . import API_PREFIX, API_VERSION, __version__
 from .jobs import JobRunner, JobView
-from .models import light_job
-from .manager import HubManager
+from .models import HubView, light_job
+from .manager import HubManager, HubNotFound
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +130,22 @@ class WsPress:
     type: Literal["press"] = "press"
 
 
-WS_MESSAGE_TYPES = (WsHello, WsHubEvent, WsServerEvent, WsJobEvent, WsPress, WsDropped)
+@dataclass(frozen=True)
+class WsHubUpdate:
+    """The hub's whole view, sent to clients that asked for
+    ``hub_updates``: right after ``hello``, then on every change of the
+    hub, its jobs or its cache version, coalesced per hub (at most one
+    every 0.15 s while changes keep coming, never later than 0.5 s after
+    the first). ``seq`` is the server's counter across all hub updates;
+    one with a lower ``seq`` than the last seen for its hub is older."""
+
+    hub_id: str
+    seq: int
+    hub: HubView
+    type: Literal["hub_update"] = "hub_update"
+
+
+WS_MESSAGE_TYPES = (WsHello, WsHubEvent, WsServerEvent, WsJobEvent, WsPress, WsHubUpdate, WsDropped)
 
 
 def _to_json(message: Any) -> dict[str, Any]:
@@ -130,6 +153,10 @@ def _to_json(message: Any) -> dict[str, Any]:
         return {"type": message.type, "hub_id": message.hub_id, "event": message.event.to_dict()}
     if isinstance(message, WsJobEvent):
         return {"type": message.type, "hub_id": message.hub_id, "job": message.job.to_dict()}
+    if isinstance(message, WsHubUpdate):
+        # Encoded as the REST routes encode a HubView, so a client reads one shape.
+        return {"type": message.type, "hub_id": message.hub_id, "seq": message.seq,
+                "hub": jsonable_encoder(message.hub)}
     return asdict(message)
 
 
@@ -137,9 +164,10 @@ def _to_json(message: Any) -> dict[str, Any]:
 
 
 class Subscription:
-    def __init__(self, maxsize: int, hub_ids: Optional[set[str]]) -> None:
+    def __init__(self, maxsize: int, hub_ids: Optional[set[str]], *, hub_updates: bool = False) -> None:
         self.queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
         self.hub_ids = hub_ids
+        self.hub_updates = hub_updates
         self.dropped = 0
 
     def wants(self, hub_id: str) -> bool:
@@ -174,8 +202,12 @@ class EventRelay:
     def subscribers(self) -> int:
         return len(self._subs)
 
-    def subscribe(self, hub_ids: Optional[set[str]] = None) -> Subscription:
-        sub = Subscription(self.maxsize, hub_ids)
+    @property
+    def hub_update_subscribers(self) -> int:
+        return sum(1 for sub in self._subs if sub.hub_updates)
+
+    def subscribe(self, hub_ids: Optional[set[str]] = None, *, hub_updates: bool = False) -> Subscription:
+        sub = Subscription(self.maxsize, hub_ids, hub_updates=hub_updates)
         self._subs.add(sub)
         return sub
 
@@ -211,6 +243,13 @@ class EventRelay:
 
         self._broadcast(hub_id, message)
 
+    def publish_hub_update(self, message: WsHubUpdate) -> None:
+        """Send a hub view to the subscribers that asked for hub updates."""
+
+        for sub in list(self._subs):
+            if sub.hub_updates and sub.wants(message.hub_id):
+                sub.offer(message)
+
     def hello(self) -> WsHello:
         return WsHello(
             server_version=__version__,
@@ -230,12 +269,14 @@ router = APIRouter(tags=["events"])
 async def events_socket(
     websocket: WebSocket,
     hub_id: Optional[list[str]] = Query(None, description="only these hubs (repeatable)"),
+    hub_updates: bool = Query(False, description="also send hub_update messages (the hub's whole view on every change)"),
 ) -> None:
     relay: EventRelay = websocket.app.state.event_relay
     await websocket.accept()
-    sub = relay.subscribe(set(hub_id) if hub_id else None)
+    sub = relay.subscribe(set(hub_id) if hub_id else None, hub_updates=hub_updates)
     client = websocket.client.host if websocket.client else "?"
-    log.info("events: client %s subscribed (filter=%s)", client, sorted(sub.hub_ids) if sub.hub_ids else "all")
+    log.info("events: client %s subscribed (filter=%s%s)", client, sorted(sub.hub_ids) if sub.hub_ids else "all",
+             ", hub updates" if hub_updates else "")
 
     async def pump() -> None:
         while True:
@@ -250,6 +291,8 @@ async def events_socket(
         # Inside the try: a client gone before the hello still releases
         # its subscription (CR-S1-10).
         await websocket.send_json(_to_json(relay.hello()))
+        if hub_updates:
+            await _send_first_hub_updates(websocket, sub)
         sender = asyncio.create_task(pump())
         while True:
             await websocket.receive_text()          # inbound is ignored in v1
@@ -266,3 +309,20 @@ async def events_socket(
                 pass
         relay.unsubscribe(sub)
         log.info("events: client %s gone", client)
+
+
+async def _send_first_hub_updates(websocket: WebSocket, sub: Subscription) -> None:
+    """Every hub's view, straight after ``hello``. Changes meanwhile queue
+    behind them; their ``seq`` says which is newer."""
+
+    updates = websocket.app.state.hub_updates
+    manager: HubManager = websocket.app.state.hub_manager
+    updates.watch()
+    for hub in list(manager.ids()):
+        if not sub.wants(hub):
+            continue
+        try:
+            view = await manager.view(hub)
+        except HubNotFound:
+            continue
+        await websocket.send_json(_to_json(WsHubUpdate(hub_id=hub, seq=updates.next_seq(), hub=view)))

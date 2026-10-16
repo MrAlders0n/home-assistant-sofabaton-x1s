@@ -7,6 +7,16 @@
 // failed states, Reload from hub and the immediate whole-entity delete. The
 // subclasses render the screen and name the routes.
 //
+// The editor follows the cache (2026-10-16, the HA card's model): when the
+// hub's cache version moves past the snapshot it holds, a clean editor
+// re-reads silently, and one with unsynced edits carries them over to the
+// new snapshot (bundle-rebase.ts: the user's edit wins where both changed
+// something, and one inline line says so). A stored draft from an older
+// snapshot is carried over the same way when the editor opens, and a Sync
+// refused because the snapshot moved (412) is carried over and sent again
+// once. Deleted elsewhere: a clean editor closes, a dirty one shows the
+// missing screen.
+//
 // Busy states are the card's: while this editor's own sync or delete runs,
 // the screen is replaced by the full-panel progress view (never an overlay);
 // a failed delete comes back as a banner over the re-opened editor; a job
@@ -20,22 +30,27 @@
 // slot, no Sync, and deleting the entity is a bundle edit like any other.
 
 import { LitElement, html, nothing, type PropertyDeclarations, type PropertyValues, type TemplateResult } from "lit";
-import { mdiAlertCircleOutline, mdiChip, mdiClose, mdiDatabaseRefreshOutline, mdiSyncAlert } from "@mdi/js";
+import { mdiAlertCircleOutline, mdiChip, mdiClose, mdiDatabaseRefreshOutline, mdiInformationOutline, mdiSyncAlert } from "@mdi/js";
 
 import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
+import { rebaseBundle } from "../../../custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase";
+import { Coalescer, FOLLOW_DEBOUNCE_MS, FOLLOW_MAX_WAIT_MS, loadedVersion, needsReload, type LoadedVersion } from "../cache-follow";
 import { jobStepMessage, renderOperationProgress } from "../components/operation-progress";
 import { jobOutcomeText, problemText, type ApiResponse, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
 import { activeJob, firmwareFloor, type Gate } from "../panel-selectors";
-import type { Draft, PanelStore } from "../panel-store";
+import type { PanelStore } from "../panel-store";
 import { elementsEqual, snapshotAsBundle } from "./device-editor-state";
 import {
+  draftSlot,
+  entityDraftBase,
   entityDraftData,
   entityDraftScope,
   entityElement,
   entityListSub,
+  rebaseDraftOnto,
   touchedDevices,
   withDraftData,
   type EntityElement,
@@ -43,6 +58,9 @@ import {
 } from "./entity-editor-state";
 
 export type EditorStage = "loading" | "guard_firmware" | "needs_refresh" | "missing" | "editing" | "sync_failed";
+
+/** What adopting a fresh snapshot did (_adoptSnapshot). */
+type AdoptOutcome = "same" | "gone" | "incomplete" | "rebased" | "clean";
 
 /** The live host's wording, which the card parameterises by kind. */
 export interface EntityFrameStrings {
@@ -90,6 +108,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     _deleting: { state: true },
     _deleteError: { state: true },
     _notice: { state: true },
+    _changedElsewhere: { state: true },
   };
 
   api!: PanelApi;
@@ -112,8 +131,12 @@ export abstract class SbPanelEntityEditor extends LitElement {
   protected _deleting = false;
   protected _deleteError: string | null = null;
   protected _notice: string | null = null;
-  /** The kept draft last spliced in (CR-F5b-4): never reload for the same one twice. */
-  private _splicedDraft: Draft | null = null;
+  /** An edit of the user's was also changed elsewhere; the user's version was kept. */
+  protected _changedElsewhere = false;
+  /** The cache version the snapshot came from (cache-follow.ts). */
+  private _loadedVersion: LoadedVersion | null = null;
+  private _following = false;
+  private readonly _follow = new Coalescer(() => void this._followCache(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
   private _loadedKey: string | null = null;
   private _loadSeq = 0;
   /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
@@ -160,6 +183,11 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._stage = this.entityId != null && entityElement(this.offlineBundle, this.entityKind, this.entityId) ? "editing" : "missing";
   }
 
+  disconnectedCallback(): void {
+    super.disconnectedCallback();
+    this._follow.cancel();
+  }
+
   protected updated(changed: PropertyValues): void {
     if (this._offline) return;
     const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.entityId ?? ""}`;
@@ -180,20 +208,9 @@ export abstract class SbPanelEntityEditor extends LitElement {
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       // The dock's Discard dropped the draft: the working copy follows.
       this._working = this._baseline ? structuredClone(this._baseline) : null;
-    } else if (changed.has("ctx") && this._stage === "editing" && !this._dirty && this._keptDraftWaiting()) {
-      // The dock's Keep editing answered the stale prompt: splice the draft in (CR-F5b-4).
-      this._splicedDraft = this.ctx?.runtime?.draft ?? null;
-      void this._load();
+      this._changedElsewhere = false;
     }
-  }
-
-  /** A draft for this entity the user chose to keep past the stale prompt, not yet in the working copy. */
-  private _keptDraftWaiting(): boolean {
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    // Once per draft: one equal to the hub's copy stays clean after the splice.
-    return Boolean(draft && draft !== this._splicedDraft && runtime?.draftCheck === "kept" && this.entityId != null
-      && draft.scope === entityDraftScope(this.entityKind, this.entityId));
+    if (changed.has("ctx")) this._maybeFollowCache();
   }
 
   private _reset(): void {
@@ -208,6 +225,9 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._syncFailed = null;
     this._deleteError = null;
     this._notice = null;
+    this._changedElsewhere = false;
+    this._loadedVersion = null;
+    this._follow.cancel();
     this._resetView();
   }
 
@@ -242,6 +262,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
     let snapshot: ApiResponse<SnapshotDocument>;
     let callback: ApiResponse<{ device_id: number | null }> | null;
     try {
@@ -266,6 +287,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
       return;
     }
     this._snapshot = snapshot.body;
+    this._loadedVersion = loadedVersion(versionAtStart, snapshot.body);
     if (firmwareFloor(this._hub)) {
       this._stage = "guard_firmware";
       return;
@@ -283,18 +305,110 @@ export abstract class SbPanelEntityEditor extends LitElement {
       return;
     }
     this._baseline = bundle;
-    // A stored draft for this entity, taken from this very snapshot (or kept
-    // by the user past the stale prompt), is spliced back into the working copy.
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
-    const data = restorable ? entityDraftData(draft, kind, entityId) : null;
-    this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
-    // A draft from an older snapshot stays in the store: the dock asks Keep
-    // editing or Discard, and Keep splices it in (updated). Discarding it
-    // here threw the edits away before the question was answered (CR-F5b-4).
     this._stage = "editing";
     this._syncFailed = null;
+    if (options.keepDraft === false) this._changedElsewhere = false;
+    // A stored draft for this entity goes back into the working copy: as it
+    // is when it was taken from this very snapshot, carried over to it
+    // otherwise (the hub moved on while the page was closed). Never a question.
+    const draft = options.keepDraft !== false ? this.ctx?.runtime?.draft ?? null : null;
+    const data = entityDraftData(draft, kind, entityId);
+    if (!draft || !data) {
+      this._working = structuredClone(bundle);
+      return;
+    }
+    if (draft.snapshotId === snapshot.body.snapshot_id) {
+      this._working = withDraftData(bundle, kind, entityId, data);
+      return;
+    }
+    const carried = rebaseDraftOnto(bundle, kind, entityId, data, entityDraftBase(draft, kind, entityId));
+    this._working = structuredClone(bundle);
+    if (carried.overlap) this._changedElsewhere = true;
+    // Stored again against this snapshot (or dropped when nothing is left).
+    this._commit(carried.bundle);
+  }
+
+  // -- following the cache ---------------------------------------------------------------------------
+
+  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read. */
+  private _maybeFollowCache(): void {
+    if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
+    this._follow.poke();
+  }
+
+  private async _followCache(): Promise<void> {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    const key = this._loadedKey;
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
+    this._following = true;
+    let read = false;
+    try {
+      const response = await this.api.snapshot(hubId);
+      if (!this._stillOn(key) || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+      if (!response.ok || !response.body) return;
+      read = true;
+      const outcome = this._adoptSnapshot(response.body, versionAtStart);
+      if (outcome === "gone") {
+        // Deleted elsewhere: a clean editor has nothing left to show; unsynced edits cannot land any more.
+        if (!this._differs) {
+          this._goToList();
+        } else {
+          this.store.discardDraft(hubId);
+          this._notice = null;
+          this._stage = "missing";
+        }
+      }
+    } catch {
+      // the next report tries again
+    } finally {
+      this._following = false;
+      // A newer version may have been reported while this one was read.
+      if (read && this._stillOn(key)) this._maybeFollowCache();
+    }
+  }
+
+  /**
+   * Make a fresh snapshot the baseline and carry the user's edits over to it.
+   * "same": nothing moved; "gone": the entity is not in it any more;
+   * "incomplete": its detail is being read again (the next version brings it);
+   * "rebased" / "clean": adopted, with or without edits left to sync.
+   */
+  private _adoptSnapshot(doc: SnapshotDocument, versionAtStart: HubView["cache"] | null): AdoptOutcome {
+    const entityId = this.entityId;
+    if (entityId == null || !this._baseline || !this._working) return "same";
+    this._loadedVersion = loadedVersion(versionAtStart, doc);
+    // Nothing moved: no carry-over, and a refused write is not worth sending again.
+    if (this._snapshot && doc.snapshot_id === this._snapshot.snapshot_id) return "same";
+    const fresh = snapshotAsBundle(doc);
+    const element = entityElement(fresh, this.entityKind, entityId);
+    if (!element) return "gone";
+    if (element.complete === false) return "incomplete";
+    const dirty = this._differs;
+    this._snapshot = doc;
+    if (!dirty) {
+      this._baseline = fresh;
+      this._working = structuredClone(fresh);
+      return "clean";
+    }
+    const { bundle, overlap } = rebaseBundle(this._baseline, this._working, fresh);
+    this._baseline = fresh;
+    if (overlap) this._changedElsewhere = true;
+    this._commit(bundle);
+    return this._differs ? "rebased" : "clean";
+  }
+
+  /** Read the current snapshot and carry the edits over (a refused or failed sync); the outcome, or null when the read failed. */
+  private async _rebaseOntoCurrent(hubId: string, key: string | null): Promise<AdoptOutcome | null> {
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
+    try {
+      const response = await this.api.snapshot(hubId);
+      if (!this._stillOn(key) || !response.ok || !response.body) return null;
+      return this._adoptSnapshot(response.body, versionAtStart);
+    } catch {
+      return null;
+    }
   }
 
   // -- the working copy ------------------------------------------------------------------------------------
@@ -316,6 +430,12 @@ export abstract class SbPanelEntityEditor extends LitElement {
   protected get _dirty(): boolean {
     if (this._offline) return this.offlineDirty;
     if (this._stage !== "editing") return false;
+    return this._differs;
+  }
+
+  /** The working copy holds edits the hub does not have, whatever the stage (a failed sync's included). */
+  private get _differs(): boolean {
+    if (!this._working || !this._baseline) return false;
     return !elementsEqual(this._workingEntity, this._baselineEntity) || this._touchedDevices().length > 0;
   }
 
@@ -332,11 +452,13 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._working = next;
     const element = entityElement(next, this.entityKind, entityId);
     const devices = this._touchedDevices(next);
-    if (element && (!elementsEqual(element, this._baselineEntity) || devices.length)) {
+    const slot = element && (!elementsEqual(element, this._baselineEntity) || devices.length) ? draftSlot(next, this._baseline, this.entityKind, entityId) : null;
+    if (slot) {
       this.store.setDraft(hubId, {
         scope: entityDraftScope(this.entityKind, entityId),
         snapshotId: this._snapshot.snapshot_id,
-        data: devices.length ? { element, devices } : { element },
+        data: slot.data,
+        base: slot.base,
       });
     } else {
       this.store.discardDraft(hubId);
@@ -393,6 +515,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
     const hubId = this._hub?.hub_id;
     if (hubId) this.store.discardDraft(hubId);
     if (this._baseline) this._working = structuredClone(this._baseline);
+    this._changedElsewhere = false;
     then?.();
   };
 
@@ -436,17 +559,39 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._syncing = true;
     this._syncFailed = null;
     this._deleteError = null;
+    this._changedElsewhere = false;
+    this._follow.cancel();
     try {
       if (!(await this._beforeSync(hubId))) return false;
-      if (!this._stillOn(key)) return false;
-      // _beforeSync may have moved the snapshot and the working copy: read them after it.
-      const element = this._workingEntity;
-      const snapshot = this._snapshot;
-      if (!element || !snapshot) return false;
-      const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      let failed: { stale: boolean; message: string } | null = null;
+      for (let attempt = 0; ; attempt++) {
+        if (!this._stillOn(key)) return false;
+        // _beforeSync (or the carry-over below) may have moved the snapshot and the working copy: read them now.
+        const element = this._workingEntity;
+        const snapshot = this._snapshot;
+        if (!element || !snapshot) return false;
+        const started = await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id);
+        if (started.status === 412 && attempt === 0 && this._stillOn(key)) {
+          // The cache moved between the last follow and this write: carry the
+          // edit over to the current snapshot and send it again, once.
+          const outcome = await this._rebaseOntoCurrent(hubId, key);
+          if (outcome === "rebased") continue;
+          if (outcome === "clean") break;        // what the edit wanted is there already
+          if (outcome === "gone") return this._failSync(false, this.frameStrings.missingBody);
+        }
+        failed = await this._followToEnd(hubId, started);
+        break;
+      }
       // The user moved to another entity meanwhile: its draft and stage are its own (CR-F5b-1).
       if (!this._stillOn(key)) return !failed;
-      if (failed) return this._failSync(failed.stale, failed.message);
+      if (failed) {
+        this._failSync(failed.stale, failed.message);
+        // Part of it may have landed (the server reads the entity back before
+        // it reports the failure): carry the edit over to that, so a retry
+        // writes only what is missing and passes the snapshot check.
+        await this._rebaseOntoCurrent(hubId, key);
+        return false;
+      }
       // Success: rebase from the hub's new snapshot; the draft is spent.
       this._exitConfirm = null;
       this.store.discardDraft(hubId);
@@ -455,7 +600,11 @@ export abstract class SbPanelEntityEditor extends LitElement {
     } catch (err) {
       return this._stillOn(key) ? this._failSync(false, String(err)) : false;
     } finally {
-      if (this._stillOn(key)) this._syncing = false;
+      if (this._stillOn(key)) {
+        this._syncing = false;
+        // A change reported while the sync ran, after its own read.
+        this._maybeFollowCache();
+      }
     }
   }
 
@@ -472,6 +621,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
   private _retrySync = (): void => {
     this._stage = "editing";
     this._syncFailed = null;
+    // Everything landed after all (the carry-over found nothing left to write): back to editing.
+    if (!this._differs) return;
     void this._sync();
   };
 
@@ -496,7 +647,10 @@ export abstract class SbPanelEntityEditor extends LitElement {
     } finally {
       if (this._stillOn(key)) this._refreshing = false;
     }
-    if (this._stillOn(key)) await this._load({ keepDraft: false });
+    if (this._stillOn(key)) {
+      await this._load({ keepDraft: false });
+      if (this._stillOn(key)) this._maybeFollowCache();
+    }
   }
 
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
@@ -578,10 +732,17 @@ export abstract class SbPanelEntityEditor extends LitElement {
     return html`<div class="tab-panel">${renderOperationProgress({ id, mode: "restore", title, message })}</div>`;
   }
 
-  /** The card's delete-error banner: a failed delete re-opens the editor with the reason on top. */
-  protected _renderDeleteErrorBanner(): TemplateResult | typeof nothing {
-    if (!this._deleteError) return nothing;
-    return html`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => { this._deleteError = null; }}>Dismiss</button></div>`;
+  /** The lines over the editor: the card's delete-error banner (a failed delete
+   *  re-opens the editor with the reason on top) and the card's one line when
+   *  an edit of the user's was also changed elsewhere (no button). */
+  protected _renderEditorBanners(): TemplateResult {
+    return html`
+      ${this._deleteError
+        ? html`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => { this._deleteError = null; }}>Dismiss</button></div>`
+        : nothing}
+      ${this._changedElsewhere && !this._offline
+        ? html`<div class="notice-banner notice-banner--info" id="editor-changed-elsewhere">${icon(mdiInformationOutline)}<span>${TOOLS_CARD_STRINGS.activities.changedElsewhere(this.entityKind)}</span></div>`
+        : nothing}`;
   }
 
   protected _renderGuard(iconPath: string, title: string, body: string, actions: TemplateResult, id: string): TemplateResult {

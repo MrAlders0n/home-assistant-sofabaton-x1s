@@ -270,7 +270,12 @@ or poll `GET /hubs/{id}/jobs/{job_id}`; `GET /hubs/{id}/jobs` lists
 recent ones, and every hub view (`GET /hubs`, `GET /hubs/{id}`) carries
 `active_job` (queued or running now) and `last_job` (the newest finished
 one, whatever its outcome), so one list call tells a client what each
-hub is doing. One exception to "the full record": a backup's `bundle`
+hub is doing. A hub view also carries `cache`, the cache version
+(`epoch`: when this hub's proxy started, ms; `generation`: the library's
+cache generation; `snapshot_id`: the content id `If-Match` takes), null
+while no proxy runs: rows holding another `snapshot_id` are out of date
+when this version is newer than theirs (a newer `epoch`, or the same
+`epoch` and a higher `generation` than the snapshot's `engine_generation`). One exception to "the full record": a backup's `bundle`
 runs to megabytes, so only `GET /hubs/{id}/jobs/{job_id}` and the
 download route carry it; the stream, the job list and the hub views show
 the rest of that result (see [IR payloads, backup, restore](#ir-payloads-backup-restore)).
@@ -744,6 +749,7 @@ JSON objects discriminated by `type`:
 | `server_event` | `hub_id` and `kind`: hub lifecycle/discovery events (`hub_added`, `hub_removed`, `hub_enabled`, `hub_disabled`, `hub_proxy_enabled`, `hub_proxy_disabled`, `hub_local_address_changed`, `hub_rekeyed`, `hub_host_changed`, `hub_discovered`, `hub_lost`) and callback events (`callback_device_stale`, `callback_device_restored`, `callback_listener_started`, `callback_listener_failed`); `update_check` with an empty `hub_id` says an update check finished (re-read `GET /server` or `GET /server/updates`); `auth` with an empty `hub_id` says access was set up, the admin account changed or sessions were signed out (re-read `GET /auth`); `mqtt_config` with an empty `hub_id` says the broker was saved or removed (re-read `GET /server/mqtt/config` and `GET /server/mqtt`) |
 | `job_event` | `hub_id` and the `job` record, excluding a backup's `result.bundle`, on every transition: queued, running, each progress report, done / failed / cancelled |
 | `press` | a button press delivered over HTTP or MQTT: `device_key`, `seq` (the server-instance press sequence, shared with `GET /hubs/{id}/presses`), `hub_id`, `device_id`, `command_id`, `slot`, `label`, `press_type` (`short` / `long`), `resolution`, `transport`, `source`, `received_at` (see Button events) |
+| `hub_update` | only with `?hub_updates=true`: `hub_id`, `seq` and `hub`, the hub's whole view as `GET /hubs/{id}` returns it (`cache` included); one per hub right after `hello`, then whenever the hub, its jobs or its cache changed, coalesced per hub (0.15 s after the last change, at most 0.5 s after the first). `seq` counts across the connection's hub updates: drop one older than the last seen for its hub |
 | `dropped` | `count` of older messages discarded because this client fell behind; sent before the next message that gets through |
 
 `hub_event.event.seq` is the library's per-proxy counter, passed through
@@ -764,7 +770,7 @@ re-read the hub list, status, relevant snapshots and outstanding jobs;
 hub and job events have no replay history. Presses have the bounded
 catch-up history described above. Inbound text is ignored.
 The message types are published as components in the OpenAPI document
-(`WsHello`, `WsHubEvent`, `WsServerEvent`, `WsJobEvent`, `WsPress`, `WsDropped`)
+(`WsHello`, `WsHubEvent`, `WsServerEvent`, `WsJobEvent`, `WsPress`, `WsHubUpdate`, `WsDropped`)
 for generators.
 
 Writing a platform integration? Start with

@@ -11,6 +11,16 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Added
+
+- `AsyncXProxy.cache_generation` (a pure state read of the cache
+  generation, which moves whenever the cache may have changed) and
+  `AsyncXProxy.peek_snapshot()`, the `snapshot()` projection for an
+  observer: it does not count as handed out, so the next write still
+  announces its move with `snapshot_changed`. Together they let a
+  consumer keep a cache version current (the server's `HubView.cache`)
+  without holding back the events other consumers rely on.
+
 ### Fixed
 
 - X2: `reorder_devices()`, `reorder_activities()` and a Wifi Device deploy

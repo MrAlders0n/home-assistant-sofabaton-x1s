@@ -12323,7 +12323,7 @@ function renderBottomDock(params) {
     tone = "dock--warn";
     center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
     actions = confirmActions;
-  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+  } else if (model.kind === "dirty" && params.confirming === "draft") {
     tone = "dock--warn";
     center = status("Discard your unsaved changes? The hub is not changed.");
     actions = confirmActions;
@@ -12333,12 +12333,6 @@ function renderBottomDock(params) {
     actions = b2`
       ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
       <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
-  } else if (model.kind === "draft_stale") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = b2`
-      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
     center = status(model.text);
@@ -12704,8 +12698,7 @@ function noticeForJob(job, at) {
   return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
 function draftFor(runtime) {
-  if (!runtime?.draft) return null;
-  return { draft: runtime.draft, check: runtime.draftCheck };
+  return runtime?.draft ?? null;
 }
 function hasDirtyDraft(runtime) {
   return Boolean(runtime?.draft);
@@ -12723,8 +12716,7 @@ function dockModel(snapshot, runtime, view = {}) {
   const stopped = runtime?.stoppedApplies[0];
   if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `${stopped.status === "cancelled" ? "An apply was cancelled partway" : "An apply stopped partway"}; ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
-  if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
-  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
+  if (draft) return { kind: "dirty", scope: draft.scope, text: draftBannerText(draft.scope) };
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes \u2014 download the edited backup" };
   if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes \u2014 sync to the hub to apply them" };
   if (view.unsavedLayout) return { kind: "unsynced_view", text: "Unsaved layout changes \u2014 Save keeps them" };
@@ -12760,6 +12752,8 @@ var PanelStream = class {
     this.messages = [];
     /** Hub ids the server should filter the stream to; applied on the next (re)connect. */
     this.hubFilter = [];
+    /** Ask for `hub_update` frames (the hub's whole view on every change); the panel's store does. */
+    this.hubUpdates = false;
     this.connected = false;
     /** True between start() and stop(): the stream should be up and reconnects. */
     this.wanted = false;
@@ -12778,6 +12772,7 @@ var PanelStream = class {
     const u6 = new URL(`${this._apiRoot}/events`);
     u6.protocol = u6.protocol === "https:" ? "wss:" : "ws:";
     for (const hub of this.hubFilter) u6.searchParams.append("hub_id", hub);
+    if (this.hubUpdates) u6.searchParams.set("hub_updates", "true");
     return u6.toString();
   }
   onMessage(listener) {
@@ -12859,6 +12854,8 @@ function summarizeMessage(data) {
       const suffix = progress ? ` ${progress.completed_steps ?? ""}/${progress.total_steps ?? ""}` : "";
       return `job_event ${m3.hub_id} ${m3.job?.kind} ${m3.job?.status}${suffix}`;
     }
+    case "hub_update":
+      return `hub_update ${m3.hub_id} seq=${m3.seq}${m3.hub?.active_job ? ` job=${m3.hub.active_job.kind}` : ""}${m3.hub?.cache ? ` gen=${m3.hub.cache.generation}` : ""}`;
     case "hello":
       return `hello v${m3.server_version} instance=${m3.instance_id} hubs=${(m3.hubs ?? []).map((h7) => h7.hub_id).join(",")}`;
     case "dropped":
@@ -12876,6 +12873,100 @@ function isHubRefreshTrigger(data) {
   }
   return false;
 }
+
+// server-panel/src/cache-follow.ts
+function isNewerVersion(a4, b3) {
+  if (!a4) return false;
+  if (!b3) return true;
+  if (a4.epoch !== b3.epoch) return a4.epoch > b3.epoch;
+  return a4.generation > b3.generation;
+}
+function loadedVersion(atStart, doc) {
+  return {
+    epoch: atStart?.epoch ?? null,
+    generation: typeof doc?.engine_generation === "number" ? doc.engine_generation : null,
+    snapshotId: doc?.snapshot_id ?? null
+  };
+}
+function versionAsLoaded(version) {
+  return version ? { epoch: version.epoch, generation: version.generation, snapshotId: version.snapshot_id } : null;
+}
+function needsReload(loaded, latest) {
+  if (!latest) return false;
+  if (!loaded || loaded.snapshotId === null) return true;
+  if (latest.snapshot_id === loaded.snapshotId) return false;
+  if (loaded.epoch === null || latest.epoch !== loaded.epoch) return loaded.epoch === null || latest.epoch > loaded.epoch;
+  return loaded.generation === null || latest.generation > loaded.generation;
+}
+var JOB_STATUS_RANK = { queued: 0, running: 1, done: 2, failed: 2, cancelled: 2 };
+function isLive(job) {
+  return Boolean(job && !TERMINAL_JOB_STATES.has(job.status));
+}
+function fresherJob(current, incoming) {
+  const rank = (job) => JOB_STATUS_RANK[job.status] ?? 0;
+  if (rank(current) !== rank(incoming)) return rank(current) > rank(incoming) ? current : incoming;
+  const steps = (job) => Number(job.progress?.completed_steps ?? -1);
+  return steps(current) > steps(incoming) ? current : incoming;
+}
+function reconcileHubView(current, incoming) {
+  if (!current || current.hub_id !== incoming.hub_id) return incoming;
+  let active = incoming.active_job ?? null;
+  let last = incoming.last_job ?? null;
+  const knownActive = isLive(current.active_job) ? current.active_job : null;
+  const knownLast = current.last_job && TERMINAL_JOB_STATES.has(current.last_job.status) ? current.last_job : null;
+  if (active && knownLast && knownLast.job_id === active.job_id) {
+    active = null;
+    if (!last || last.created_at < knownLast.created_at) last = knownLast;
+  }
+  if (knownActive) {
+    if (active && active.job_id === knownActive.job_id) {
+      active = fresherJob(knownActive, active);
+    } else if (active && active.created_at < knownActive.created_at) {
+      active = knownActive;
+    } else if (!active) {
+      const ended = last !== null && (last.job_id === knownActive.job_id || last.created_at > knownActive.created_at);
+      if (!ended) active = knownActive;
+    }
+  }
+  if (knownLast && (!last || last.job_id !== knownLast.job_id && last.created_at < knownLast.created_at)) last = knownLast;
+  let cache = incoming.cache ?? null;
+  if (cache && current.cache && isNewerVersion(current.cache, cache)) cache = current.cache;
+  if (active === (incoming.active_job ?? null) && last === (incoming.last_job ?? null) && cache === (incoming.cache ?? null)) return incoming;
+  return { ...incoming, active_job: active, last_job: last, cache };
+}
+var Coalescer = class {
+  constructor(fn, options) {
+    this._first = null;
+    this._timer = null;
+    this._fn = fn;
+    this._debounceMs = options.debounceMs;
+    this._maxWaitMs = options.maxWaitMs;
+    this._now = options.now ?? (() => Date.now());
+    this._setTimer = options.setTimer ?? ((run, ms) => setTimeout(run, ms));
+    this._clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
+  }
+  get pending() {
+    return this._timer !== null;
+  }
+  poke() {
+    const now = this._now();
+    if (this._first === null) this._first = now;
+    const delay = Math.max(0, Math.min(this._debounceMs, this._first + this._maxWaitMs - now));
+    if (this._timer !== null) this._clearTimer(this._timer);
+    this._timer = this._setTimer(() => {
+      this._timer = null;
+      this._first = null;
+      this._fn();
+    }, delay);
+  }
+  cancel() {
+    if (this._timer !== null) this._clearTimer(this._timer);
+    this._timer = null;
+    this._first = null;
+  }
+};
+var FOLLOW_DEBOUNCE_MS = 250;
+var FOLLOW_MAX_WAIT_MS = 1500;
 
 // server-panel/src/panel-store.ts
 var ACKS_KEY = "sofabaton-panel-acks";
@@ -12895,6 +12986,10 @@ var PanelStore = class {
     this._messageTimer = null;
     this._noticeTimers = /* @__PURE__ */ new Map();
     this._hubsKey = "";
+    /** The newest hub_update seq per hub on this connection; an older frame is dropped. */
+    this._updateSeq = /* @__PURE__ */ new Map();
+    /** hub_update frames arrive on this connection: the poll slows down. */
+    this._pushLive = false;
     this._api = options.api;
     this._stream = options.stream;
     this._storage = options.storage ?? null;
@@ -12903,6 +12998,7 @@ var PanelStore = class {
     this._clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
     this._isVisible = options.isVisible ?? (() => typeof document === "undefined" || document.visibilityState === "visible");
     this._tickMs = options.tickMs ?? 5e3;
+    this._pushTickMs = options.pushTickMs ?? 1e4;
     this._debounceMs = options.debounceMs ?? 300;
     this._noticeTtlMs = options.noticeTtlMs ?? 6e3;
     this._errorNoticeTtlMs = options.errorNoticeTtlMs ?? 8e3;
@@ -12954,6 +13050,7 @@ var PanelStore = class {
   connect() {
     if (this._connected) return;
     this._connected = true;
+    this._stream.hubUpdates = true;
     this._offStream = [
       this._stream.onState((connected) => this._onStreamState(connected)),
       this._stream.onMessage((message) => this._onStreamMessage(message))
@@ -12991,7 +13088,11 @@ var PanelStore = class {
         void this.refreshSeen();
       }
       this._scheduleTick();
-    }, this._tickMs);
+    }, this.pushLive ? this._pushTickMs : this._tickMs);
+  }
+  /** True while `hub_update` frames keep the hub records current. */
+  get pushLive() {
+    return this._pushLive && this._snapshot.stream.connected;
   }
   // -- selection, route, theme, message ----------------------------------------------------------
   selectHub(hubId) {
@@ -13004,10 +13105,7 @@ var PanelStore = class {
     }
     this._set(patch);
     this._savePrefs();
-    if (hubId) {
-      void this._loadApplies(hubId);
-      void this._checkDraft(hubId);
-    }
+    if (hubId) void this._loadApplies(hubId);
   }
   /** Go somewhere (decision 9). A hub route without a hub takes the selected one; a hub in it becomes the selection. */
   navigate(route, { replace = false } = {}) {
@@ -13056,10 +13154,7 @@ var PanelStore = class {
     const selectedBefore = this._snapshot.selectedHubId;
     await Promise.all([this._loadServer(), this.refreshHubs(), this.refreshSeen()]);
     const selected = this._snapshot.selectedHubId;
-    if (selected && selected === selectedBefore) {
-      await this._loadApplies(selected);
-      await this._checkDraft(selected);
-    }
+    if (selected && selected === selectedBefore) await this._loadApplies(selected);
   }
   /** Reload the hub list soon, coalescing bursts of triggers. */
   refreshSoon() {
@@ -13108,7 +13203,7 @@ var PanelStore = class {
     const draft = loadDraft(this._storage, fromId);
     if (draft && !loadDraft(this._storage, toId)) {
       saveDraft(this._storage, toId, draft);
-      this._patchRuntime(toId, { draft, draftCheck: draft.acceptedStale ? "kept" : "unchecked" });
+      this._patchRuntime(toId, { draft });
     }
     saveDraft(this._storage, fromId, null);
     if (fromId in this._acks) {
@@ -13157,9 +13252,9 @@ var PanelStore = class {
       this._hubsKey = key;
       const runtimes = hubs.map((hub) => {
         const old = previous.get(hub.hub_id);
-        if (old) return { ...old, hub };
+        if (old) return { ...old, hub: reconcileHubView(old.hub, hub) };
         const draft = loadDraft(this._storage, hub.hub_id);
-        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft, draftCheck: draft?.acceptedStale ? "kept" : "unchecked" };
+        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft };
       });
       this._set({ hubs: runtimes, listLoaded: true });
       for (const hub of hubs) if (hub.last_job) this._noteFinished(hub.hub_id, hub.last_job, { onLoad: !previous.has(hub.hub_id) });
@@ -13180,6 +13275,8 @@ var PanelStore = class {
   }
   // -- the stream ------------------------------------------------------------------------------
   _onStreamState(connected) {
+    this._updateSeq.clear();
+    this._pushLive = false;
     this._set({ stream: { ...this._snapshot.stream, connected } });
     if (connected) void this.refreshAll();
     else if (this._connected && this._snapshot.server.reachable) void this.refreshHubs();
@@ -13198,6 +13295,11 @@ var PanelStore = class {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "hub_update":
+        if (typeof data.hub_id === "string" && data.hub && typeof data.hub === "object") {
+          this._onHubUpdate(data.hub_id, typeof data.seq === "number" ? data.seq : 0, data.hub);
+        }
         return;
       case "dropped":
         void this.refreshAll();
@@ -13221,6 +13323,32 @@ var PanelStore = class {
       void this.refreshAll();
     }
     if (instanceId && instanceId !== previous) this._set({ server: { ...this._snapshot.server, instanceId } });
+  }
+  /** A pushed hub view: the hub's record follows it at once (locks, gates, the dock, the cache version). */
+  _onHubUpdate(hubId, seq, hub) {
+    const last = this._updateSeq.get(hubId);
+    if (last !== void 0 && seq <= last) return;
+    this._updateSeq.set(hubId, seq);
+    if (!this._pushLive) {
+      this._pushLive = true;
+      this._scheduleTick();
+    }
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime || hub.hub_id !== hubId) {
+      this.refreshSoon();
+      return;
+    }
+    const next = reconcileHubView(runtime.hub, hub);
+    if (JSON.stringify(next) === JSON.stringify(runtime.hub)) return;
+    this._hubsKey = "";
+    const previousLast = runtime.hub.last_job?.job_id ?? null;
+    const cancelRequestedJobId = runtime.cancelRequestedJobId && next.active_job?.job_id !== runtime.cancelRequestedJobId ? null : runtime.cancelRequestedJobId;
+    this._patchRuntime(hubId, { hub: next, cancelRequestedJobId });
+    const finished = next.last_job;
+    if (finished && finished.job_id !== previousLast) {
+      this._noteFinished(hubId, finished, { onLoad: false });
+      if (APPLY_JOB_KINDS.has(finished.kind)) void this._loadApplies(hubId);
+    }
   }
   /** A job frame mutates the hub's record directly; a terminal one reloads the hub afterwards. */
   _onJobEvent(hubId, job) {
@@ -13383,32 +13511,11 @@ var PanelStore = class {
   /** An editor's unsaved work: kept on the record and mirrored to storage. Null clears it. */
   setDraft(hubId, draft) {
     const full = draft ? { ...draft, updatedAt: this._now() } : null;
-    if (this._patchRuntime(hubId, { draft: full, draftCheck: full ? "fresh" : "unchecked" })) saveDraft(this._storage, hubId, full);
+    if (this._patchRuntime(hubId, { draft: full })) saveDraft(this._storage, hubId, full);
   }
   /** Drop the hub's draft, in memory and in storage. */
   discardDraft(hubId) {
     this.setDraft(hubId, null);
-  }
-  /** The stale prompt's "Keep editing": the draft stays, marked as accepted so a reload does not ask again. */
-  keepStaleDraft(hubId) {
-    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-    if (!runtime?.draft) return;
-    const draft = { ...runtime.draft, acceptedStale: true };
-    this._patchRuntime(hubId, { draft, draftCheck: "kept" });
-    saveDraft(this._storage, hubId, draft);
-  }
-  /** A restored draft is checked against the hub's current snapshot once: the same id is fresh, another is stale (the prompt). */
-  async _checkDraft(hubId) {
-    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-    if (!runtime?.draft || runtime.draftCheck !== "unchecked") return;
-    try {
-      const response = await this._api.snapshot(hubId);
-      if (!response.ok || !response.body) return;
-      const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-      if (!current?.draft || current.draftCheck !== "unchecked") return;
-      this._patchRuntime(hubId, { draftCheck: response.body.snapshot_id === current.draft.snapshotId ? "fresh" : "stale" });
-    } catch {
-    }
   }
 };
 function loadAcks(storage) {
@@ -13444,8 +13551,8 @@ function loadDraft(storage, hubId) {
       scope: data.scope,
       snapshotId: data.snapshotId,
       data: data.data,
-      updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
-      ...data.acceptedStale ? { acceptedStale: true } : {}
+      ...data.base !== void 0 ? { base: data.base } : {},
+      updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0
     };
   } catch {
     return null;
@@ -14001,7 +14108,7 @@ var SofabatonServerPanel = class extends i4 {
     if (!this._dockConfirm) return;
     const runtime = selectedRuntime(this._snapshot);
     const kind = dockModel(this._snapshot, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false }).kind;
-    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty" || kind === "draft_stale";
+    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty";
     if (!matches) this._dockConfirm = null;
   }
   render() {
@@ -14106,9 +14213,6 @@ var SofabatonServerPanel = class extends i4 {
       },
       onDiscard: () => {
         this._dockConfirm = "apply";
-      },
-      onKeepDraft: () => {
-        if (s7.selectedHubId) this.store.keepStaleDraft(s7.selectedHubId);
       },
       onDiscardDraft: () => {
         this._dockConfirm = "draft";
@@ -18888,6 +18992,77 @@ function sanitizeEntityName(hubVersion, value) {
   return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
 }
 
+// custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase.ts
+function isPlainObject4(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function same(a4, b3) {
+  if (a4 === b3) return true;
+  if (a4 === void 0 || b3 === void 0) return false;
+  return JSON.stringify(a4) === JSON.stringify(b3);
+}
+function rowId(row) {
+  if (!isPlainObject4(row) || !isPlainObject4(row.device)) return null;
+  const id = Number(row.device.device_id);
+  return Number.isFinite(id) ? id : null;
+}
+function isRowList(value) {
+  return Array.isArray(value) && value.every((row) => rowId(row) != null);
+}
+function clone(value) {
+  return value === void 0 ? value : structuredClone(value);
+}
+function mergeValue(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  if (isPlainObject4(base) && isPlainObject4(mine) && isPlainObject4(theirs)) {
+    const out = {};
+    const keys = /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)]);
+    for (const key of keys) {
+      const value = mergeValue(base[key], mine[key], theirs[key], overlap);
+      if (value !== void 0) out[key] = value;
+    }
+    return out;
+  }
+  overlap.hit = true;
+  return mine;
+}
+function mergeRows(base, mine, theirs, overlap) {
+  const byId = (rows) => new Map(rows.map((row) => [rowId(row), row]));
+  const baseRows = byId(base);
+  const mineRows = byId(mine);
+  const out = [];
+  for (const row of theirs) {
+    const id = rowId(row);
+    const merged = mergeValue(baseRows.get(id), mineRows.get(id), row, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  const theirIds = new Set(theirs.map((row) => rowId(row)));
+  for (const row of mine) {
+    const id = rowId(row);
+    if (theirIds.has(id)) continue;
+    const merged = mergeValue(baseRows.get(id), row, void 0, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  return out;
+}
+function rebaseBundle(base, mine, theirs) {
+  const overlap = { hit: false };
+  const out = {};
+  const b3 = base;
+  const m3 = mine;
+  const t5 = theirs;
+  for (const key of /* @__PURE__ */ new Set([...Object.keys(t5), ...Object.keys(m3)])) {
+    if ((key === "devices" || key === "activities") && isRowList(b3[key] ?? []) && isRowList(m3[key] ?? []) && isRowList(t5[key] ?? [])) {
+      out[key] = mergeRows(b3[key] ?? [], m3[key] ?? [], t5[key] ?? [], overlap);
+      continue;
+    }
+    const value = mergeValue(b3[key], m3[key], t5[key], overlap);
+    if (value !== void 0) out[key] = value;
+  }
+  return { bundle: out, overlap: overlap.hit };
+}
+
 // custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
@@ -18948,6 +19123,29 @@ function withDraftData(bundle, kind, entityId, data) {
   for (const device of data.devices ?? []) next = withEntityElement(next, "device", idOf(device), device);
   return next;
 }
+function entityDraftBase(draft, kind, entityId) {
+  if (!draft || draft.base === void 0) return null;
+  return entityDraftData({ ...draft, data: draft.base }, kind, entityId);
+}
+function draftSlot(working, baseline, kind, entityId) {
+  const element = entityElement(working, kind, entityId);
+  const before = entityElement(baseline, kind, entityId);
+  if (!element || !before) return null;
+  const devices = kind === "activity" ? touchedDevices(working, baseline) : [];
+  const baseDevices = devices.map((device) => entityElement(baseline, "device", idOf(device))).filter((row) => row !== null);
+  return {
+    data: devices.length ? { element, devices } : { element },
+    base: baseDevices.length ? { element: before, devices: baseDevices } : { element: before }
+  };
+}
+function rebaseDraftOnto(fresh, kind, entityId, data, base) {
+  const mine = withDraftData(fresh, kind, entityId, data);
+  if (!base) {
+    const changed = JSON.stringify(entityElement(mine, kind, entityId)) !== JSON.stringify(entityElement(fresh, kind, entityId)) || (data.devices ?? []).some((device) => JSON.stringify(device) !== JSON.stringify(entityElement(fresh, "device", idOf(device))));
+    return { bundle: mine, overlap: changed };
+  }
+  return rebaseBundle(withDraftData(fresh, kind, entityId, base), mine, fresh);
+}
 
 // server-panel/src/views/device-editor-state.ts
 function snapshotAsBundle(snapshot) {
@@ -19006,6 +19204,8 @@ var SbPanelBackup = class extends i4 {
     this._hubId = null;
     this._jobsSeq = 0;
     this._jobsKey = "";
+    /** The hub's snapshot id the Make list last followed; null before the first look. */
+    this._devicesCacheKey = null;
     /** The hub's gate when the device list was last read; anything but "pass" asks for another read once it passes. */
     this._devicesGate = null;
     this._expiryTimer = null;
@@ -19171,6 +19371,12 @@ var SbPanelBackup = class extends i4 {
         if (hubId && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
       }
       if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
+      const cacheKey = hub?.cache?.snapshot_id ?? "";
+      if (cacheKey !== this._devicesCacheKey) {
+        const first = this._devicesCacheKey === null;
+        this._devicesCacheKey = cacheKey;
+        if (!first && hubId && cacheKey && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
+      }
     }
     if (!this._editSessionTried && hubId && this.section === "edit" && !this._editBundle) {
       this._editSessionTried = true;
@@ -19192,6 +19398,7 @@ var SbPanelBackup = class extends i4 {
   _onHubChanged(previous) {
     this._jobs = [];
     this._jobsKey = "";
+    this._devicesCacheKey = null;
     this._shownBackupJobId = null;
     this._shownRestoreJobId = null;
     this._backupError = null;
@@ -19984,6 +20191,10 @@ var SbPanelCatalog = class extends i4 {
     this._loadedGate = null;
     this._loadSeq = 0;
     this._lastJobId = null;
+    /** The cache version the lists came from: a newer one reads them again (cache-follow.ts). */
+    this._loadedVersion = null;
+    /** Re-reads for a change made elsewhere, coalesced: a quarter second after the last, at most 1.5 s apart. */
+    this._follow = new Coalescer(() => this._followChange(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._pendingScroll = null;
     this._devices = [];
     this._activities = [];
@@ -20069,6 +20280,7 @@ var SbPanelCatalog = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._sorter.cancel();
+    this._follow.cancel();
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
@@ -20096,13 +20308,16 @@ var SbPanelCatalog = class extends i4 {
         this._add = null;
         this._refresh = null;
         this._sorter.cancel();
+        this._follow.cancel();
+        this._loadedVersion = null;
         if (id) void this._load();
       } else {
         const jobId = this.hub?.last_job?.job_id ?? null;
         if (jobId && jobId !== this._lastJobId) {
           this._lastJobId = jobId;
-          if (!this._refresh) void this._reloadAll();
+          this._follow.poke();
         }
+        if (needsReload(this._loadedVersion, this.hub?.cache)) this._follow.poke();
       }
     }
     if (changed.has("ctx") && this._loadedFor && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._refresh) void this._reloadAll();
@@ -20138,10 +20353,13 @@ var SbPanelCatalog = class extends i4 {
     if (!hubId) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    const versionAtStart = this.hub?.cache ?? null;
     this._loading = true;
     try {
       const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
+      this._loadedVersion = loadedVersion(versionAtStart, snapshot.ok ? snapshot.body : null);
+      if (!snapshot.ok) this._loadedVersion = { ...this._loadedVersion, snapshotId: versionAtStart?.snapshot_id ?? null };
       const failed = [devices, activities].find((r6) => !r6.ok);
       if (failed) {
         this._notice = problemText(failed);
@@ -20160,12 +20378,19 @@ var SbPanelCatalog = class extends i4 {
       if (seq === this._loadSeq) this._loading = false;
     }
   }
-  /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
-  async _reloadAll() {
+  /** The lists and every loaded drawer again (after a refresh, or a change made elsewhere).
+   *  `keepOpen` leaves the open drawer's rows in place until the new ones arrive (no "Loading…" flash). */
+  async _reloadAll({ keepOpen = false } = {}) {
     await this._load();
     const open = this.openEntry;
-    this._details = {};
-    if (open) await this._loadDetail(open);
+    const openKey = open ? entryKey(open.kind, open.id) : null;
+    this._details = keepOpen && openKey && this._details[openKey] ? { [openKey]: this._details[openKey] } : {};
+    if (open) await this._loadDetail(open, { quiet: keepOpen });
+  }
+  /** A change made elsewhere: read the lists and the open drawer again, unless this view's own work is about to. */
+  _followChange() {
+    if (!this._loadedFor || this._refresh || this._reorder?.syncing || this._add?.busy) return;
+    void this._reloadAll({ keepOpen: true });
   }
   _toggle(entry) {
     const key = entryKey(entry.kind, entry.id);
@@ -20176,11 +20401,11 @@ var SbPanelCatalog = class extends i4 {
     this._pendingScroll = key;
     if (!this._details[key]) void this._loadDetail(entry);
   }
-  async _loadDetail(entry) {
+  async _loadDetail(entry, { quiet = false } = {}) {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
     const key = entryKey(entry.kind, entry.id);
-    this._detailLoading = key;
+    if (!quiet) this._detailLoading = key;
     this._detailNotice = null;
     let detail = null;
     try {
@@ -21010,8 +21235,12 @@ var SbPanelEntityEditor = class extends i4 {
     this._deleting = false;
     this._deleteError = null;
     this._notice = null;
-    /** The kept draft last spliced in (CR-F5b-4): never reload for the same one twice. */
-    this._splicedDraft = null;
+    /** An edit of the user's was also changed elsewhere; the user's version was kept. */
+    this._changedElsewhere = false;
+    /** The cache version the snapshot came from (cache-follow.ts). */
+    this._loadedVersion = null;
+    this._following = false;
+    this._follow = new Coalescer(() => void this._followCache(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._loadedKey = null;
     this._loadSeq = 0;
     /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
@@ -21032,6 +21261,7 @@ var SbPanelEntityEditor = class extends i4 {
       const hubId = this._hub?.hub_id;
       if (hubId) this.store.discardDraft(hubId);
       if (this._baseline) this._working = structuredClone(this._baseline);
+      this._changedElsewhere = false;
       then?.();
     };
     this._syncAndLeave = () => {
@@ -21044,6 +21274,7 @@ var SbPanelEntityEditor = class extends i4 {
     this._retrySync = () => {
       this._stage = "editing";
       this._syncFailed = null;
+      if (!this._differs) return;
       void this._sync();
     };
     this._keepEditing = () => {
@@ -21075,6 +21306,10 @@ var SbPanelEntityEditor = class extends i4 {
     this._working = this.offlineBundle;
     this._stage = this.entityId != null && entityElement(this.offlineBundle, this.entityKind, this.entityId) ? "editing" : "missing";
   }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._follow.cancel();
+  }
   updated(changed) {
     if (this._offline) return;
     const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.entityId ?? ""}`;
@@ -21091,16 +21326,9 @@ var SbPanelEntityEditor = class extends i4 {
       void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
-    } else if (changed.has("ctx") && this._stage === "editing" && !this._dirty && this._keptDraftWaiting()) {
-      this._splicedDraft = this.ctx?.runtime?.draft ?? null;
-      void this._load();
+      this._changedElsewhere = false;
     }
-  }
-  /** A draft for this entity the user chose to keep past the stale prompt, not yet in the working copy. */
-  _keptDraftWaiting() {
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    return Boolean(draft && draft !== this._splicedDraft && runtime?.draftCheck === "kept" && this.entityId != null && draft.scope === entityDraftScope(this.entityKind, this.entityId));
+    if (changed.has("ctx")) this._maybeFollowCache();
   }
   _reset() {
     this._stage = "loading";
@@ -21114,6 +21342,9 @@ var SbPanelEntityEditor = class extends i4 {
     this._syncFailed = null;
     this._deleteError = null;
     this._notice = null;
+    this._changedElsewhere = false;
+    this._loadedVersion = null;
+    this._follow.cancel();
     this._resetView();
   }
   /** True while the element still shows the entity a job started on: the
@@ -21141,6 +21372,7 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
     let snapshot;
     let callback;
     try {
@@ -21163,6 +21395,7 @@ var SbPanelEntityEditor = class extends i4 {
       return;
     }
     this._snapshot = snapshot.body;
+    this._loadedVersion = loadedVersion(versionAtStart, snapshot.body);
     if (firmwareFloor(this._hub)) {
       this._stage = "guard_firmware";
       return;
@@ -21180,13 +21413,97 @@ var SbPanelEntityEditor = class extends i4 {
       return;
     }
     this._baseline = bundle;
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
-    const data = restorable ? entityDraftData(draft, kind, entityId) : null;
-    this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
     this._stage = "editing";
     this._syncFailed = null;
+    if (options.keepDraft === false) this._changedElsewhere = false;
+    const draft = options.keepDraft !== false ? this.ctx?.runtime?.draft ?? null : null;
+    const data = entityDraftData(draft, kind, entityId);
+    if (!draft || !data) {
+      this._working = structuredClone(bundle);
+      return;
+    }
+    if (draft.snapshotId === snapshot.body.snapshot_id) {
+      this._working = withDraftData(bundle, kind, entityId, data);
+      return;
+    }
+    const carried = rebaseDraftOnto(bundle, kind, entityId, data, entityDraftBase(draft, kind, entityId));
+    this._working = structuredClone(bundle);
+    if (carried.overlap) this._changedElsewhere = true;
+    this._commit(carried.bundle);
+  }
+  // -- following the cache ---------------------------------------------------------------------------
+  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read. */
+  _maybeFollowCache() {
+    if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
+    this._follow.poke();
+  }
+  async _followCache() {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    const key = this._loadedKey;
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
+    this._following = true;
+    let read = false;
+    try {
+      const response = await this.api.snapshot(hubId);
+      if (!this._stillOn(key) || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+      if (!response.ok || !response.body) return;
+      read = true;
+      const outcome = this._adoptSnapshot(response.body, versionAtStart);
+      if (outcome === "gone") {
+        if (!this._differs) {
+          this._goToList();
+        } else {
+          this.store.discardDraft(hubId);
+          this._notice = null;
+          this._stage = "missing";
+        }
+      }
+    } catch {
+    } finally {
+      this._following = false;
+      if (read && this._stillOn(key)) this._maybeFollowCache();
+    }
+  }
+  /**
+   * Make a fresh snapshot the baseline and carry the user's edits over to it.
+   * "same": nothing moved; "gone": the entity is not in it any more;
+   * "incomplete": its detail is being read again (the next version brings it);
+   * "rebased" / "clean": adopted, with or without edits left to sync.
+   */
+  _adoptSnapshot(doc, versionAtStart) {
+    const entityId = this.entityId;
+    if (entityId == null || !this._baseline || !this._working) return "same";
+    this._loadedVersion = loadedVersion(versionAtStart, doc);
+    if (this._snapshot && doc.snapshot_id === this._snapshot.snapshot_id) return "same";
+    const fresh = snapshotAsBundle(doc);
+    const element = entityElement(fresh, this.entityKind, entityId);
+    if (!element) return "gone";
+    if (element.complete === false) return "incomplete";
+    const dirty = this._differs;
+    this._snapshot = doc;
+    if (!dirty) {
+      this._baseline = fresh;
+      this._working = structuredClone(fresh);
+      return "clean";
+    }
+    const { bundle, overlap } = rebaseBundle(this._baseline, this._working, fresh);
+    this._baseline = fresh;
+    if (overlap) this._changedElsewhere = true;
+    this._commit(bundle);
+    return this._differs ? "rebased" : "clean";
+  }
+  /** Read the current snapshot and carry the edits over (a refused or failed sync); the outcome, or null when the read failed. */
+  async _rebaseOntoCurrent(hubId, key) {
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
+    try {
+      const response = await this.api.snapshot(hubId);
+      if (!this._stillOn(key) || !response.ok || !response.body) return null;
+      return this._adoptSnapshot(response.body, versionAtStart);
+    } catch {
+      return null;
+    }
   }
   // -- the working copy ------------------------------------------------------------------------------------
   get _workingEntity() {
@@ -21203,6 +21520,11 @@ var SbPanelEntityEditor = class extends i4 {
   get _dirty() {
     if (this._offline) return this.offlineDirty;
     if (this._stage !== "editing") return false;
+    return this._differs;
+  }
+  /** The working copy holds edits the hub does not have, whatever the stage (a failed sync's included). */
+  get _differs() {
+    if (!this._working || !this._baseline) return false;
     return !elementsEqual(this._workingEntity, this._baselineEntity) || this._touchedDevices().length > 0;
   }
   /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the edit into the draft slot. */
@@ -21218,11 +21540,13 @@ var SbPanelEntityEditor = class extends i4 {
     this._working = next;
     const element = entityElement(next, this.entityKind, entityId);
     const devices = this._touchedDevices(next);
-    if (element && (!elementsEqual(element, this._baselineEntity) || devices.length)) {
+    const slot = element && (!elementsEqual(element, this._baselineEntity) || devices.length) ? draftSlot(next, this._baseline, this.entityKind, entityId) : null;
+    if (slot) {
       this.store.setDraft(hubId, {
         scope: entityDraftScope(this.entityKind, entityId),
         snapshotId: this._snapshot.snapshot_id,
-        data: devices.length ? { element, devices } : { element }
+        data: slot.data,
+        base: slot.base
       });
     } else {
       this.store.discardDraft(hubId);
@@ -21281,15 +21605,32 @@ var SbPanelEntityEditor = class extends i4 {
     this._syncing = true;
     this._syncFailed = null;
     this._deleteError = null;
+    this._changedElsewhere = false;
+    this._follow.cancel();
     try {
       if (!await this._beforeSync(hubId)) return false;
-      if (!this._stillOn(key)) return false;
-      const element = this._workingEntity;
-      const snapshot = this._snapshot;
-      if (!element || !snapshot) return false;
-      const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      let failed = null;
+      for (let attempt = 0; ; attempt++) {
+        if (!this._stillOn(key)) return false;
+        const element = this._workingEntity;
+        const snapshot = this._snapshot;
+        if (!element || !snapshot) return false;
+        const started = await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id);
+        if (started.status === 412 && attempt === 0 && this._stillOn(key)) {
+          const outcome = await this._rebaseOntoCurrent(hubId, key);
+          if (outcome === "rebased") continue;
+          if (outcome === "clean") break;
+          if (outcome === "gone") return this._failSync(false, this.frameStrings.missingBody);
+        }
+        failed = await this._followToEnd(hubId, started);
+        break;
+      }
       if (!this._stillOn(key)) return !failed;
-      if (failed) return this._failSync(failed.stale, failed.message);
+      if (failed) {
+        this._failSync(failed.stale, failed.message);
+        await this._rebaseOntoCurrent(hubId, key);
+        return false;
+      }
       this._exitConfirm = null;
       this.store.discardDraft(hubId);
       await this._load({ keepDraft: false });
@@ -21297,7 +21638,10 @@ var SbPanelEntityEditor = class extends i4 {
     } catch (err) {
       return this._stillOn(key) ? this._failSync(false, String(err)) : false;
     } finally {
-      if (this._stillOn(key)) this._syncing = false;
+      if (this._stillOn(key)) {
+        this._syncing = false;
+        this._maybeFollowCache();
+      }
     }
   }
   /** The dock's Sync button: the header's sync, or the retry while a failed sync is on screen. */
@@ -21324,7 +21668,10 @@ var SbPanelEntityEditor = class extends i4 {
     } finally {
       if (this._stillOn(key)) this._refreshing = false;
     }
-    if (this._stillOn(key)) await this._load({ keepDraft: false });
+    if (this._stillOn(key)) {
+      await this._load({ keepDraft: false });
+      if (this._stillOn(key)) this._maybeFollowCache();
+    }
   }
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
   async _deleteEntity() {
@@ -21398,12 +21745,15 @@ var SbPanelEntityEditor = class extends i4 {
   _renderProgress(id, title, message) {
     return b2`<div class="tab-panel">${renderOperationProgress({ id, mode: "restore", title, message })}</div>`;
   }
-  /** The card's delete-error banner: a failed delete re-opens the editor with the reason on top. */
-  _renderDeleteErrorBanner() {
-    if (!this._deleteError) return A;
-    return b2`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon4(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => {
+  /** The lines over the editor: the card's delete-error banner (a failed delete
+   *  re-opens the editor with the reason on top) and the card's one line when
+   *  an edit of the user's was also changed elsewhere (no button). */
+  _renderEditorBanners() {
+    return b2`
+      ${this._deleteError ? b2`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon4(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => {
       this._deleteError = null;
-    }}>Dismiss</button></div>`;
+    }}>Dismiss</button></div>` : A}
+      ${this._changedElsewhere && !this._offline ? b2`<div class="notice-banner notice-banner--info" id="editor-changed-elsewhere">${icon4(mdiInformationOutline)}<span>${TOOLS_CARD_STRINGS.activities.changedElsewhere(this.entityKind)}</span></div>` : A}`;
   }
   _renderGuard(iconPath, title, body, actions, id) {
     return b2`
@@ -21459,7 +21809,8 @@ SbPanelEntityEditor.properties = {
   _refreshing: { state: true },
   _deleting: { state: true },
   _deleteError: { state: true },
-  _notice: { state: true }
+  _notice: { state: true },
+  _changedElsewhere: { state: true }
 };
 
 // server-panel/src/views/activity-editor.ts
@@ -22355,7 +22706,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             </div>`
     })}
           <div class="detail-scroll">
-            ${this._renderDeleteErrorBanner()}
+            ${this._renderEditorBanners()}
             ${this._renderPowerSection(activityId)}
             ${this._renderRolesSection(activityId)}
             ${this._renderShortcutsSection()}
@@ -23645,7 +23996,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                 </div>` : A}
           </div>
           <div class="detail-scroll">
-            ${this._renderDeleteErrorBanner()}
+            ${this._renderEditorBanners()}
             ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S5.managedWifiWarning}</span></div>` : A}
             ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S5.serverWifiDeviceNote : S5.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
@@ -27145,6 +27496,12 @@ var SbPanelWifiDevices = class extends i4 {
     this._loadedGate = null;
     this._loadSeq = 0;
     this._lastJobId = null;
+    /** The hub's cache version when the lists were read: a newer one reads them again (cache-follow.ts). */
+    this._loadedVersion = null;
+    /** Re-reads for a change made elsewhere, 300 ms after the last (the card's Wifi Commands tab), at most 1.5 s apart; drafts stay. */
+    this._follow = new Coalescer(() => {
+      if (this._loadedFor && !this._working) void this._load();
+    }, { debounceMs: 300, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._flashTimer = null;
     this._flashFor = null;
     this._reportedDirty = false;
@@ -27329,6 +27686,7 @@ var SbPanelWifiDevices = class extends i4 {
     super.disconnectedCallback();
     this._offStream?.();
     this._offStream = null;
+    this._follow.cancel();
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -27398,13 +27756,16 @@ var SbPanelWifiDevices = class extends i4 {
         this._create = this._delete = this._slotEdit = this._rename = null;
         this._powerPicker = null;
         this._confirmClear = null;
+        this._follow.cancel();
+        this._loadedVersion = null;
         if (hubId) void this._load();
       } else {
         const jobId = this.ctx?.hub?.last_job?.job_id ?? null;
         if (jobId && jobId !== this._lastJobId) {
           this._lastJobId = jobId;
-          if (!this._working) void this._load();
+          this._follow.poke();
         }
+        if (needsReload(this._loadedVersion, this.ctx?.hub?.cache)) this._follow.poke();
         if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
@@ -27437,6 +27798,7 @@ var SbPanelWifiDevices = class extends i4 {
     if (!hubId) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
       const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);

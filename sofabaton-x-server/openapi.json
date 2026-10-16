@@ -784,6 +784,30 @@
         "title": "Button",
         "type": "object"
       },
+      "CacheVersion": {
+        "description": "Which state of the hub's cache a client's rows come from.\n\n``epoch`` is when the server started this hub's proxy (ms since the\nepoch): a re-enable or a server restart starts a new one, and a newer\nepoch outranks any generation of an older one. ``generation`` is the\nlibrary's cache generation, which moves whenever the cache may have\nchanged (a hub read ending, a write, a clear, an import).\n``snapshot_id`` is the content id of the snapshot at that generation,\nthe value ``If-Match`` takes: rows holding another id are out of date\nwhen this version is newer than theirs (``GET /hubs/{id}/snapshot``\nreports its ``engine_generation``).",
+        "properties": {
+          "epoch": {
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "epoch",
+          "generation",
+          "snapshot_id"
+        ],
+        "title": "CacheVersion",
+        "type": "object"
+      },
       "CallbackDeviceRequest": {
         "description": "Complete desired spec for POST and PUT, not a partial update.\n\nEvery slot is written; omitted slots become ``Button n`` and omitted\npower/input hooks are cleared. For a rename, copy all fields from the\ncurrent record's spec and change only the intended labels. Preserving\ndevice/command IDs and generic bindings does not preserve omitted fields.\nHook slots are one-based (1..10); callback URL indexes are zero-based (0..9).",
         "properties": {
@@ -2281,6 +2305,16 @@
           "added_at": {
             "title": "Added At",
             "type": "string"
+          },
+          "cache": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CacheVersion"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "config": {
             "$ref": "#/components/schemas/HubConfig"
@@ -4730,6 +4764,35 @@
           "enabled"
         ],
         "title": "WsHubSummary",
+        "type": "object"
+      },
+      "WsHubUpdate": {
+        "description": "The hub's whole view, sent to clients that asked for\n``hub_updates``: right after ``hello``, then on every change of the\nhub, its jobs or its cache version, coalesced per hub (at most one\nevery 0.15 s while changes keep coming, never later than 0.5 s after\nthe first). ``seq`` is the server's counter across all hub updates;\none with a lower ``seq`` than the last seen for its hub is older.",
+        "properties": {
+          "hub": {
+            "$ref": "#/components/schemas/HubView"
+          },
+          "hub_id": {
+            "title": "Hub Id",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "hub_update",
+            "default": "hub_update",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hub_id",
+          "seq",
+          "hub"
+        ],
+        "title": "WsHubUpdate",
         "type": "object"
       },
       "WsJobEvent": {

@@ -7,7 +7,7 @@
 
 import type { HubView, JobView } from "./panel-api";
 import { TERMINAL_JOB_STATES, humanizeSlug, problemSummary, jobFailureReason } from "./panel-api";
-import type { Draft, DraftCheck, HubNotice, HubRuntime, PanelSnapshot } from "./panel-store";
+import type { Draft, HubNotice, HubRuntime, PanelSnapshot } from "./panel-store";
 
 // -- selection ----------------------------------------------------------------------
 
@@ -222,7 +222,6 @@ export type DockModel =
   | { kind: "running"; job: JobView; text: string; progress: JobProgressModel; cancellable: boolean; cancelling: boolean }
   | { kind: "notice"; notice: HubNotice }
   | { kind: "apply_stopped"; applyId: string; resumable: boolean; text: string }
-  | { kind: "draft_stale"; scope: string; text: string }
   | { kind: "dirty"; scope: string; text: string }
   | { kind: "unsaved_backup"; text: string }
   | { kind: "unsynced_view"; text: string }
@@ -230,9 +229,8 @@ export type DockModel =
   | { kind: "idle" };
 
 /** The hub's unsaved work when there is any (decision 8). */
-export function draftFor(runtime: HubRuntime | null): { draft: Draft; check: DraftCheck } | null {
-  if (!runtime?.draft) return null;
-  return { draft: runtime.draft, check: runtime.draftCheck };
+export function draftFor(runtime: HubRuntime | null): Draft | null {
+  return runtime?.draft ?? null;
 }
 
 export function hasDirtyDraft(runtime: HubRuntime | null): boolean {
@@ -258,9 +256,10 @@ export function dockModel(snapshot: PanelSnapshot, runtime: HubRuntime | null, v
   if (runtime?.notice) return { kind: "notice", notice: runtime.notice };
   const stopped = runtime?.stoppedApplies[0];
   if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `${stopped.status === "cancelled" ? "An apply was cancelled partway" : "An apply stopped partway"}; ${stopped.resumable ? "resume or discard it" : "discard it"}` };
+  // A draft from an older snapshot is no question for the dock: the editor
+  // carries it over to the hub's current state when it opens (bundle-rebase.ts).
   const draft = draftFor(runtime);
-  if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
-  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
+  if (draft) return { kind: "dirty", scope: draft.scope, text: draftBannerText(draft.scope) };
   // The Backup tab's edited file (the card's banner): kept in the browser's edit session, so nothing to discard here.
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" };
   // The Wifi Device's draft lives in its view (wifi commands plan, section 3); Sync to Hub is up in the view's header.

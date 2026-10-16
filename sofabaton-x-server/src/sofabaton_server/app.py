@@ -43,6 +43,7 @@ from .tls import CertificateReloader
 from .routes_updates import router as updates_router
 from .updates import UpdateChecker, UpdateStatus
 from .routes_ui import router as ui_router, ui_pages_router
+from .hub_updates import CacheVersions, HubUpdates
 from .ws import WS_MESSAGE_TYPES, EventRelay, WsPress, WsServerEvent, router as events_router
 
 # ``sofabaton`` is the library's import name (PyPI: sofabaton-x). Only
@@ -132,6 +133,7 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
         try:
             yield
         finally:
+            await hub_updates.stop()
             if tls_reloader is not None:
                 await tls_reloader.stop()
             await checker.stop()
@@ -181,6 +183,12 @@ def create_app(settings: Settings | None = None, *, manager: Optional[HubManager
     relay.instance_id = callback_service.ring.instance_id
     callback_service.on_press(lambda press: relay.publish(press.hub_id, WsPress(**press.to_dict())))
     app.state.event_relay = relay
+    # Each hub's cache version (in every hub view) and the hub_update
+    # frames for the clients that ask for them (the control panel).
+    cache_versions = CacheVersions(hub_manager)
+    hub_manager.cache_versions = cache_versions
+    hub_updates = HubUpdates(hub_manager, relay, cache_versions, jobs=job_runner)
+    app.state.hub_updates = hub_updates
     app.state.callbacks = callback_service
     app.state.update_checker = checker
     app.state.tls_reloader = tls_reloader

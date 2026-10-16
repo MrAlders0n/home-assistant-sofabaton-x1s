@@ -251,6 +251,8 @@ export class SbPanelBackup extends LitElement {
   private _hubId: string | null = null;
   private _jobsSeq = 0;
   private _jobsKey = "";
+  /** The hub's snapshot id the Make list last followed; null before the first look. */
+  private _devicesCacheKey: string | null = null;
   /** The hub's gate when the device list was last read; anything but "pass" asks for another read once it passes. */
   private _devicesGate: Gate | null = null;
   private _expiryTimer: number | null = null;
@@ -342,6 +344,13 @@ export class SbPanelBackup extends LitElement {
       }
       // A device list read while the hub could not answer (disabled: a 409) is read again once it passes its gates.
       if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
+      // A change made elsewhere without a job (a rename in the vendor app) moves the cache: the Make list follows.
+      const cacheKey = hub?.cache?.snapshot_id ?? "";
+      if (cacheKey !== this._devicesCacheKey) {
+        const first = this._devicesCacheKey === null;
+        this._devicesCacheKey = cacheKey;
+        if (!first && hubId && cacheKey && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
+      }
     }
     if (!this._editSessionTried && hubId && this.section === "edit" && !this._editBundle) {
       // Only on the Edit section itself: restoring elsewhere would pull an open detail view over another screen.
@@ -366,6 +375,7 @@ export class SbPanelBackup extends LitElement {
   private _onHubChanged(previous: string | null): void {
     this._jobs = [];
     this._jobsKey = "";
+    this._devicesCacheKey = null;
     this._shownBackupJobId = null;
     this._shownRestoreJobId = null;
     this._backupError = null;

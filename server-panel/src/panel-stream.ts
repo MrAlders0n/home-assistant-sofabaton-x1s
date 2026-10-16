@@ -37,6 +37,8 @@ export class PanelStream {
   readonly messages: StreamMessage[] = [];
   /** Hub ids the server should filter the stream to; applied on the next (re)connect. */
   hubFilter: string[] = [];
+  /** Ask for `hub_update` frames (the hub's whole view on every change); the panel's store does. */
+  hubUpdates = false;
   connected = false;
   /** True between start() and stop(): the stream should be up and reconnects. */
   wanted = false;
@@ -64,6 +66,7 @@ export class PanelStream {
     const u = new URL(`${this._apiRoot}/events`);
     u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
     for (const hub of this.hubFilter) u.searchParams.append("hub_id", hub);
+    if (this.hubUpdates) u.searchParams.set("hub_updates", "true");
     return u.toString();
   }
 
@@ -156,6 +159,8 @@ export function summarizeMessage(data: Record<string, unknown>): string {
       const suffix = progress ? ` ${progress.completed_steps ?? ""}/${progress.total_steps ?? ""}` : "";
       return `job_event ${m.hub_id} ${m.job?.kind} ${m.job?.status}${suffix}`;
     }
+    case "hub_update":
+      return `hub_update ${m.hub_id} seq=${m.seq}${m.hub?.active_job ? ` job=${m.hub.active_job.kind}` : ""}${m.hub?.cache ? ` gen=${m.hub.cache.generation}` : ""}`;
     case "hello":
       return `hello v${m.server_version} instance=${m.instance_id} hubs=${((m.hubs as { hub_id: string }[]) ?? []).map((h) => h.hub_id).join(",")}`;
     case "dropped":
