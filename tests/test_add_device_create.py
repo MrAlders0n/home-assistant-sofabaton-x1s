@@ -203,7 +203,7 @@ def test_empty_device_payload_shape() -> None:
 
 def _stub_tail(monkeypatch, proxy: X1Proxy) -> list[Any]:
     """The create's tail in call order: the display-order settle (which is
-    also the catalog read-back) and the remote sync."""
+    also the catalog read-back), the idle-behavior read and the remote sync."""
 
     events: list[Any] = []
 
@@ -215,8 +215,13 @@ def _stub_tail(monkeypatch, proxy: X1Proxy) -> list[Any]:
         events.append(("settle", kind, list(last_ids)))
         return "written"
 
+    def _idle(device_id, *, force_refresh=True, timeout=2.0):
+        events.append(("idle", device_id))
+        return (None, True)
+
     monkeypatch.setattr(proxy, "resync_remote", _resync)
     monkeypatch.setattr(proxy, "_settle_order", _settle)
+    monkeypatch.setattr(proxy, "fetch_idle_behavior", _idle)
     return events
 
 
@@ -241,8 +246,9 @@ def test_create_device_builds_empty_payload_and_syncs(monkeypatch) -> None:
     assert payload["device"]["device_class"] == "wifi_hue"
     assert payload["commands"] == []
     # The new device last in the display order (the X1S keeps it at sort 0
-    # otherwise, bench_332), before the remotes hear of it.
-    assert calls == [("settle", "devices", [0x2A]), "resync"]
+    # otherwise, bench_332), its idle behavior read into the cache (journey
+    # bench W-7), then the remotes hear of it.
+    assert calls == [("settle", "devices", [0x2A]), ("idle", 0x2A), "resync"]
 
 
 def test_create_device_payload_passes_restore_validation(monkeypatch) -> None:

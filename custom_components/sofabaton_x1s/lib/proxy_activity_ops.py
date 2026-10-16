@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from typing import Any, TYPE_CHECKING
 
 from .hub_versions import (
@@ -24,7 +24,7 @@ from .hub_versions import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
 )
-from .ack import AckOutcome
+from .ack import AckOutcome, SendStepResult
 from .hub_logging import LogTag
 from .macros import MacroRecord
 from .wire_schema import encode_label_slot
@@ -657,6 +657,13 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         # The new device last (the X1S keeps it at sort 0 otherwise; the
         # read-back this does is the catalog refresh), then the remote sync.
         self._settle_order("devices", [device_id])
+        # The empty payload has no idle behavior and the create never reads
+        # it, so the cache would lack it until the next device read. One
+        # request; it records "absent" when the hub has none.
+        try:
+            self.fetch_idle_behavior(device_id, timeout=2.0)
+        except Exception:  # noqa: BLE001 - the device exists either way
+            self._log.debug("[DEV_CREATE] idle behavior read failed", exc_info=True)
         if not self.resync_remote():
             self._log.warning("[DEV_CREATE] REMOTE_SYNC after create was not acked")
 
@@ -1034,6 +1041,23 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             result.insert(min(max(fav_id - 1, 0), len(result)), fav_id)
         return result
 
+    @staticmethod
+    def _without_x1_dead_records(order_ids: list[int], live_ids: set[int] | None) -> list[int]:
+        """*order_ids* without the ids no live record holds; unchanged when
+        there is no live read.
+
+        The X1 keeps the order slot of a record deleted without an order
+        rewrite (a macro's key delete, a cascade) and refuses a family-0x61
+        write that lists that id again, STATUS_ACK 0x06. Journey bench J2 on
+        the X1, 2026-10-16: an activity sync deleted a macro, then a
+        favorite; the favorite delete wrote the order it had read back,
+        still holding the macro's id, and the hub refused it, every time.
+        """
+
+        if live_ids is None:
+            return list(order_ids)
+        return [fav_id for fav_id in order_ids if fav_id in live_ids]
+
     def repair_x1_quick_access_order(self, activity_id: int) -> bool | None:
         """X1: rewrite the activity's order table when it leaves out a live
         favorite or macro shortcut (the repair syncs run for activities a
@@ -1054,14 +1078,15 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if order is None:
             return None
         order_ids = [fav_id for fav_id, _slot in sorted(order, key=lambda pair: pair[1])]
-        repaired = self._with_x1_unlisted_records(order_ids, live)
+        repaired = self._with_x1_unlisted_records(self._without_x1_dead_records(order_ids, live), live)
         if repaired == order_ids:
             return False
         self._log.info(
-            "[FAV_ORDER] act=0x%02X order %s leaves out live records %s; writing %s",
+            "[FAV_ORDER] act=0x%02X order %s leaves out live records %s, lists dead ids %s; writing %s",
             act_lo,
             order_ids,
             sorted(live - set(order_ids)),
+            sorted(set(order_ids) - live),
             repaired,
         )
         self.reset_ack_queues()
@@ -1087,9 +1112,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         return True
 
     def _x1_repaired_order(self, act_lo: int, order_ids: list[int], *, exclude: Collection[int] = ()) -> list[int]:
-        """*order_ids* completed with the X1's unlisted records (see
-        :meth:`_with_x1_unlisted_records`); unchanged on other hubs or when the
-        live read fails. *exclude* names ids this write is removing."""
+        """*order_ids* as the X1 accepts it: ids no live record holds left
+        out (:meth:`_without_x1_dead_records`), unlisted live records put
+        back (:meth:`_with_x1_unlisted_records`). Unchanged on other hubs or
+        when the live read fails. *exclude* names ids this write is removing."""
 
         if self.hub_version != HUB_VERSION_X1:
             return list(order_ids)
@@ -1101,15 +1127,61 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 act_lo,
             )
             return list(order_ids)
-        repaired = self._with_x1_unlisted_records(order_ids, live - set(exclude))
+        live_now = live - set(exclude)
+        repaired = self._with_x1_unlisted_records(
+            self._without_x1_dead_records(order_ids, live_now), live_now
+        )
         if repaired != list(order_ids):
             self._log.info(
-                "[FAV_ORDER] act=0x%02X order %s leaves out live records; writing %s",
+                "[FAV_ORDER] act=0x%02X order %s leaves out live records %s, lists dead ids %s; writing %s",
                 act_lo,
                 list(order_ids),
+                sorted(live_now - set(order_ids)),
+                sorted(set(order_ids) - live_now),
                 repaired,
             )
         return repaired
+
+    def _send_order_step(
+        self,
+        act_lo: int,
+        step_name: str,
+        order_ids: list[int],
+        rebuild: Callable[[], list[int]],
+    ) -> tuple[SendStepResult, list[int]]:
+        """Write the family-0x61 order; on the X1, once more when the hub
+        refuses it or does not answer.
+
+        Every caller writes the order right after a write that has already
+        landed (a key delete, a favorite map), so a refused order is a list
+        the hub no longer agrees with, not a failed edit. *rebuild* returns
+        the order again from a fresh live read. Returns the step result and
+        the order it was for.
+        """
+
+        step = self._send_step(
+            step_name=step_name,
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, order_ids),
+            ack_opcode=0x0103,
+        )
+        if step.ok or self.hub_version != HUB_VERSION_X1:
+            return step, order_ids
+        retry_ids = rebuild()
+        self._log.warning(
+            "[FAV_ORDER] act=0x%02X the hub %s the order %s; writing it once more as %s",
+            act_lo,
+            "refused" if step.rejected else "did not answer",
+            list(order_ids),
+            retry_ids,
+        )
+        step = self._send_step(
+            step_name=f"{step_name}-retry",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, retry_ids),
+            ack_opcode=0x0103,
+        )
+        return step, retry_ids
 
     def _validate_favorite_fav_id(
         self,
@@ -1196,16 +1268,18 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # X1: the table is rewritten whole, so it lists every live record,
-        # also one an earlier write left out (the repair for affected hubs).
-        ordered_fav_ids_checked = self._x1_repaired_order(act_lo, ordered_fav_ids_checked)
+        # also one an earlier write left out (the repair for affected hubs),
+        # and no id a deleted record left behind.
+        requested_ids = list(ordered_fav_ids_checked)
+        ordered_fav_ids_checked = self._x1_repaired_order(act_lo, requested_ids)
 
         self.reset_ack_queues()
 
-        _step = self._send_step(
-            step_name=f"fav-reorder-61[act=0x{act_lo:02X}]",
-            family=0x61,
-            payload=self._build_favorites_reorder_payload(act_lo, ordered_fav_ids_checked),
-            ack_opcode=0x0103,
+        _step, ordered_fav_ids_checked = self._send_order_step(
+            act_lo,
+            f"fav-reorder-61[act=0x{act_lo:02X}]",
+            ordered_fav_ids_checked,
+            lambda: self._x1_repaired_order(act_lo, requested_ids),
         )
         if not _step.ok:
             return None
@@ -1301,12 +1375,14 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        # Step 2: send the new (shorter) ordering
-        _step = self._send_step(
-            step_name=f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
-            family=0x61,
-            payload=self._build_favorites_reorder_payload(act_lo, remaining_fav_ids),
-            ack_opcode=0x0103,
+        # Step 2: send the new (shorter) ordering. The delete has landed by
+        # now, so a refused order is retried once from a fresh read.
+        read_remaining = [fid for fid, _slot in current_order if fid != validated_fav_id]
+        _step, remaining_fav_ids = self._send_order_step(
+            act_lo,
+            f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
+            remaining_fav_ids,
+            lambda: self._x1_repaired_order(act_lo, read_remaining, exclude={validated_fav_id}),
         )
         if not _step.ok:
             return None
@@ -1472,14 +1548,23 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         ordered_ids += [new_fav_id] if new_fav_id is not None else []
         if not ordered_ids:
             ordered_ids = [1]  # last-resort fallback
-        stage_payload = self._build_favorites_reorder_payload(act_lo, ordered_ids)
         stage_n = len(ordered_ids)
+        staged = list(ordered_ids)
 
-        _step = self._send_step(
-            step_name=f"favorite-stage-61[act=0x{act_lo:02X} n={stage_n}]",
-            family=0x61,
-            payload=stage_payload,
-            ack_opcode=0x0103,
+        def _restage() -> list[int]:
+            # The map has landed: the new favorite is live now, so it stays
+            # out of the repair (which would place it at its own id) and goes
+            # last, as above.
+            others = [fav_id for fav_id in staged if fav_id != new_fav_id]
+            exclude = {new_fav_id} if new_fav_id is not None else set()
+            restaged = self._x1_repaired_order(act_lo, others, exclude=exclude)
+            return restaged + ([new_fav_id] if new_fav_id is not None else []) or [1]
+
+        _step, ordered_ids = self._send_order_step(
+            act_lo,
+            f"favorite-stage-61[act=0x{act_lo:02X} n={stage_n}]",
+            ordered_ids,
+            _restage,
         )
         if not _step.ok:
             return None
