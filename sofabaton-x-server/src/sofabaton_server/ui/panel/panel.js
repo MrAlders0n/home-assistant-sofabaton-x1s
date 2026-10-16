@@ -12967,6 +12967,7 @@ var Coalescer = class {
 };
 var FOLLOW_DEBOUNCE_MS = 250;
 var FOLLOW_MAX_WAIT_MS = 1500;
+var FOLLOW_SETTLE_MS = 600;
 
 // server-panel/src/panel-store.ts
 var ACKS_KEY = "sofabaton-panel-acks";
@@ -21264,6 +21265,9 @@ var SbPanelEntityEditor = class extends i4 {
     /** The cache version the snapshot came from (cache-follow.ts). */
     this._loadedVersion = null;
     this._following = false;
+    /** A job on the hub held this editor back; it follows once that work has settled. */
+    this._heldForWork = false;
+    this._settleTimer = null;
     this._follow = new Coalescer(() => void this._followCache(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._loadedKey = null;
     this._loadSeq = 0;
@@ -21333,6 +21337,7 @@ var SbPanelEntityEditor = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._follow.cancel();
+    this._clearSettle();
   }
   updated(changed) {
     if (this._offline) return;
@@ -21369,6 +21374,8 @@ var SbPanelEntityEditor = class extends i4 {
     this._changedElsewhere = false;
     this._loadedVersion = null;
     this._follow.cancel();
+    this._heldForWork = false;
+    this._clearSettle();
     this._resetView();
   }
   /** True while the element still shows the entity a job started on: the
@@ -21460,9 +21467,35 @@ var SbPanelEntityEditor = class extends i4 {
    *  Nor while a job runs on the hub: the next hub update after its end (updated() re-checks on every one) brings the follow. */
   _maybeFollowCache() {
     if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
-    if (activeJob(this._hub)) return;
+    if (activeJob(this._hub)) {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => this._settled(), FOLLOW_SETTLE_MS);
+      return;
+    }
     if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
     this._follow.poke();
+  }
+  /** The held work has settled: follow once, straight onto the current version. */
+  _settled() {
+    this._settleTimer = null;
+    this._heldForWork = false;
+    if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) {
+      this._heldForWork = true;
+      return;
+    }
+    if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
+    this._follow.cancel();
+    void this._followCache();
+  }
+  _clearSettle() {
+    if (this._settleTimer !== null) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
   }
   async _followCache() {
     const hubId = this._hub?.hub_id;
@@ -21635,6 +21668,8 @@ var SbPanelEntityEditor = class extends i4 {
     this._deleteError = null;
     this._changedElsewhere = false;
     this._follow.cancel();
+    this._heldForWork = false;
+    this._clearSettle();
     try {
       if (!await this._beforeSync(hubId)) return false;
       let failed = null;

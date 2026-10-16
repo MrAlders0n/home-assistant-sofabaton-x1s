@@ -17,7 +17,9 @@
 // once. Deleted elsewhere: a clean editor closes, a dirty one shows the
 // missing screen. Never while a job runs on the hub: mid job the cache
 // passes through partial states (a command re-read clears the table before
-// it refills), so the editor follows once, when the job has ended.
+// it refills), so the editor follows once, when the job has ended and its
+// last rows have settled (FOLLOW_SETTLE_MS after the last version that
+// landed; the card's window).
 //
 // Busy states are the card's: while this editor's own sync or delete runs,
 // the screen is replaced by the full-panel progress view (never an overlay);
@@ -38,7 +40,7 @@ import type { BackupBundleDevicePayload, BackupBundlePayload } from "../../../cu
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 import { applyBundleDelete } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { rebaseBundle } from "../../../custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase";
-import { Coalescer, FOLLOW_DEBOUNCE_MS, FOLLOW_MAX_WAIT_MS, loadedVersion, needsReload, type LoadedVersion } from "../cache-follow";
+import { Coalescer, FOLLOW_DEBOUNCE_MS, FOLLOW_MAX_WAIT_MS, FOLLOW_SETTLE_MS, loadedVersion, needsReload, type LoadedVersion } from "../cache-follow";
 import { jobStepMessage, renderOperationProgress } from "../components/operation-progress";
 import { jobOutcomeText, problemText, type ApiResponse, type HubView, type JobView, type PanelApi, type RefreshScope, type SnapshotDocument } from "../panel-api";
 import type { HubContext } from "../panel-context";
@@ -138,6 +140,9 @@ export abstract class SbPanelEntityEditor extends LitElement {
   /** The cache version the snapshot came from (cache-follow.ts). */
   private _loadedVersion: LoadedVersion | null = null;
   private _following = false;
+  /** A job on the hub held this editor back; it follows once that work has settled. */
+  private _heldForWork = false;
+  private _settleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly _follow = new Coalescer(() => void this._followCache(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
   private _loadedKey: string | null = null;
   private _loadSeq = 0;
@@ -188,6 +193,7 @@ export abstract class SbPanelEntityEditor extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._follow.cancel();
+    this._clearSettle();
   }
 
   protected updated(changed: PropertyValues): void {
@@ -230,6 +236,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._changedElsewhere = false;
     this._loadedVersion = null;
     this._follow.cancel();
+    this._heldForWork = false;
+    this._clearSettle();
     this._resetView();
   }
 
@@ -336,9 +344,38 @@ export abstract class SbPanelEntityEditor extends LitElement {
    *  Nor while a job runs on the hub: the next hub update after its end (updated() re-checks on every one) brings the follow. */
   private _maybeFollowCache(): void {
     if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
-    if (activeJob(this._hub)) return;
+    if (activeJob(this._hub)) {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      // The work ended: wait for its last rows, restarted by every version that lands.
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => this._settled(), FOLLOW_SETTLE_MS);
+      return;
+    }
     if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
     this._follow.poke();
+  }
+
+  /** The held work has settled: follow once, straight onto the current version. */
+  private _settled(): void {
+    this._settleTimer = null;
+    this._heldForWork = false;
+    if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) {
+      this._heldForWork = true;
+      return;
+    }
+    if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
+    this._follow.cancel();
+    void this._followCache();
+  }
+
+  private _clearSettle(): void {
+    if (this._settleTimer !== null) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
   }
 
   private async _followCache(): Promise<void> {
@@ -569,6 +606,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
     this._deleteError = null;
     this._changedElsewhere = false;
     this._follow.cancel();
+    this._heldForWork = false;
+    this._clearSettle();
     try {
       if (!(await this._beforeSync(hubId))) return false;
       let failed: { stale: boolean; message: string } | null = null;

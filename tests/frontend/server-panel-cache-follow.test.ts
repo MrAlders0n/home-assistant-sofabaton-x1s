@@ -360,16 +360,71 @@ test("an open editor waits while a job runs on the hub and follows once it has e
   await editor._followCache();
   assert.equal(api.snapshots, reads, "nothing is read while the job runs");
   assert.equal(tvBrand(editor, "_baseline"), "Sony");
-  // The job ended: one follow, onto what the job left.
+  // The job ended: the settle window starts (its own test below); then one follow, onto what the job left.
   api.doc = doc("s3", 3, { brand: "LG" });
   setCache(v(3));
   editor._maybeFollowCache();
-  assert.equal(editor._follow.pending, true);
-  editor._follow.cancel();
+  assert.notEqual(editor._settleTimer, null);
+  assert.equal(editor._follow.pending, false);
+  editor._clearSettle();
+  editor._heldForWork = false;
   await editor._followCache();
   assert.equal(api.snapshots, reads + 1);
   assert.equal(tvBrand(editor, "_baseline"), "LG");
   assert.equal(tvName(editor, "_working"), "Mine");
+});
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+test("after held work the editor follows once, even when the job's last version lands 0.2 s after idle", async () => {
+  // The card's live finding (editor_hold probe): at the end of held work the
+  // version loaded mid job arrives first and the job's last rows a moment
+  // later; following at once followed twice. The settle window waits for both.
+  const { editor, api, setCache } = await openEditor(doc("s1", 1));
+  editor._commit(renamed(editor._working, "name", "Mine"));
+  const reads = api.snapshots;
+  setCache(v(2), job("jz", "running"));
+  editor._maybeFollowCache();
+  assert.equal(editor._heldForWork, true);
+  // Idle, still carrying the version loaded mid job.
+  api.doc = doc("s2", 2, { brand: "Mid" });
+  setCache(v(2));
+  editor._maybeFollowCache();
+  assert.equal(editor._follow.pending, false);
+  await sleep(200);
+  // The job's last rows land 0.2 s after idle: the window restarts.
+  api.doc = doc("s3", 3, { brand: "LG" });
+  setCache(v(3));
+  editor._maybeFollowCache();
+  await sleep(450);
+  assert.equal(api.snapshots, reads, "nothing is read inside the window");
+  await sleep(300);
+  assert.equal(api.snapshots, reads + 1, "exactly one read after it");
+  assert.equal(tvBrand(editor, "_baseline"), "LG", "straight onto the job's last rows");
+  assert.equal(tvName(editor, "_working"), "Mine");
+  assert.equal(editor._heldForWork, false);
+  assert.equal(editor._settleTimer, null);
+});
+
+test("an editor that was not held follows a change at once", async () => {
+  const { editor, setCache } = await openEditor(doc("s1", 1));
+  setCache(v(2));
+  editor._maybeFollowCache();
+  assert.equal(editor._settleTimer, null);
+  assert.equal(editor._follow.pending, true);
+  editor._follow.cancel();
+});
+
+test("closing the editor drops a pending settle", async () => {
+  const { editor, setCache } = await openEditor(doc("s1", 1));
+  setCache(v(2), job("jz", "running"));
+  editor._maybeFollowCache();
+  setCache(v(2));
+  editor._maybeFollowCache();
+  assert.notEqual(editor._settleTimer, null);
+  editor._reset();
+  assert.equal(editor._settleTimer, null);
+  assert.equal(editor._heldForWork, false);
 });
 
 test("a job that starts while the editor reads leaves the read unused", async () => {

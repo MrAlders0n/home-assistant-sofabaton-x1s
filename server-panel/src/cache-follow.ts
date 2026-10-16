@@ -180,3 +180,9 @@ export class Coalescer {
 /** The views' cadence: a quarter second after the last change, at most 1.5 s while changes keep coming. */
 export const FOLLOW_DEBOUNCE_MS = 250;
 export const FOLLOW_MAX_WAIT_MS = 1500;
+
+/** After held hub work ends, the job's last rows land a moment later (the
+ *  end-of-job hub update): an editor held during the work waits this long,
+ *  restarted by every version that lands, then follows once (the card's
+ *  FOLLOW_SETTLE_MS). */
+export const FOLLOW_SETTLE_MS = 600;
