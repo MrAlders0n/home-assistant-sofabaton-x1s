@@ -61,8 +61,10 @@ def journey(ctx: Ctx) -> Iterator[Spec]:
         "remote.*/attrs/macro_keys", "remote.*/attrs/favorite_keys")
     yield wifi.delete(ctx, "J Gate B", activities=["J Gate"], gone_bindings=[("J Gate", RED)])
     yield wifi.delete(ctx, "J Gate A", activities=["J Gate"], also_allow=gc, also_forget=[f"activities/{act}"])
-    yield sb.delete_device(ctx, "J Gate IR 1")
-    yield sb.delete_device(ctx, "J Gate IR 2")
+    # The hub may instead leave "J Gate" empty and sweep it at the next
+    # device delete (X2, 2026-10-16 17:18): allowed there too.
+    yield sb.delete_device(ctx, "J Gate IR 1", also_allow=gc, also_forget=[f"activities/{act}"])
+    yield sb.delete_device(ctx, "J Gate IR 2", also_allow=gc, also_forget=[f"activities/{act}"])
     yield sb.delete_activity(ctx, "J Gate")
     yield observe()
     yield same_as_start()

@@ -55,7 +55,11 @@ def create_activity(name: str) -> Spec:
     return Spec("create_activity", {"name": name}, do, late=late)
 
 
-def delete_device(ctx: Ctx, name: str) -> Spec:
+def delete_device(ctx: Ctx, name: str, *, also_allow: list[str] | None = None,
+                  also_forget: list[str] | None = None) -> Spec:
+    """*also_allow* / *also_forget*: what the hub may sweep with it (an
+    activity left without members goes at the next device delete)."""
+
     dev = ctx.known[f"dev:{name}"]
 
     def do(ctx: Ctx) -> dict[str, Any]:
@@ -64,8 +68,10 @@ def delete_device(ctx: Ctx, name: str) -> Spec:
 
     return Spec("delete_device", {"name": name, "id": dev}, do,
                 allowance=on_hub(f"devices/{dev}", "order/devices") + DEVICE_NAME_IN_ENTITIES
-                + on_entities("sensor.*_index/attrs/devices", f"remote.*/attrs/assigned_keys/{dev}"),
-                expect=[(f"devices/{dev}", ABSENT, f"delete device {name}")], forget=[f"devices/{dev}"])
+                + on_entities("sensor.*_index/attrs/devices", f"remote.*/attrs/assigned_keys/{dev}")
+                + list(also_allow or []),
+                expect=[(f"devices/{dev}", ABSENT, f"delete device {name}")],
+                forget=[f"devices/{dev}", *(also_forget or [])])
 
 
 def delete_activity(ctx: Ctx, name: str) -> Spec:
