@@ -5,6 +5,7 @@ import type {
   BackupProgressEvent,
   CacheContentsResponse,
   ControlPanelStateResponse,
+  HubStatePush,
   BlobFetchResponse,
   BlobPlayResponse,
   HassLike,
@@ -38,10 +39,24 @@ export class ControlPanelApi {
     });
   }
 
-  loadCacheContents() {
+  /** One hub's cache rows when `entryId` is given, every hub's otherwise. */
+  loadCacheContents(entryId?: string) {
     return this.hass.callWS<CacheContentsResponse>({
       type: "sofabaton_x1s/persistent_cache/contents",
+      ...(entryId ? { entry_id: entryId } : {}),
     });
+  }
+
+  /** The hub's control-panel state, pushed whenever it changes (the first
+   *  event comes at once): runtime state, cache generation, config revision. */
+  subscribeHubState(entryId: string, onMessage: (payload: HubStatePush) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.hubStateNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage as (payload: unknown) => void,
+      { type: "sofabaton_x1s/hub_state/subscribe", entry_id: entryId },
+    );
   }
 
   setSetting(entryId: string, setting: SettingKey, enabled: boolean) {

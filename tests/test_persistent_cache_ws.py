@@ -313,6 +313,9 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
             "sidebar_panel": "off",
             "sidebar_panel_title": "Sofabaton X",
             "tools_frontend_version": "2026.5.1",
+            # The command-config store's revision: open lists reload when
+            # it moves.
+            "config_revision": 0,
             "hubs": [
                 {
                     "entry_id": "entry-1",
@@ -358,6 +361,10 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "last_wifi_deploys": {},
                         "last_wifi_deploy_errors": {},
                     },
+                    # Where the hub's cache stands: an open card reloads the
+                    # hub's rows when this moves past what it holds.
+                    "cache_generation": 7,
+                    "cache_epoch": 0,
                 }
             ],
         },

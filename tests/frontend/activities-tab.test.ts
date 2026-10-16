@@ -669,7 +669,7 @@ test("a failing Wifi Events list lands in sync_failed instead of hanging on Sync
   assert.equal(element._stage, "sync_failed");
   assert.ok(element._syncError);
   assert.equal(element._syncProgress, null);
-  assert.deepEqual(types(calls), ["wifi_event/list"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "cache/structural_bundle"]);
 });
 
 test("an activity without Wifi Event references skips phase 1", async () => {
@@ -683,7 +683,7 @@ test("an activity without Wifi Event references skips phase 1", async () => {
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["activity/sync"]);
+  assert.deepEqual(types(calls), ["activity/sync", "cache/structural_bundle"]);
   assert.equal(element._stage, "sync_failed");
 });
 
@@ -697,7 +697,7 @@ test("an out-of-step events record is deployed before the activity sync", async 
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync", "cache/structural_bundle"]);
 });
 
 test("a first-ever event deploy rewrites the placeholder to the hub's device id", async () => {
@@ -718,7 +718,7 @@ test("a first-ever event deploy rewrites the placeholder to the hub's device id"
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync", "cache/structural_bundle"]);
   const activity = (edited as any).activities[0];
   assert.equal(activity.favorite_slots[0].device_id, 42);
   assert.deepEqual((edited as any).devices.map((entry: any) => entry.device.device_id), [42]);
@@ -748,7 +748,7 @@ test("a replace deploy of the events device follows the new id in both bundles",
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync", "cache/structural_bundle"]);
   for (const bundle of [sent!.baseline, sent!.edited]) {
     assert.deepEqual(bundle.devices.map((entry: any) => entry.device.device_id), [12]);
     assert.ok(bundle.activities[0].favorite_slots.every((slot: any) => slot.device_id === 12));
@@ -795,7 +795,7 @@ test("phase 1 that retires the long records rebases both bundles before the acti
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync", "cache/structural_bundle"]);
   for (const bundle of [sent!.baseline, sent!.edited]) {
     assert.equal(bundle.activities[0].button_bindings[0].long_press_command_id, 2);
     assert.equal(bundle.devices[0].commands.length, 25);
@@ -862,7 +862,7 @@ test("Wifi Events device edits sync after the events deploy, on rebased bundles"
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/sync", "device/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/sync", "device/sync", "cache/structural_bundle"]);
   assert.equal(sent!.baseline.devices[0].commands.length, 25);
   assert.equal(sent!.edited.devices[0].commands.length, 25);
   assert.equal(sent!.edited.devices[0].commands[0].name, "Movie Night");
@@ -949,6 +949,8 @@ test("edits made before the switch sync against the replacement device", async (
 
   assert.deepEqual(types(calls).filter((type) => type !== "command_sync/progress").slice(2), [
     "command_config/set_transport", "wifi_event/sync", "cache/structural_bundle", "device/sync",
+    // The failed sync rebases onto what landed.
+    "cache/structural_bundle",
   ]);
   assert.equal(sent!.baseline.devices[0].device.device_id, 12);
   assert.equal(sent!.edited.devices[0].device.device_id, 12);

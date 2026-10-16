@@ -6,7 +6,8 @@ type BackendOperation =
   | "backup_restore"
   | "cache_refresh"
   | "entity_sync"
-  | "wifi_deploy";
+  | "wifi_deploy"
+  | "hub_write";
 
 export type BackendErrorSurface =
   | "device_create" | "activity_create" | "catalog_write" | "ir_learn" | "ir_emissions" | "ir_convert"
@@ -299,6 +300,7 @@ function normalizeOperation(value: unknown): BackendOperation | null {
     return "entity_sync";
   }
   if (operation === "wifi_deploy" || operation === "command_sync") return "wifi_deploy";
+  if (operation === "hub_write") return "hub_write";
   return null;
 }
 
@@ -310,6 +312,7 @@ export function localizeBackendOperationLabel(operationValue: unknown): string {
     case "cache_refresh": return S.operationCacheRefresh;
     case "entity_sync": return S.operationEntitySync;
     case "wifi_deploy": return S.operationWifiDeploy;
+    case "hub_write": return S.operationHubWrite;
     default: return TOOLS_CARD_STRINGS.availability.operationRunning;
   }
 }

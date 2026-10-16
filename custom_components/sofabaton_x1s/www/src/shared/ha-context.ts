@@ -92,6 +92,17 @@ export interface ControlPanelHubState {
   >;
   active_backup_operation?: BackupProgressEvent | null;
   runtime_state?: ControlPanelRuntimeState | null;
+  /** The generation the hub's cache rows are at (moves on every change). */
+  cache_generation?: number;
+  /** When the generation count started (ms); see cacheVersionOf. */
+  cache_epoch?: number;
+}
+
+/** One event of `hub_state/subscribe`. */
+export interface HubStatePush {
+  hub: ControlPanelHubState;
+  generation: number;
+  config_revision: number;
 }
 
 export interface ControlPanelStateResponse {
@@ -101,12 +112,16 @@ export interface ControlPanelStateResponse {
   /** The panel's name in the HA sidebar (the product name until renamed). */
   sidebar_panel_title?: string;
   tools_frontend_version: string;
+  /** The command-config store's revision (Wifi Commands, Wifi Events, hub
+   *  event actions); moves on every save. */
+  config_revision?: number;
   hubs: ControlPanelHubState[];
 }
 
 export interface ControlPanelRuntimeState {
   kind: "idle" | "app_connected" | "operation_running";
-  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | null;
+  /** "hub_write": an immediate write or a refresh holds the hub. */
+  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | "hub_write" | null;
   label?: string | null;
   /** Backend-authored English prose. Kept as a last-resort fallback only —
    *  the fields below are what gets localized. */
@@ -137,6 +152,9 @@ export interface ControlPanelRuntimeState {
 export interface CacheHubState {
   entry_id: string;
   name?: string;
+  /** The generation these rows were read at. */
+  cache_generation?: number;
+  cache_epoch?: number;
   activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
@@ -650,7 +668,6 @@ export interface ControlPanelSnapshot {
   selectedBackupSection: BackupSectionId;
   selectedWifiSection: WifiSectionId;
   openEntity: string | null;
-  staleData: boolean;
   // Long-running/busy UI state is keyed by hub entry_id so an operation on
   // one hub never surfaces in the dock (or locks the UI) while another hub
   // is selected. Key presence = busy; the value is the display label

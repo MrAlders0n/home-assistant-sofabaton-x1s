@@ -15401,6 +15401,7 @@ var TOOLS_CARD_STRINGS_EN = {
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
     hubNameInvalid: "The hub cannot store this name.",
     hubRenameFailed: "The hub did not accept the new name.",
@@ -15486,7 +15487,6 @@ var TOOLS_CARD_STRINGS_EN = {
     buttons: "Buttons",
     noCachedData: "No cached data yet.",
     noCachedCommands: "No cached commands.",
-    staleBanner: "Cache was updated externally. Refresh to see latest data.",
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
@@ -15577,6 +15577,7 @@ var TOOLS_CARD_STRINGS_EN = {
     operationCacheRefresh: "Refreshing hub cache",
     operationEntitySync: "Syncing with hub",
     operationWifiDeploy: "Syncing Wifi Commands",
+    operationHubWrite: "Working on the hub",
     working: "Working\u2026",
     step: (current, total) => `Step ${current} of ${total}`,
     backupPreparing: "Preparing backup\u2026",
@@ -15693,6 +15694,9 @@ var TOOLS_CARD_STRINGS_EN = {
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
+    // The cache moved under an open editor and an edit of the user's was
+    // also changed elsewhere: the user's version was kept.
+    changedElsewhere: (kind) => `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
     exitUnsyncedTitle: "Unsynced changes",
     exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",

@@ -397,7 +397,8 @@ test.describe("tools-card browser harness", () => {
         selectedTab: card?._snapshot?.selectedTab ?? null,
         selectedCacheSection: card?._snapshot?.selectedCacheSection ?? null,
         openEntity: card?._snapshot?.openEntity ?? null,
-        staleData: card?._snapshot?.staleData ?? false,
+        contentsGeneration: card?._snapshot?.contents?.hubs?.[0]?.cache_generation ?? null,
+        firstActivity: card?._snapshot?.contents?.hubs?.[0]?.activities?.[0]?.name ?? null,
         addDeviceOpen: Boolean(card?._addDeviceOpen),
         refreshSpinner: Boolean(root?.querySelector(".icon-btn.spinning")),
         editor: editor ? { kind: editor.kind, stage: editor._stage } : null,
@@ -430,7 +431,10 @@ test.describe("tools-card browser harness", () => {
       selectedCacheSection: "devices",
       addDeviceOpen: true,
     });
-    expect(await inspect("10")).toMatchObject({ staleData: true });
+    expect(await inspect("10")).toMatchObject({
+      contentsGeneration: 2,
+      firstActivity: "Watch TV (renamed elsewhere)",
+    });
     expect(await inspect("11")).toMatchObject({
       selectedCacheSection: "devices",
       refreshSpinner: true,

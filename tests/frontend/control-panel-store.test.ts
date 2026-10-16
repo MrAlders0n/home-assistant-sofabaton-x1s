@@ -791,34 +791,131 @@ test("copyHubClickCommand creates a persistent notification with the command YAM
   );
 });
 
-test("setHass marks cache as stale when generation changes outside refresh grace", async () => {
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** A store on one hub whose cache is at (epoch 100, generation 1), with the
+ *  hub-state push captured and every contents request recorded. */
+async function pushedStore(options: { contentsGeneration?: () => { epoch: number; generation: number } } = {}) {
   const { store } = createStore();
+  let push: ((payload: unknown) => void) | undefined;
+  const contentsCalls: Record<string, unknown>[] = [];
+  let version = { epoch: 100, generation: 1 };
+  const hubRow = (runtime: unknown = { kind: "idle" }) => ({
+    ...baseState.hubs[0],
+    cache_epoch: version.epoch,
+    cache_generation: version.generation,
+    runtime_state: runtime,
+  });
   store.connected();
   store.setHass(
     createHass({
-      states: {
-        "remote.living_room": {
-          state: "on",
-          attributes: { entry_id: "hub-1", cache_generation: 1, proxy_client_connected: false },
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({ ...baseState, hubs: [hubRow()] }),
+        "sofabaton_x1s/persistent_cache/contents": (message) => {
+          contentsCalls.push(message);
+          const at = options.contentsGeneration?.() ?? version;
+          return {
+            enabled: true,
+            hubs: [{
+              ...baseContents.hubs[0],
+              cache_epoch: at.epoch,
+              cache_generation: at.generation,
+              activities: [{ id: 101, name: `Watch TV ${at.generation}` }],
+            }],
+          };
         },
+      },
+      subscribe: async (callback, message) => {
+        if (String(message.type) === "sofabaton_x1s/hub_state/subscribe") push = callback;
+        return () => undefined;
       },
     }),
   );
   await store.loadState();
+  await flush();
+  const send = (next: { epoch: number; generation: number }, runtime: unknown = { kind: "idle" }) => {
+    version = next;
+    push?.({ hub: hubRow(runtime), generation: next.generation, config_revision: 3 });
+  };
+  return { store, contentsCalls, send, pushed: () => !!push };
+}
 
-  (store as unknown as { _refreshGraceUntil: number })._refreshGraceUntil = 0;
-  store.setHass(
-    createHass({
-      states: {
-        "remote.living_room": {
-          state: "on",
-          attributes: { entry_id: "hub-1", cache_generation: 2, proxy_client_connected: false },
-        },
-      },
-    }),
-  );
+test("the hub-state push applies the hub's runtime state at once", async () => {
+  const { store, send, pushed } = await pushedStore();
+  assert.equal(pushed(), true);
+  send({ epoch: 100, generation: 1 }, { kind: "operation_running", operation: "entity_sync" });
+  assert.equal(store.snapshot.state?.hubs[0].runtime_state?.kind, "operation_running");
+  assert.equal(store.snapshot.state?.config_revision, 3);
+});
 
-  assert.equal(store.snapshot.staleData, true);
+test("a pushed newer generation reloads only that hub's contents", async () => {
+  const { store, contentsCalls, send } = await pushedStore();
+  const before = contentsCalls.length;
+  send({ epoch: 100, generation: 2 });
+  assert.equal(contentsCalls.length, before, "debounced, not immediate");
+  await sleep(400);
+  assert.equal(contentsCalls.length, before + 1);
+  assert.equal(contentsCalls.at(-1)?.entry_id, "hub-1");
+  assert.equal(store.snapshot.contents?.hubs[0].cache_generation, 2);
+  assert.equal(store.snapshot.contents?.hubs[0].activities?.[0].name, "Watch TV 2");
+});
+
+test("an unchanged generation reloads nothing", async () => {
+  const { contentsCalls, send } = await pushedStore();
+  const before = contentsCalls.length;
+  send({ epoch: 100, generation: 1 });
+  await sleep(400);
+  assert.equal(contentsCalls.length, before);
+});
+
+test("a new epoch reloads even though its generation is lower", async () => {
+  const { store, contentsCalls, send } = await pushedStore();
+  send({ epoch: 100, generation: 9 });
+  await sleep(400);
+  const before = contentsCalls.length;
+  // HA restarted: the count starts over in a newer epoch.
+  send({ epoch: 200, generation: 0 });
+  await sleep(400);
+  assert.equal(contentsCalls.length, before + 1);
+  assert.equal(store.snapshot.contents?.hubs[0].cache_epoch, 200);
+  assert.equal(store.snapshot.contents?.hubs[0].cache_generation, 0);
+});
+
+test("a stream of changes still reloads within the max wait", async () => {
+  const { contentsCalls, send } = await pushedStore();
+  const before = contentsCalls.length;
+  for (let generation = 2; generation <= 12; generation++) {
+    send({ epoch: 100, generation });
+    await sleep(160);
+  }
+  // 11 pushes over ~1.8 s, each inside the 250 ms debounce: the max wait
+  // (1.5 s) still forced a reload during the stream.
+  assert.ok(contentsCalls.length > before, "reloaded during the stream");
+});
+
+test("an operation's end reloads the hub's contents once more", async () => {
+  const { contentsCalls, send } = await pushedStore();
+  send({ epoch: 100, generation: 1 }, { kind: "operation_running", operation: "entity_sync" });
+  await sleep(400);
+  const before = contentsCalls.length;
+  send({ epoch: 100, generation: 1 }, { kind: "idle" });
+  await sleep(400);
+  assert.equal(contentsCalls.length, before + 1);
+});
+
+test("an older full load never rolls a hub's rows back", async () => {
+  let served = { epoch: 100, generation: 1 };
+  const { store, send } = await pushedStore({ contentsGeneration: () => served });
+  served = { epoch: 100, generation: 5 };
+  send({ epoch: 100, generation: 5 });
+  await sleep(400);
+  assert.equal(store.snapshot.contents?.hubs[0].cache_generation, 5);
+  // A full load answered from before that change.
+  served = { epoch: 100, generation: 4 };
+  await store.loadCacheContents();
+  assert.equal(store.snapshot.contents?.hubs[0].cache_generation, 5);
 });
 
 test("logs tab subscribes, loads history, and appends live lines", async () => {

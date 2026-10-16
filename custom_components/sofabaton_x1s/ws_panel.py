@@ -13,13 +13,21 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
     MIN_RECOMMENDED_FIRMWARE,
     MIN_SUPPORTED_FIRMWARE,
+    SIGNAL_PANEL_STORE,
     firmware_is_outdated,
     firmware_is_unsupported,
+    signal_client,
+    signal_command_sync,
+    signal_hub,
+    signal_panel_state,
+    signal_settings,
+    signal_wifi_device,
 )
 from .diagnostics import (
     async_get_hub_log_lines,
@@ -134,6 +142,30 @@ async def _async_build_control_panel_runtime_payload(
             "device_name": str(device.get("device_name") or "").strip() or None,
         }
 
+    outcomes = {
+        # How the operations that just ended went: the control panel sees a
+        # running operation disappear from the poll and must not announce
+        # success for one that failed.
+        "last_operation": _control_panel_last_operation(registry, hub.entry_id),
+        "last_wifi_deploys": last_wifi_deploys,
+        # Why each failed deploy stopped (a code the panel localizes).
+        "last_wifi_deploy_errors": last_wifi_deploy_errors,
+    }
+    if bool(getattr(hub, "hub_write_active", False)):
+        # An immediate write (delete, reorder, create, rename, a refresh)
+        # or a registry operation's tail: every open panel locks for it,
+        # not only the one that started it.
+        return {
+            "kind": "operation_running",
+            "operation": "hub_write",
+            "label": "Working on the hub",
+            "detail": None,
+            "current_step": None,
+            "total_steps": None,
+            "device_key": None,
+            "device_name": None,
+            **outcomes,
+        }
     return {
         "kind": "idle",
         "operation": None,
@@ -143,13 +175,7 @@ async def _async_build_control_panel_runtime_payload(
         "total_steps": None,
         "device_key": None,
         "device_name": None,
-        # How the operations that just ended went: the control panel sees a
-        # running operation disappear from the poll and must not announce
-        # success for one that failed.
-        "last_operation": _control_panel_last_operation(registry, hub.entry_id),
-        "last_wifi_deploys": last_wifi_deploys,
-        # Why each failed deploy stopped (a code the panel localizes).
-        "last_wifi_deploy_errors": last_wifi_deploy_errors,
+        **outcomes,
     }
 
 
@@ -218,6 +244,10 @@ async def _async_build_control_panel_hub_payload(
         },
         "active_backup_operation": active_backup_operation,
         "runtime_state": runtime_state,
+        # What the hub's cache rows are at: an open card reloads a hub's
+        # contents when this moves past the generation it last loaded.
+        "cache_generation": int(getattr(hub, "cache_generation", 0) or 0),
+        "cache_epoch": int(getattr(hub, "cache_epoch", 0) or 0),
     }
 
 
@@ -249,6 +279,9 @@ async def _ws_get_control_panel_state(
         "sidebar_panel": ui_settings.sidebar_panel_mode,
         "sidebar_panel_title": ui_settings.sidebar_panel_title,
         "tools_frontend_version": tools_frontend_version,
+        # The command-config store's revision (Wifi Commands, Wifi Events,
+        # hub event actions): open lists reload when it moves.
+        "config_revision": (await runtime._async_get_command_config_store(hass)).revision,
         "hubs": hubs,
     }
     connection.send_result(msg["id"], payload)
@@ -532,6 +565,9 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/persistent_cache/contents",
+        # One hub only: what an open card reloads when that hub's
+        # generation moved (all hubs when absent).
+        vol.Optional("entry_id"): str,
     }
 )
 @websocket_api.async_response
@@ -541,11 +577,115 @@ async def _ws_get_persistent_cache_contents(hass: HomeAssistant, connection, msg
         connection.send_result(msg["id"], {"enabled": False, "hubs": []})
         return
 
+    wanted = msg.get("entry_id")
     hub_payloads = []
     for hub in runtime._get_hubs(hass.data.get(DOMAIN, {})):
+        if wanted and hub.entry_id != wanted:
+            continue
         hub_payloads.append(await hub.async_get_cache_contents())
 
     connection.send_result(msg["id"], {"enabled": True, "hubs": hub_payloads})
+
+
+#: A burst of changes (a refresh bumps the generation many times a second)
+#: is coalesced: the state goes out once things have been quiet this long,
+#: and at least this often while they keep changing.
+_HUB_STATE_DEBOUNCE_S = 0.15
+_HUB_STATE_MAX_WAIT_S = 0.5
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_state/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_subscribe_hub_state(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Push one hub's control-panel state whenever it changes.
+
+    Each event is ``{hub, generation, config_revision}``: ``hub`` is the
+    same payload ``control_panel/state`` lists (runtime state, connection,
+    operation in progress), ``generation`` the hub's cache generation and
+    ``config_revision`` the command-config store's revision. The first
+    event goes out at once. Triggers: the cache generation moving, an
+    operation starting / progressing / ending, a Wifi deploy's progress,
+    the connection or settings changing, any command-config save.
+    """
+
+    entry_id = str(msg["entry_id"])
+    if runtime._get_hub_by_entry_id(hass, entry_id) is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    cache_store = await runtime._async_get_persistent_cache_store(hass)
+    config_store = await runtime._async_get_command_config_store(hass)
+    loop = asyncio.get_running_loop()
+    timer: asyncio.TimerHandle | None = None
+    first_change: float | None = None
+    closed = False
+    # One send at a time, in order: a slow payload build must never land
+    # after a newer one.
+    send_lock = asyncio.Lock()
+
+    async def _send() -> None:
+        async with send_lock:
+            hub = runtime._get_hub_by_entry_id(hass, entry_id)
+            if hub is None or closed:
+                return
+            payload = await _async_build_control_panel_hub_payload(
+                hass, hub, persistent_cache_enabled=cache_store.enabled
+            )
+            if closed:
+                return
+            connection.send_message(websocket_api.event_message(msg["id"], {
+                "hub": payload,
+                "generation": hub.cache_generation,
+                "config_revision": config_store.revision,
+            }))
+
+    @callback
+    def _fire() -> None:
+        nonlocal timer, first_change
+        timer = None
+        first_change = None
+        hass.async_create_task(_send())
+
+    @callback
+    def _changed(*_args: Any) -> None:
+        nonlocal timer, first_change
+        now = loop.time()
+        if first_change is None:
+            first_change = now
+        if timer is not None:
+            timer.cancel()
+        waited = now - first_change
+        delay = 0.0 if waited >= _HUB_STATE_MAX_WAIT_S else min(
+            _HUB_STATE_DEBOUNCE_S, _HUB_STATE_MAX_WAIT_S - waited
+        )
+        timer = loop.call_later(delay, _fire)
+
+    unsubs = [
+        async_dispatcher_connect(hass, signal(entry_id), _changed)
+        for signal in (
+            signal_panel_state, signal_hub, signal_client, signal_settings,
+            signal_command_sync, signal_wifi_device,
+        )
+    ]
+    unsubs.append(async_dispatcher_connect(hass, SIGNAL_PANEL_STORE, _changed))
+
+    @callback
+    def _unsubscribe() -> None:
+        nonlocal closed, timer
+        closed = True
+        if timer is not None:
+            timer.cancel()
+            timer = None
+        for unsub in unsubs:
+            unsub()
+
+    connection.subscriptions[msg["id"]] = _unsubscribe
+    connection.send_result(msg["id"])
+    await _send()
 
 
 @websocket_api.websocket_command(

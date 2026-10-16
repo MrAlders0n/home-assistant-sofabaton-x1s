@@ -17,10 +17,15 @@ class HubCacheViewMixin:
     """Read-only projections of the engine's cached hub state (R6, CR-H1-13)."""
 
     async def async_get_cache_contents(self) -> dict[str, Any]:
+        # Read before the export: a change landing during it then shows as a
+        # newer generation, so an open card reloads once more instead of
+        # taking older rows for current ones.
+        generation = self.cache_generation
         data = await self.async_export_cache_state()
         data["entry_id"] = self.entry_id
         data["name"] = self.name
-        data["cache_generation"] = self.cache_generation
+        data["cache_generation"] = generation
+        data["cache_epoch"] = int(getattr(self, "cache_epoch", 0) or 0)
         data["activities"] = self._build_cache_activity_list(data)
         data["activity_favorites"] = self._build_cache_activity_favorites()
         data["devices_list"] = self._build_cache_devices_list(data)

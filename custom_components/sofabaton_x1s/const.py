@@ -140,6 +140,19 @@ def signal_command_sync(entry_id: str) -> str:
     return f"sofabaton_x1s_command_sync_{entry_id}"
 
 
+def signal_panel_state(entry_id: str) -> str:
+    """Something the control panel shows for this hub changed: the cache
+    generation moved or an operation started, progressed or ended. The
+    ``hub_state/subscribe`` channel pushes the hub's state on it."""
+
+    return f"sofabaton_x1s_panel_state_{entry_id}"
+
+
+#: The command-config store (Wifi Commands, Wifi Events, hub event
+#: actions) was saved; its revision moved. Not per hub: one store.
+SIGNAL_PANEL_STORE = "sofabaton_x1s_panel_store"
+
+
 def format_hub_entry_title(version: str | None, host: str | None, mac: str | None) -> str:
     """Return a consistent config-entry title for integration cards."""
 

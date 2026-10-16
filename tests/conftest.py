@@ -362,6 +362,7 @@ def _install_homeassistant_stubs() -> None:
 
     websocket_api.websocket_command = _websocket_command
     websocket_api.async_response = lambda func: func
+    websocket_api.event_message = lambda msg_id, event: {"id": msg_id, "type": "event", "event": event}
     sys.modules.setdefault("homeassistant.components.websocket_api", websocket_api)
 
     http = types.ModuleType("homeassistant.components.http")

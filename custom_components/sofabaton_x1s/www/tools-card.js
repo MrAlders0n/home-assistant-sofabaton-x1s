@@ -1300,7 +1300,7 @@ var cardStyles = [secondaryTabStyles, i`
   .logs-title-row { display: flex; align-items: center; gap: 10px; }
   .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
   .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-  .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
+  .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label { color: var(--secondary-text-color); }
   .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, #8fb3d9 16%, var(--divider-color)); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, #16202b 92%, black), color-mix(in srgb, #0f151d 96%, black)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), inset 0 0 0 1px rgba(120, 150, 190, 0.04); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
   .logs-empty.error, .cache-state.error { color: var(--error-color, #db4437); }
@@ -1578,9 +1578,6 @@ var cardStyles = [secondaryTabStyles, i`
   .backend-unavailable-icon ha-icon { --mdc-icon-size: 40px; }
   .backend-unavailable-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .backend-unavailable-copy { font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); max-width: 320px; }
-  .stale-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent); }
-  .stale-banner-text { flex: 1; }
-  .stale-banner-btn { background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--primary-text-color); }
   .settings-hub-header { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 0; }
   .settings-content { flex-shrink: 0; display: flex; flex-direction: column; }
   .hub-compact-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: var(--ha-card-background, var(--card-background-color, #fff)); }
@@ -1910,6 +1907,7 @@ var TOOLS_CARD_STRINGS_EN = {
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
     hubNameInvalid: "The hub cannot store this name.",
     hubRenameFailed: "The hub did not accept the new name.",
@@ -1995,7 +1993,6 @@ var TOOLS_CARD_STRINGS_EN = {
     buttons: "Buttons",
     noCachedData: "No cached data yet.",
     noCachedCommands: "No cached commands.",
-    staleBanner: "Cache was updated externally. Refresh to see latest data.",
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
@@ -2086,6 +2083,7 @@ var TOOLS_CARD_STRINGS_EN = {
     operationCacheRefresh: "Refreshing hub cache",
     operationEntitySync: "Syncing with hub",
     operationWifiDeploy: "Syncing Wifi Commands",
+    operationHubWrite: "Working on the hub",
     working: "Working\u2026",
     step: (current, total) => `Step ${current} of ${total}`,
     backupPreparing: "Preparing backup\u2026",
@@ -2202,6 +2200,9 @@ var TOOLS_CARD_STRINGS_EN = {
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
+    // The cache moved under an open editor and an edit of the user's was
+    // also changed elsewhere: the user's version was kept.
+    changedElsewhere: (kind) => `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
     exitUnsyncedTitle: "Unsynced changes",
     exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
@@ -2960,10 +2961,23 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/control_panel/state"
     });
   }
-  loadCacheContents() {
+  /** One hub's cache rows when `entryId` is given, every hub's otherwise. */
+  loadCacheContents(entryId) {
     return this.hass.callWS({
-      type: "sofabaton_x1s/persistent_cache/contents"
+      type: "sofabaton_x1s/persistent_cache/contents",
+      ...entryId ? { entry_id: entryId } : {}
     });
+  }
+  /** The hub's control-panel state, pushed whenever it changes (the first
+   *  event comes at once): runtime state, cache generation, config revision. */
+  subscribeHubState(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.hubStateNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_state/subscribe", entry_id: entryId }
+    );
   }
   setSetting(entryId, setting, enabled) {
     return this.hass.callWS({
@@ -3594,6 +3608,7 @@ function normalizeOperation(value) {
     return "entity_sync";
   }
   if (operation === "wifi_deploy" || operation === "command_sync") return "wifi_deploy";
+  if (operation === "hub_write") return "hub_write";
   return null;
 }
 function localizeBackendOperationLabel(operationValue) {
@@ -3609,6 +3624,8 @@ function localizeBackendOperationLabel(operationValue) {
       return S5.operationEntitySync;
     case "wifi_deploy":
       return S5.operationWifiDeploy;
+    case "hub_write":
+      return S5.operationHubWrite;
     default:
       return TOOLS_CARD_STRINGS.availability.operationRunning;
   }
@@ -3910,7 +3927,7 @@ function resolveRuntimeState(snapshot) {
     };
   }
   if (hubRuntime?.kind === "operation_running") {
-    const operation = hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy";
+    const operation = hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : hubRuntime.operation === "hub_write" ? "hub_write" : "wifi_deploy";
     const total = Number(hubRuntime.total_steps || 0);
     const current = Number(hubRuntime.current_step || 0);
     const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
@@ -3999,29 +4016,19 @@ function resolveTabAvailability(snapshot, tabId) {
   }
   return { kind: "available" };
 }
-function cacheGenerationSnapshot(hass) {
-  const snapshot = {};
-  for (const id of remoteEntities(hass)) {
-    const attrs = hass?.states?.[id]?.attributes ?? {};
-    const entryId = String(attrs.entry_id ?? "").trim();
-    if (!entryId) continue;
-    snapshot[entryId] = Number(attrs.cache_generation ?? 0);
-  }
-  return snapshot;
+function cacheVersionOf(row) {
+  const generation = Number(row?.cache_generation);
+  if (!row || row.cache_generation == null || !Number.isFinite(generation)) return null;
+  const epoch = Number(row.cache_epoch);
+  return { epoch: Number.isFinite(epoch) ? epoch : 0, generation };
 }
-function didHubGenerationChange(previous, next) {
-  const prev = previous ?? {};
-  const curr = next ?? {};
-  return Object.keys(curr).some(
-    (entryId) => Object.prototype.hasOwnProperty.call(prev, entryId) && Number(curr[entryId] ?? 0) !== Number(prev[entryId] ?? 0)
-  );
+function compareCacheVersion(a3, b3) {
+  return a3.epoch !== b3.epoch ? a3.epoch - b3.epoch : a3.generation - b3.generation;
 }
-function hassFingerprint(hass) {
-  return remoteEntities(hass).sort().map((id) => {
-    const state = String(hass?.states?.[id]?.state ?? "");
-    const attrs = hass?.states?.[id]?.attributes ?? {};
-    return `${id};${attrs.entry_id ?? ""};${state};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation ?? 0)}`;
-  }).join("||");
+function loadedCacheVersionKey(snapshot, entryId) {
+  const row = (snapshot.contents?.hubs ?? []).find((hub) => hub.entry_id === entryId);
+  const version = cacheVersionOf(row);
+  return version ? `${version.epoch}:${version.generation}` : "";
 }
 function connectionFingerprint(hass) {
   return remoteEntities(hass).sort().map((id) => {
@@ -4111,6 +4118,9 @@ function buildHubClickNotification(entityId, item) {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var REFRESH_ALL_UNSEEN_MS = 3e4;
+var CONTENTS_RELOAD_DEBOUNCE_MS = 250;
+var CONTENTS_RELOAD_MAX_WAIT_MS = 1500;
+var RUNTIME_POLL_PUSHED_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "backup", "cache", "logs"]);
 var REFRESH_ALL_KEY = "__refresh_all__";
@@ -4179,7 +4189,6 @@ var INITIAL_SNAPSHOT = {
   selectedBackupSection: "make",
   selectedWifiSection: "wifi",
   openEntity: null,
-  staleData: false,
   refreshBusyByHub: {},
   externalHubCommandByHub: {},
   runtimeCompletionNoticeByHub: {},
@@ -4206,12 +4215,9 @@ var ControlPanelStore = class {
     this._loadingStatePromise = null;
     this._pendingLiveStateRefresh = null;
     this._isConnected = false;
-    this._refreshGraceUntil = 0;
     this._logsUnsub = null;
     this._logsLoadSeq = 0;
     this._logsSubscribeSeq = 0;
-    this._lastObservedGenerations = cacheGenerationSnapshot(null);
-    this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
     this._backendRetryTimer = null;
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
@@ -4228,6 +4234,14 @@ var ControlPanelStore = class {
     this._wifiPressSubscribeSeq = 0;
     this._hubEventsUnsub = null;
     this._hubEventsSubscribeSeq = 0;
+    this._hubStateUnsub = null;
+    this._hubStateEntryId = null;
+    this._hubStateSubscribeSeq = 0;
+    // The newest cache version the backend reported per hub (push or poll):
+    // only ever moves forward, so an older state response can't hide a change.
+    this._reportedVersions = /* @__PURE__ */ new Map();
+    // Pending per-hub contents reloads (see _scheduleContentsReload).
+    this._contentsReloads = /* @__PURE__ */ new Map();
     // Hub to pre-select when the card was created from a hub-specific entity (via
     // the card picker). Applied once when the hub becomes available; the user can
     // freely switch hubs afterwards.
@@ -4253,6 +4267,7 @@ var ControlPanelStore = class {
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
     void this._syncHubEventsFeed();
+    void this._syncHubStateFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -4270,10 +4285,12 @@ var ControlPanelStore = class {
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimers();
+    this._clearContentsReloads();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
     void this._teardownHubEventsFeed();
+    void this._teardownHubStateFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -4304,7 +4321,8 @@ var ControlPanelStore = class {
     if (!this._isConnected) return;
     const hub = selectedHub(this._snapshot);
     const isRunning = hub?.runtime_state?.kind === "operation_running";
-    const interval = isRunning ? 1e3 : 5e3;
+    const pushed = !!this._hubStateUnsub && !!hub && this._hubStateEntryId === hub.entry_id;
+    const interval = pushed ? RUNTIME_POLL_PUSHED_MS : isRunning ? 1e3 : 5e3;
     this._runtimeStatePollTimer = setTimeout(() => {
       this._runtimeStatePollTimer = null;
       void this._refreshRuntimeState();
@@ -4347,35 +4365,31 @@ var ControlPanelStore = class {
     this._snapshot = { ...this._snapshot, backendUnavailable: false };
     this._clearBackendRetry();
   }
+  /** Cache freshness never comes from `hass`: the hub-state push (and the
+   *  poll behind it) report each hub's generation. A remote entity's state
+   *  or app-connection change still reloads the panel state, and renews the
+   *  push subscription (an HA restart drops it). */
   setHass(hass) {
     const previousHass = this._snapshot.hass;
     this._snapshot = { ...this._snapshot, hass };
-    const fingerprint = hassFingerprint(hass);
     const nextConnectionFingerprint = connectionFingerprint(hass);
-    const generationSnapshot = cacheGenerationSnapshot(hass);
     if (!previousHass) {
-      this._lastObservedGenerations = generationSnapshot;
-      this._lastHassFingerprint = fingerprint;
       this._lastConnectionFingerprint = nextConnectionFingerprint;
       this.emit();
       return;
     }
-    if (fingerprint !== this._lastHassFingerprint) {
-      const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._isAnyHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
-        this._snapshot = { ...this._snapshot, staleData: true };
-      }
-      this._lastObservedGenerations = generationSnapshot;
-      this._lastHassFingerprint = fingerprint;
-      this._lastConnectionFingerprint = nextConnectionFingerprint;
-      if (this._isConnected && connectionChanged && !this._snapshot.loading && !this._loadingStatePromise && !this._pendingLiveStateRefresh) {
-        this._pendingLiveStateRefresh = this.loadControlPanelState().catch(() => void 0).finally(() => {
-          this._pendingLiveStateRefresh = null;
-          if (this._isConnected) this.emit();
-        });
-      }
-      this.emit();
+    if (nextConnectionFingerprint === this._lastConnectionFingerprint) return;
+    this._lastConnectionFingerprint = nextConnectionFingerprint;
+    if (this._isConnected && !this._snapshot.loading && !this._loadingStatePromise && !this._pendingLiveStateRefresh) {
+      this._pendingLiveStateRefresh = this.loadControlPanelState().catch(() => void 0).finally(() => {
+        this._pendingLiveStateRefresh = null;
+        if (this._isConnected) this.emit();
+      });
     }
+    if (this._isConnected) {
+      void this._teardownHubStateFeed().then(() => this._syncHubStateFeed());
+    }
+    this.emit();
   }
   selectHub(entryId) {
     this._snapshot = {
@@ -4397,11 +4411,13 @@ var ControlPanelStore = class {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
       await this._teardownHubEventsFeed();
+      await this._teardownHubStateFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
       await this._syncHubEventsFeed();
+      await this._syncHubStateFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -4525,13 +4541,14 @@ var ControlPanelStore = class {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([api.loadState(), api.loadCacheContents()]);
+        this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
         this.applyControlPanelState(state);
-        this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
         await this._syncHubEventsFeed();
+        await this._syncHubStateFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -4541,8 +4558,7 @@ var ControlPanelStore = class {
         }
       } finally {
         this._loadingStatePromise = null;
-        this._snapshot = { ...this._snapshot, loading: false, staleData: false };
-        this._refreshGraceUntil = Date.now() + 1e4;
+        this._snapshot = { ...this._snapshot, loading: false };
         this.emit();
         if (this._snapshot.selectedTab === "logs") void this.syncLogsFeed();
       }
@@ -4556,12 +4572,13 @@ var ControlPanelStore = class {
       this.syncSelection();
       if (this._contentsMissingStateHubs()) {
         const contents = await this.api().loadCacheContents();
-        this._snapshot = { ...this._snapshot, contents };
+        this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
       }
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
       await this._syncHubEventsFeed();
+      await this._syncHubStateFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -4591,8 +4608,130 @@ var ControlPanelStore = class {
   }
   async loadCacheContents() {
     const contents = await this.api().loadCacheContents();
-    this._snapshot = { ...this._snapshot, contents };
+    this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
     this.emit();
+  }
+  /** Fold a contents response into the rows held, hub by hub: a hub's rows
+   *  are only replaced by rows read at the same or a newer cache version, so
+   *  a full load that raced a per-hub reload can't roll the hub back. */
+  _mergeContents(next) {
+    const current = this._snapshot.contents;
+    if (!next?.enabled || !current?.enabled) return next;
+    const held = new Map((current.hubs ?? []).map((hub) => [hub.entry_id, hub]));
+    return {
+      ...next,
+      hubs: (next.hubs ?? []).map((hub) => {
+        const mine = held.get(hub.entry_id);
+        return mine && this._rowsNewer(mine, hub) ? mine : hub;
+      })
+    };
+  }
+  _rowsNewer(a3, b3) {
+    const va = cacheVersionOf(a3);
+    const vb = cacheVersionOf(b3);
+    return !!va && !!vb && compareCacheVersion(va, vb) > 0;
+  }
+  /** Record what the backend reports for each hub's cache, then reload the
+   *  rows of every hub that fell behind. `force` also reloads that hub
+   *  (an operation on it just ended: its last writes land with the end). */
+  _noteReportedVersions(force = null) {
+    for (const hub of this._snapshot.state?.hubs ?? []) {
+      const reported = cacheVersionOf(hub);
+      if (!reported) continue;
+      const known = this._reportedVersions.get(hub.entry_id);
+      if (!known || compareCacheVersion(reported, known) > 0) this._reportedVersions.set(hub.entry_id, reported);
+    }
+    if (!this._snapshot.contents?.enabled) return;
+    for (const hub of this._snapshot.state?.hubs ?? []) {
+      if (hub.entry_id === force) this._scheduleContentsReload(hub.entry_id, true);
+      else if (this._contentsBehind(hub.entry_id)) this._scheduleContentsReload(hub.entry_id);
+    }
+  }
+  /** True when the rows held for the hub are older than the newest version
+   *  the backend reported. A hub with no rows at all is left to the full
+   *  load (_contentsMissingStateHubs). */
+  _contentsBehind(entryId) {
+    const reported = this._reportedVersions.get(entryId);
+    if (!reported) return false;
+    const row = (this._snapshot.contents?.hubs ?? []).find((hub) => hub.entry_id === entryId);
+    if (!row) return false;
+    const loaded = cacheVersionOf(row);
+    return !loaded || compareCacheVersion(loaded, reported) < 0;
+  }
+  /** Reload one hub's rows soon: waits for a quiet moment (debounce), but
+   *  never longer than the max wait while changes keep coming. */
+  _scheduleContentsReload(entryId, force = false) {
+    if (!this._isConnected) return;
+    let entry = this._contentsReloads.get(entryId);
+    if (!entry) {
+      entry = { timer: null, firstAt: Date.now(), inflight: false, again: false, force: false };
+      this._contentsReloads.set(entryId, entry);
+    }
+    entry.force = entry.force || force;
+    if (entry.inflight) {
+      entry.again = true;
+      return;
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    const waited = Date.now() - entry.firstAt;
+    const delay = Math.max(0, Math.min(CONTENTS_RELOAD_DEBOUNCE_MS, CONTENTS_RELOAD_MAX_WAIT_MS - waited));
+    entry.timer = setTimeout(() => void this._reloadHubContents(entryId), delay);
+  }
+  async _reloadHubContents(entryId) {
+    const entry = this._contentsReloads.get(entryId);
+    if (!entry) return;
+    entry.timer = null;
+    if (!entry.force && !this._contentsBehind(entryId)) {
+      this._contentsReloads.delete(entryId);
+      return;
+    }
+    entry.inflight = true;
+    entry.again = false;
+    entry.force = false;
+    let failed = false;
+    try {
+      const response = await this.api().loadCacheContents(entryId);
+      if (this._contentsReloads.get(entryId) === entry) this._applyHubContents(entryId, response);
+    } catch {
+      failed = true;
+    } finally {
+      entry.inflight = false;
+      if (this._contentsReloads.get(entryId) === entry) {
+        this._contentsReloads.delete(entryId);
+        if (!failed && (entry.again || this._contentsBehind(entryId))) {
+          this._scheduleContentsReload(entryId, entry.force);
+        }
+      }
+    }
+  }
+  _applyHubContents(entryId, response) {
+    if (!response?.enabled) {
+      this._snapshot = { ...this._snapshot, contents: response };
+      this.emit();
+      return;
+    }
+    const current = this._snapshot.contents;
+    if (!current?.enabled) return;
+    const incoming = (response.hubs ?? []).find((hub) => hub.entry_id === entryId) ?? null;
+    const hubs = [...current.hubs ?? []];
+    const index = hubs.findIndex((hub) => hub.entry_id === entryId);
+    if (!incoming) {
+      if (index < 0) return;
+      hubs.splice(index, 1);
+    } else if (index < 0) {
+      hubs.push(incoming);
+    } else {
+      if (this._rowsNewer(hubs[index], incoming)) return;
+      hubs[index] = incoming;
+    }
+    this._snapshot = { ...this._snapshot, contents: { ...current, hubs } };
+    this.emit();
+  }
+  _clearContentsReloads() {
+    for (const entry of this._contentsReloads.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this._contentsReloads.clear();
   }
   async setSetting(setting, enabled) {
     const hub = selectedHub(this._snapshot);
@@ -4798,11 +4937,6 @@ var ControlPanelStore = class {
       this.emit();
     }
   }
-  async refreshStale() {
-    this._snapshot = { ...this._snapshot, staleData: false };
-    this.emit();
-    await this.loadState();
-  }
   _setRefreshBusy(entryId, label) {
     this._snapshot = {
       ...this._snapshot,
@@ -4813,7 +4947,7 @@ var ControlPanelStore = class {
   _clearRefreshBusy(entryId) {
     const byHub = { ...this._snapshot.refreshBusyByHub };
     delete byHub[entryId];
-    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub };
     this.emit();
   }
   /**
@@ -5158,7 +5292,8 @@ var ControlPanelStore = class {
     };
     const nextHub = selectedHub(this._snapshot);
     const nextRuntime = nextHub?.runtime_state;
-    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
+    const announced = (runtime) => runtime?.kind === "operation_running" && runtime.operation !== "hub_write";
+    if (previousRuntime && previousHub?.entry_id === nextHub?.entry_id && announced(previousRuntime) && !announced(nextRuntime) && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
       const outcome = terminalOutcome(previousRuntime, nextRuntime);
       const entryId = nextHub?.entry_id ?? previousHub?.entry_id ?? null;
@@ -5171,8 +5306,67 @@ var ControlPanelStore = class {
         this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
       }
     }
+    const ended = previousHub && nextHub && previousHub.entry_id === nextHub.entry_id && previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" ? nextHub.entry_id : null;
+    this._noteReportedVersions(ended);
     this._scheduleRuntimeStatePoll();
     this._checkRefreshAllWaits();
+  }
+  /** One `hub_state/subscribe` event: the hub's panel state replaces its
+   *  row (locks and progress follow at once), and its cache version may
+   *  start a contents reload. */
+  _applyHubStatePush(entryId, payload) {
+    const state = this._snapshot.state;
+    const hub = payload && typeof payload === "object" ? payload.hub : null;
+    if (!state || !hub || typeof hub !== "object") return;
+    if (!state.hubs.some((row) => row.entry_id === entryId)) return;
+    const revision = Number(payload.config_revision);
+    this.applyControlPanelState({
+      ...state,
+      ...Number.isFinite(revision) ? { config_revision: revision } : {},
+      hubs: state.hubs.map((row) => row.entry_id === entryId ? { ...hub, entry_id: entryId } : row)
+    });
+    void this._syncBackupOperationFeed();
+    this.emit();
+  }
+  async _syncHubStateFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubStateFeed();
+      return;
+    }
+    if (this._hubStateEntryId === entryId && this._hubStateUnsub) return;
+    await this._teardownHubStateFeed();
+    const subscribeSeq = ++this._hubStateSubscribeSeq;
+    this._hubStateEntryId = entryId;
+    try {
+      const unsubscribe = await this.api().subscribeHubState(entryId, (payload) => {
+        if (subscribeSeq !== this._hubStateSubscribeSeq || this._hubStateEntryId !== entryId) return;
+        this._applyHubStatePush(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubStateSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._hubStateUnsub = unsubscribe;
+      this._scheduleRuntimeStatePoll();
+    } catch {
+      if (subscribeSeq === this._hubStateSubscribeSeq) this._hubStateEntryId = null;
+    }
+  }
+  async _teardownHubStateFeed() {
+    this._hubStateSubscribeSeq++;
+    const unsub = this._hubStateUnsub;
+    this._hubStateUnsub = null;
+    this._hubStateEntryId = null;
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
   }
   applyOptimisticSetting(setting, enabled) {
     if (!this._snapshot.state) return;
@@ -5255,16 +5449,6 @@ var ControlPanelStore = class {
     const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
       entryId && entryId in this._snapshot.refreshBusyByHub || entryId && entryId in this._snapshot.externalHubCommandByHub || this._snapshot.pendingActionKey || backupBusy
-    );
-  }
-  /** Busy on ANY hub — used to suppress the stale-data banner while one of
-   * our own operations is bumping cache generations in the background. */
-  _isAnyHubCommandBusy() {
-    const backupBusy = (this._snapshot.state?.hubs ?? []).some(
-      (hub) => !!hub.active_backup_operation && ["pending", "running"].includes(String(hub.active_backup_operation.status || ""))
-    );
-    return Boolean(
-      Object.keys(this._snapshot.refreshBusyByHub).length || Object.keys(this._snapshot.externalHubCommandByHub).length || this._snapshot.pendingActionKey || backupBusy
     );
   }
   async _syncBackupOperationFeed() {
@@ -6339,7 +6523,6 @@ function renderCacheTab(params) {
       ` : null;
   return b2`
     <div class="tab-panel">
-      ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
       ${renderSecondaryTabShell({
     connected: true,
     shellClassName: "cache-panel secondary-view-shell--edge",
@@ -10720,17 +10903,17 @@ function rewriteDeviceIdRefs(value, oldId, newId) {
 }
 function replayDeviceEntryEdits(fresh, baselineEntry, workingEntry, oldId, newId) {
   if (!workingEntry) return fresh;
-  const same = (a3, b3) => JSON.stringify(a3 ?? null) === JSON.stringify(b3 ?? null);
+  const same2 = (a3, b3) => JSON.stringify(a3 ?? null) === JSON.stringify(b3 ?? null);
   const base = baselineEntry ?? {};
   const work = workingEntry;
   const result = { ...fresh, device: { ...fresh.device } };
   for (const key of Object.keys(work)) {
-    if (key === "device" || same(work[key], base[key])) continue;
+    if (key === "device" || same2(work[key], base[key])) continue;
     result[key] = rewriteDeviceIdRefs(structuredClone(work[key]), oldId, newId);
   }
   const baseName = base.device?.name;
   const workName = workingEntry.device?.name;
-  if (typeof workName === "string" && !same(baseName, workName)) {
+  if (typeof workName === "string" && !same2(baseName, workName)) {
     result.device.name = workName;
   }
   return result;
@@ -17779,6 +17962,10 @@ function hubEventModalTitle(key) {
 var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   constructor() {
     super(...arguments);
+    /** Moves when the command-config store is saved or the hub's cache rows
+     *  move ("revision|cache version"): the open lists reload. */
+    this.changeKey = "";
+    this._followTimer = null;
     this.hubCommandBusy = false;
     this.blockedTitle = null;
     this.blockedMessage = null;
@@ -18034,6 +18221,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
+    if (this._followTimer) {
+      clearTimeout(this._followTimer);
+      this._followTimer = null;
+    }
     if (this._irFlashClearTimer) {
       clearTimeout(this._irFlashClearTimer);
       this._irFlashClearTimer = null;
@@ -18048,6 +18239,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   updated(changed) {
     if (changed.has("hub")) this._deviceSessionRestoreTried = false;
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
+    if (changed.has("changeKey") && changed.get("changeKey") !== void 0) this._scheduleFollow();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
     this._notifyDirtyDock();
@@ -19337,6 +19529,27 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
+  /** The store or the cache moved (another tab, an automation, a deploy):
+   *  reload what this tab lists, shortly after the change settles. The
+   *  command editor's drafts are the user's and stay as they are. */
+  _scheduleFollow() {
+    if (this._followTimer) clearTimeout(this._followTimer);
+    this._followTimer = setTimeout(() => {
+      this._followTimer = null;
+      void this._followStore();
+    }, 300);
+  }
+  async _followStore() {
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!entryId || !this.hass || this._configLoadedForEntryId !== entryId || this._hubLoad) return;
+    await this._loadWifiDevices(true);
+    await this._loadHubEventActions(true);
+    await this._loadWifiEventsRows();
+    if (this._selectedDeviceKey) {
+      await this._loadCommandConfigFromBackend(true);
+      await this._loadCommandSyncProgress(true);
+    }
+  }
   _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass) return Promise.resolve();
@@ -20378,6 +20591,7 @@ _SofabatonWifiCommandsTab.properties = {
   showCompletion: { attribute: false },
   refreshControlPanelState: { attribute: false },
   lastWifiPress: { attribute: false },
+  changeKey: { type: String },
   hubCommandBusy: { type: Boolean },
   loading: { type: Boolean },
   error: { type: String },
@@ -21052,6 +21266,77 @@ if (!customElements.get("sofabaton-refresh-cache-button")) {
   customElements.define("sofabaton-refresh-cache-button", SofabatonRefreshCacheButton);
 }
 
+// custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase.ts
+function isPlainObject2(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function same(a3, b3) {
+  if (a3 === b3) return true;
+  if (a3 === void 0 || b3 === void 0) return false;
+  return JSON.stringify(a3) === JSON.stringify(b3);
+}
+function rowId(row) {
+  if (!isPlainObject2(row) || !isPlainObject2(row.device)) return null;
+  const id = Number(row.device.device_id);
+  return Number.isFinite(id) ? id : null;
+}
+function isRowList(value) {
+  return Array.isArray(value) && value.every((row) => rowId(row) != null);
+}
+function clone(value) {
+  return value === void 0 ? value : structuredClone(value);
+}
+function mergeValue(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  if (isPlainObject2(base) && isPlainObject2(mine) && isPlainObject2(theirs)) {
+    const out = {};
+    const keys = /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)]);
+    for (const key of keys) {
+      const value = mergeValue(base[key], mine[key], theirs[key], overlap);
+      if (value !== void 0) out[key] = value;
+    }
+    return out;
+  }
+  overlap.hit = true;
+  return mine;
+}
+function mergeRows(base, mine, theirs, overlap) {
+  const byId = (rows) => new Map(rows.map((row) => [rowId(row), row]));
+  const baseRows = byId(base);
+  const mineRows = byId(mine);
+  const out = [];
+  for (const row of theirs) {
+    const id = rowId(row);
+    const merged = mergeValue(baseRows.get(id), mineRows.get(id), row, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  const theirIds = new Set(theirs.map((row) => rowId(row)));
+  for (const row of mine) {
+    const id = rowId(row);
+    if (theirIds.has(id)) continue;
+    const merged = mergeValue(baseRows.get(id), row, void 0, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  return out;
+}
+function rebaseBundle(base, mine, theirs) {
+  const overlap = { hit: false };
+  const out = {};
+  const b3 = base;
+  const m3 = mine;
+  const t4 = theirs;
+  for (const key of /* @__PURE__ */ new Set([...Object.keys(t4), ...Object.keys(m3)])) {
+    if ((key === "devices" || key === "activities") && isRowList(b3[key] ?? []) && isRowList(m3[key] ?? []) && isRowList(t4[key] ?? [])) {
+      out[key] = mergeRows(b3[key] ?? [], m3[key] ?? [], t4[key] ?? [], overlap);
+      continue;
+    }
+    const value = mergeValue(b3[key], m3[key], t4[key], overlap);
+    if (value !== void 0) out[key] = value;
+  }
+  return { bundle: out, overlap: overlap.hit };
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/activities-tab.ts
 var S4 = TOOLS_CARD_STRINGS.activities;
 var WIFI_EVENTS_DEVICE_KEY = "haevents";
@@ -21070,6 +21355,9 @@ var SofabatonActivitiesTab = class extends i4 {
     this.selectedHubProxyConnected = false;
     /** MQTT delivery can be offered for this hub (control-panel state). */
     this.mqttAvailable = false;
+    /** The version of the hub's cache rows the card holds
+     *  (loadedCacheVersionKey): when it moves, an open editor follows. */
+    this.cacheVersion = "";
     this._stage = "list";
     this._entityId = null;
     this._baseline = null;
@@ -21092,6 +21380,11 @@ var SofabatonActivitiesTab = class extends i4 {
     this._pendingTransport = null;
     this._syncError = null;
     this._syncFailedAt = null;
+    /** The cacheVersion the baseline was captured at. */
+    this._capturedVersion = "";
+    this._rebasing = false;
+    /** An edit of the user's was also changed elsewhere; theirs was kept. */
+    this._changedElsewhere = false;
     this._progressUnsub = null;
     this._exitAfterSync = false;
     // Which requested activityId we already auto-opened, so returning to the
@@ -21182,8 +21475,10 @@ var SofabatonActivitiesTab = class extends i4 {
       this._entityId = entityId;
       this._wifiEventsPlaceholderId = null;
       this._captureError = null;
+      this._changedElsewhere = false;
       this._stage = "capturing";
       try {
+        this._capturedVersion = String(this.cacheVersion || "");
         const res = await this.api().getStructuralBundle(this.hub.entry_id);
         const bundle = res?.bundle ?? null;
         const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
@@ -21226,6 +21521,7 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncError = null;
       this._syncFailedAt = null;
       this._syncProgress = null;
+      this._changedElsewhere = false;
       this._stage = "syncing";
       try {
         if (this.kind === "activity" && !await this._syncWifiEventsPhase()) {
@@ -21261,6 +21557,7 @@ var SofabatonActivitiesTab = class extends i4 {
         this._syncProgress = null;
         this._exitAfterSync = false;
         this._stage = "sync_failed";
+        void this._rebaseAfterFailure();
       }
     };
     /** The editor's delivery select (edit-detail-view `transport-change`):
@@ -21274,6 +21571,12 @@ var SofabatonActivitiesTab = class extends i4 {
       this._notifyDirtyDock();
     };
     this._retrySync = () => {
+      if (!this._hasUnsynced()) {
+        this._stage = "editing";
+        this._syncError = null;
+        this._syncFailedAt = null;
+        return;
+      }
       void this._requestSync();
     };
     // ── Immediate delete (entity delete executes on the hub right away) ──
@@ -21337,7 +21640,81 @@ var SofabatonActivitiesTab = class extends i4 {
       this._hubEntryId = nextEntryId;
     }
     this._maybeAutoOpen();
+    if (changed.has("cacheVersion") || changed.has("_stage")) this._maybeFollowCache();
     this._notifyDirtyDock();
+  }
+  // ── Following the cache ─────────────────────────────────────────────
+  // The editor's baseline is the cache as captured. When the cache moves
+  // (another tab, a refresh, a write elsewhere) the editor follows it: a
+  // clean editor re-captures, a dirty one keeps the user's edits on top of
+  // the new capture (bundle-rebase.ts). Never mid sync, delete or capture:
+  // those end in their own re-capture.
+  _maybeFollowCache() {
+    if (this._stage !== "editing" || this._rebasing) return;
+    const version = String(this.cacheVersion || "");
+    if (!version || version === this._capturedVersion) return;
+    void this._followCache(version);
+  }
+  async _followCache(version) {
+    if (!this.hub || this._entityId == null) return;
+    const entityId = this._entityId;
+    this._rebasing = true;
+    try {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const fresh = res?.bundle ?? null;
+      if (this._stage !== "editing" || this._entityId !== entityId) return;
+      this._capturedVersion = version;
+      if (!fresh) return;
+      if (!this._bundleHasEntity(fresh, entityId)) {
+        if (this._hasUnsynced()) this._stage = "needs_refresh";
+        else this._resetToList();
+        return;
+      }
+      await this._rebaseOnto(fresh);
+    } catch {
+    } finally {
+      this._rebasing = false;
+      this._maybeFollowCache();
+    }
+  }
+  _bundleHasEntity(bundle, entityId) {
+    const entries = (this.kind === "device" ? bundle.devices : bundle.activities) ?? [];
+    return entries.some((candidate) => Number(candidate.device?.device_id) === entityId);
+  }
+  /** Make `fresh` the baseline and carry the user's edits over to it. */
+  async _rebaseOnto(fresh) {
+    if (!this._baseline || !this._working) return;
+    const eventsGrafted = this._eventsGrafted();
+    if (!this._dirty) {
+      this._baseline = fresh;
+      this._working = structuredClone(fresh);
+    } else {
+      const { bundle, overlap } = rebaseBundle(this._baseline, this._working, fresh);
+      this._baseline = fresh;
+      this._working = bundle;
+      if (overlap) this._changedElsewhere = true;
+    }
+    if (eventsGrafted) await this._graftWifiEventsDevice({ forceRefresh: true });
+    this._recomputeDirty();
+  }
+  /** A sync that failed may still have landed part of its writes (the
+   *  backend reads the entity back into the cache before it reports the
+   *  failure). Rebase onto that, keeping the user's edits on top: a retry
+   *  then writes only what is still missing and passes its stale check,
+   *  and later edits see what landed. */
+  async _rebaseAfterFailure() {
+    if (!this.hub || this._entityId == null) return;
+    const entityId = this._entityId;
+    const version = String(this.cacheVersion || "");
+    try {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const fresh = res?.bundle ?? null;
+      if (!fresh || this._stage !== "sync_failed" || this._entityId !== entityId) return;
+      if (!this._bundleHasEntity(fresh, entityId)) return;
+      await this._rebaseOnto(fresh);
+      this._capturedVersion = version;
+    } catch {
+    }
   }
   /** The host dock's Sync button: the same sync the editor's header starts. */
   syncFromDock() {
@@ -21437,10 +21814,7 @@ var SofabatonActivitiesTab = class extends i4 {
    *  first-ever event, in the Sync flow's placeholder swap). */
   async _graftWifiEventsDevice(options = {}) {
     if (!this.hub) return this._working;
-    const present = (this._working?.devices ?? []).some(
-      (entry2) => isWifiEventsBrand(String(entry2?.device?.brand ?? "")) || Number(entry2?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId
-    );
-    if (present && !options.forceRefresh) return this._working;
+    if (this._eventsGrafted() && !options.forceRefresh) return this._working;
     const entityId = this._wifiEventsHubId();
     const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
     const blockId = state.device_id ?? this._placeholderDeviceId();
@@ -21448,6 +21822,13 @@ var SofabatonActivitiesTab = class extends i4 {
     this._baseline = graftDeviceIntoBundle(this._baseline, entry);
     this._working = graftDeviceIntoBundle(this._working, entry);
     return this._working;
+  }
+  /** The working bundle carries the staged events block (or the deployed
+   *  events device). */
+  _eventsGrafted() {
+    return (this._working?.devices ?? []).some(
+      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? "")) || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId
+    );
   }
   /** W7 phase 1 of the Sync press: deploy the events record when it is
    *  out-of-step, then resolve placeholder refs to the real device id and
@@ -21726,6 +22107,7 @@ var SofabatonActivitiesTab = class extends i4 {
         this._syncProgress = null;
         this._exitAfterSync = false;
         this._stage = "sync_failed";
+        void this._rebaseAfterFailure();
         return;
       }
       this._syncProgress = payload;
@@ -21751,6 +22133,7 @@ var SofabatonActivitiesTab = class extends i4 {
       return;
     }
     let rebased = null;
+    this._capturedVersion = String(this.cacheVersion || "");
     try {
       const res = this.hub ? await this.api().getStructuralBundle(this.hub.entry_id) : null;
       const bundle = res?.bundle ?? null;
@@ -21786,6 +22169,8 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncError = null;
     this._syncFailedAt = null;
     this._exitAfterSync = false;
+    this._changedElsewhere = false;
+    this._capturedVersion = "";
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
     }
@@ -21915,6 +22300,7 @@ var SofabatonActivitiesTab = class extends i4 {
     return b2`
       <div class="editing-shell">
         ${this._deleteError ? this._renderDeleteErrorBanner() : A}
+        ${this._changedElsewhere ? b2`<div class="notice-banner changed-elsewhere-banner"><span class="notice-banner-text"><ha-icon icon="mdi:information-outline"></ha-icon> ${S4.changedElsewhere(this.kind)}</span></div>` : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
           .kind=${this.kind}
@@ -22032,7 +22418,9 @@ SofabatonActivitiesTab.properties = {
   blockedMessage: { type: String },
   selectedHubProxyConnected: { type: Boolean },
   mqttAvailable: { type: Boolean },
+  cacheVersion: { type: String },
   _stage: { state: true },
+  _changedElsewhere: { state: true },
   _entityId: { state: true },
   _baseline: { state: true },
   _working: { state: true },
@@ -22126,6 +22514,8 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
+    .changed-elsewhere-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; white-space: normal; }
+    .changed-elsewhere-banner ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
     /* Exit-confirm and delete dialogs (§4.4). */
@@ -23135,6 +23525,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .hass=${this._snapshot.hass}
+          .changeKey=${`${this._snapshot.state?.config_revision ?? ""}|${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}`}
           .hubCommandBusy=${sharedHubCommandBusy}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .lastHubEvent=${this._snapshot.lastHubEvent}
@@ -23178,6 +23569,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .mqttAvailable=${Boolean(hub?.mqtt_available)}
+            .cacheVersion=${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-dirty-changed=${this._handleEditorDirtyChanged}
@@ -23200,7 +23592,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           error: this._snapshot.loadError,
           hub: cacheHub,
           persistentCacheEnabled: cacheEnabled,
-          staleData: this._snapshot.staleData,
           refreshBusy: hubRefreshing,
           hubCommandBusy: sharedHubCommandBusy,
           activeRefreshLabel: hubActiveRefreshLabel(this._snapshot, hubEntryId),
@@ -23209,7 +23600,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
           enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
           onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
-          onRefreshStale: () => void this._store.refreshStale(),
           onSelectSection: (sectionId) => {
             this.resetActivityListInteractions();
             this._store.selectCacheSection(sectionId);

@@ -9,9 +9,10 @@ from copy import deepcopy
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.storage import Store
 
-from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
+from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN, SIGNAL_PANEL_STORE
 from .shared_stores import async_shared_store
 
 _LOGGER = logging.getLogger(__name__)
@@ -570,6 +571,16 @@ class CommandConfigStore:
         # A fresh store starts aligned: every requested_transport it will
         # ever hold is a real wish (see _normalize_requested_transports).
         self._data: dict[str, Any] = {"hubs": {}, _TRANSPORTS_ALIGNED_KEY: True}
+        self._hass = hass
+        #: Moves on every save. Open control panels reload their Wifi
+        #: Commands / Wifi Events views when it moves (hub_state/subscribe),
+        #: so a change saved in one tab shows in every other.
+        self.revision = 0
+
+    async def _save(self) -> None:
+        self.revision += 1
+        await self._store.async_save(self._data)
+        async_dispatcher_send(self._hass, SIGNAL_PANEL_STORE)
 
     async def async_load(self) -> None:
         loaded = await self._store.async_load()
@@ -578,7 +589,7 @@ class CommandConfigStore:
             if not loaded.get(_TRANSPORTS_ALIGNED_KEY):
                 self._normalize_requested_transports()
                 self._data[_TRANSPORTS_ALIGNED_KEY] = True
-                await self._store.async_save(self._data)
+                await self._save()
 
     def _normalize_requested_transports(self) -> bool:
         """One-time alignment of ``requested_transport`` with the deployed one.
@@ -832,7 +843,7 @@ class CommandConfigStore:
             device_name=str(device_name or DEFAULT_WIFI_DEVICE_NAME).strip() or DEFAULT_WIFI_DEVICE_NAME,
         )
         devices.append(payload)
-        await self._store.async_save(self._data)
+        await self._save()
         return self._payload_for_device(payload, roku_listen_port=roku_listen_port)
 
     async def async_rename_hub_device(
@@ -874,7 +885,7 @@ class CommandConfigStore:
                 device["deployed_commands_hash"] = normalized_hash
                 changed = True
         if changed:
-            await self._store.async_save(self._data)
+            await self._save()
         return changed
 
     async def async_delete_hub_device(self, entry_id: str, device_key: str) -> bool:
@@ -884,7 +895,7 @@ class CommandConfigStore:
         if len(next_devices) == len(devices):
             return False
         self._hub_record(entry_id)["devices"] = next_devices
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     async def async_save_deployed_wifi_commands(
@@ -921,7 +932,7 @@ class CommandConfigStore:
             # The record is back to undeployed (zero-slot teardown): clear
             # the transport stamp so the next first deploy chooses fresh.
             hub_device["deployed_transport"] = None
-        await self._store.async_save(self._data)
+        await self._save()
 
     async def async_set_requested_transport(
         self,
@@ -945,7 +956,7 @@ class CommandConfigStore:
         if normalize_wifi_transport(hub_device.get("requested_transport")) == normalized:
             return False
         hub_device["requested_transport"] = normalized
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     async def async_remove_hub(self, entry_id: str) -> bool:
@@ -955,7 +966,7 @@ class CommandConfigStore:
         if entry_id not in hubs:
             return False
         hubs.pop(entry_id, None)
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     async def async_reconcile_deployed_wifi_devices(
@@ -1007,7 +1018,7 @@ class CommandConfigStore:
                 changed = True
 
         if changed:
-            await self._store.async_save(self._data)
+            await self._save()
         return changed
 
     def get_deployed_wifi_commands(
@@ -1108,7 +1119,7 @@ class CommandConfigStore:
     ) -> dict[str, dict[str, Any]]:
         hub = self._hub_record(entry_id)
         hub["event_actions"] = normalize_hub_event_actions(actions)
-        await self._store.async_save(self._data)
+        await self._save()
         return normalize_hub_event_actions(hub.get("event_actions"))
 
     def get_activity_event_actions(self, entry_id: str) -> dict[str, dict[str, dict[str, Any]]]:
@@ -1124,7 +1135,7 @@ class CommandConfigStore:
     ) -> dict[str, dict[str, dict[str, Any]]]:
         hub = self._hub_record(entry_id)
         hub["activity_event_actions"] = normalize_activity_event_actions(actions)
-        await self._store.async_save(self._data)
+        await self._save()
         return normalize_activity_event_actions(hub.get("activity_event_actions"))
 
     async def async_prune_activity_event_actions(
@@ -1152,7 +1163,7 @@ class CommandConfigStore:
         if pruned == current:
             return False
         hub["activity_event_actions"] = pruned
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     async def async_set_hub_commands(
@@ -1179,7 +1190,7 @@ class CommandConfigStore:
         device["power_off_command_id"] = normalized_power_off
         if activity_labels is not None:
             device["activity_labels"] = _normalize_activity_labels(activity_labels)
-        await self._store.async_save(self._data)
+        await self._save()
         return self._payload_for_device(device, roku_listen_port=roku_listen_port)
 
     # ── Wifi Events (reserved `haevents` record) ────────────────────────
@@ -1330,7 +1341,7 @@ class CommandConfigStore:
             "long_press_action": deepcopy(DEFAULT_COMMAND_ACTION),
         }
         record["commands"] = commands
-        await self._store.async_save(self._data)
+        await self._save()
         return {
             "slot_index": free_index,
             "name": normalized_name,
@@ -1365,7 +1376,7 @@ class CommandConfigStore:
         record, commands = found
         commands[int(slot_index)] = _default_slot(int(slot_index))
         record["commands"] = commands
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     async def async_set_wifi_event_action(
@@ -1383,7 +1394,7 @@ class CommandConfigStore:
         record, commands = found
         commands[int(slot_index)]["action"] = _normalize_action(action)
         record["commands"] = commands
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     def wifi_events_record_state(
@@ -1555,7 +1566,7 @@ class CommandConfigStore:
             record["deployed_commands_hash"] = self._wifi_events_followed_hash(
                 record, before, commands, slot_count, roku_listen_port
             )
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
     async def async_reconcile_wifi_events_command_removals(
@@ -1609,7 +1620,7 @@ class CommandConfigStore:
             record["deployed_commands_hash"] = self._wifi_events_followed_hash(
                 record, before, commands, slot_count, roku_listen_port
             )
-        await self._store.async_save(self._data)
+        await self._save()
         return True
 
 

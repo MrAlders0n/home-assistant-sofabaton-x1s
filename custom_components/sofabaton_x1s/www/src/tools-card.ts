@@ -27,6 +27,7 @@ import {
   hubRefreshBusy,
   creatableDeviceClasses,
   hubLineFor,
+  loadedCacheVersionKey,
   proxyClientConnected,
   resolveCardGateState,
   resolveRuntimeState,
@@ -1196,6 +1197,7 @@ class SofabatonControlPanelCard extends LitElement {
           .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .hass=${this._snapshot.hass}
+          .changeKey=${`${this._snapshot.state?.config_revision ?? ""}|${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}`}
           .hubCommandBusy=${sharedHubCommandBusy}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .lastHubEvent=${this._snapshot.lastHubEvent}
@@ -1239,6 +1241,7 @@ class SofabatonControlPanelCard extends LitElement {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .mqttAvailable=${Boolean(hub?.mqtt_available)}
+            .cacheVersion=${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-dirty-changed=${this._handleEditorDirtyChanged}
@@ -1263,7 +1266,6 @@ class SofabatonControlPanelCard extends LitElement {
           error: this._snapshot.loadError,
           hub: cacheHub,
           persistentCacheEnabled: cacheEnabled,
-          staleData: this._snapshot.staleData,
           refreshBusy: hubRefreshing,
           hubCommandBusy: sharedHubCommandBusy,
           activeRefreshLabel: hubActiveRefreshLabel(this._snapshot, hubEntryId),
@@ -1272,7 +1274,6 @@ class SofabatonControlPanelCard extends LitElement {
           selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
           enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
           onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
-          onRefreshStale: () => void this._store.refreshStale(),
           onSelectSection: (sectionId) => {
             // Switching between the Activities / Devices lists abandons any
             // pending re-order / add-activity interaction.

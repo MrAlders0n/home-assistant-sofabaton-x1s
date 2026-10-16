@@ -920,7 +920,6 @@
         state: "on",
         attributes: {
           entry_id:              "hub-1",
-          cache_generation:      1,
           proxy_client_connected: false,
           hub_version:           "X1S",
           hub_version_confident: true,
@@ -934,7 +933,6 @@
         state: "on",
         attributes: {
           entry_id:              "hub-1",
-          cache_generation:      1,
           proxy_client_connected: true,
           hub_version:           "X1S",
           hub_version_confident: true,
@@ -948,7 +946,6 @@
         state: "on",
         attributes: {
           entry_id:              "hub-1",
-          cache_generation:      1,
           proxy_client_connected: false,
           hub_version:           "",
           hub_version_confident: false,  // ← triggers version warning banner
@@ -1567,6 +1564,28 @@
               return Promise.resolve(() => timers.forEach((timer) => clearTimeout(timer)));
               }
               return null;
+            }
+            if (type === "sofabaton_x1s/hub_state/subscribe") {
+              // The backend pushes the hub's panel state at once and on every
+              // change; the harness pushes whenever its mock state differs.
+              wsLog(type, "res");
+              let last = "";
+              const push = () => {
+                const hub = (mock.state.hubs ?? []).find((item) => item.entry_id === message.entry_id);
+                if (!hub) return;
+                const payload = {
+                  hub: { mqtt_available: scenario.mqttAvailable ?? false, ...clone(hub) },
+                  generation: Number(hub.cache_generation ?? 0),
+                  config_revision: Number(mock.state.config_revision ?? 0),
+                };
+                const key = JSON.stringify(payload);
+                if (key === last) return;
+                last = key;
+                callback(payload);
+              };
+              const first = setTimeout(push, 0);
+              const timer = setInterval(push, 1000);
+              return Promise.resolve(() => { clearTimeout(first); clearInterval(timer); });
             }
             const known = [
               "sofabaton_x1s/backup/progress_subscribe",
@@ -2347,22 +2366,18 @@
       },
       {
         id: 10, group: "Cache Tab",
-        label: "10. Stale data banner",
+        label: "10. Cache follows a change made elsewhere",
         states: STATES_CONNECTED,
         async postLoad(card) {
           await clickTab(card, "Hub");
-          card._store._refreshGraceUntil = 0;
-          card.hass = {
-            ...card.hass,
-            states: {
-              ...(card.hass?.states ?? {}),
-              "remote.living_room": {
-                state: "on",
-                attributes: { entry_id: "hub-1", cache_generation: 2,
-                              proxy_client_connected: false, activities: ACTIVITIES },
-              },
-            },
-          };
+          // Another tab renamed an activity: the backend's cache moved on.
+          // The hub-state push reports the newer generation and the card
+          // reloads the hub's rows by itself: no banner, no Refresh.
+          const mock = window._harnessHass.__mockBackend;
+          mock.contents.hubs[0].activities[0].name = "Watch TV (renamed elsewhere)";
+          mock.contents.hubs[0].cache_generation = 2;
+          mock.state.hubs[0].cache_generation = 2;
+          await new Promise((resolve) => setTimeout(resolve, 1600));
           await card.updateComplete;
         },
       },

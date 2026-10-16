@@ -848,18 +848,28 @@ class HubOpsMixin:
     async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
         """Rewrite the hub's stored activity display order to *ordered_ids*."""
 
-        return await self.hass.async_add_executor_job(
+        result = await self.hass.async_add_executor_job(
             self._proxy.reorder_activities,
             list(ordered_ids),
         )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            # The proxy re-read the catalog, but an order-only change never
+            # moves the activities signature, so nothing else bumps.
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+        return result
 
     async def async_reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
         """Rewrite the hub's stored device display order to *ordered_ids*."""
 
-        return await self.hass.async_add_executor_job(
+        result = await self.hass.async_add_executor_job(
             self._proxy.reorder_devices,
             list(ordered_ids),
         )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        return result
 
     async def async_create_activity(self, name: str) -> dict[str, Any] | None:
         """Create a fresh, empty activity named *name* on the selected hub."""

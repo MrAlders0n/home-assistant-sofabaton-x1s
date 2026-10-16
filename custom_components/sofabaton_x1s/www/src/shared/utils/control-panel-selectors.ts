@@ -286,7 +286,7 @@ export type RuntimeState =
     }
   | {
       kind: "operation_running";
-      operation: "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | "wifi_deploy";
+      operation: "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | "wifi_deploy" | "hub_write";
       label: string;
       detail: string;
       progress: {
@@ -361,7 +361,9 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
           ? "cache_refresh"
           : hubRuntime.operation === "entity_sync"
             ? "entity_sync"
-            : "wifi_deploy";
+            : hubRuntime.operation === "hub_write"
+              ? "hub_write"
+              : "wifi_deploy";
     const total = Number(hubRuntime.total_steps || 0);
     const current = Number(hubRuntime.current_step || 0);
     const percent = total > 0
@@ -476,38 +478,34 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
   return { kind: "available" };
 }
 
-export function cacheGenerationSnapshot(hass: HassLike | null) {
-  const snapshot: Record<string, number> = {};
-  for (const id of remoteEntities(hass)) {
-    const attrs = hass?.states?.[id]?.attributes ?? {};
-    const entryId = String(attrs.entry_id ?? "").trim();
-    if (!entryId) continue;
-    snapshot[entryId] = Number(attrs.cache_generation ?? 0);
-  }
-  return snapshot;
+/** Where a hub's cache stands. The generation counts changes within one
+ *  epoch (a hub object's lifetime: an HA restart or entry reload starts a
+ *  new one at 0); a newer epoch outranks any generation of an older one. */
+export interface CacheVersion {
+  epoch: number;
+  generation: number;
 }
 
-export function didHubGenerationChange(
-  previous: Record<string, number> | null | undefined,
-  next: Record<string, number> | null | undefined,
-) {
-  const prev = previous ?? {};
-  const curr = next ?? {};
-  return Object.keys(curr).some(
-    (entryId) =>
-      Object.prototype.hasOwnProperty.call(prev, entryId) && Number(curr[entryId] ?? 0) !== Number(prev[entryId] ?? 0),
-  );
+export function cacheVersionOf(
+  row: { cache_epoch?: number; cache_generation?: number } | null | undefined,
+): CacheVersion | null {
+  const generation = Number(row?.cache_generation);
+  if (!row || row.cache_generation == null || !Number.isFinite(generation)) return null;
+  const epoch = Number(row.cache_epoch);
+  return { epoch: Number.isFinite(epoch) ? epoch : 0, generation };
 }
 
-export function hassFingerprint(hass: HassLike | null) {
-  return remoteEntities(hass)
-    .sort()
-    .map((id) => {
-      const state = String(hass?.states?.[id]?.state ?? "");
-      const attrs = hass?.states?.[id]?.attributes ?? {};
-      return `${id};${attrs.entry_id ?? ""};${state};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation ?? 0)}`;
-    })
-    .join("||");
+export function compareCacheVersion(a: CacheVersion, b: CacheVersion): number {
+  return a.epoch !== b.epoch ? a.epoch - b.epoch : a.generation - b.generation;
+}
+
+/** "epoch:generation" of the cache rows the card holds for a hub, "" when
+ *  unknown. Changes each time those rows are reloaded at a new version:
+ *  what open editors watch to follow the cache. */
+export function loadedCacheVersionKey(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): string {
+  const row = (snapshot.contents?.hubs ?? []).find((hub) => hub.entry_id === entryId);
+  const version = cacheVersionOf(row);
+  return version ? `${version.epoch}:${version.generation}` : "";
 }
 
 export function connectionFingerprint(hass: HassLike | null) {

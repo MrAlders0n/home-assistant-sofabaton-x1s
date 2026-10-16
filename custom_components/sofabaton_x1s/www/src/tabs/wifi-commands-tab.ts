@@ -223,6 +223,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     showCompletion: { attribute: false },
     refreshControlPanelState: { attribute: false },
     lastWifiPress: { attribute: false },
+    changeKey: { type: String },
     hubCommandBusy: { type: Boolean },
     loading: { type: Boolean },
     error: { type: String },
@@ -811,6 +812,10 @@ class SofabatonWifiCommandsTab extends LitElement {
   /** The dock's completion notice: how a sync this tab started ended. */
   showCompletion?: ((notice: { tone: "success" | "error"; label: string }, entryId: string) => void) | null;
   refreshControlPanelState?: (() => Promise<void> | void) | null;
+  /** Moves when the command-config store is saved or the hub's cache rows
+   *  move ("revision|cache version"): the open lists reload. */
+  changeKey = "";
+  private _followTimer: ReturnType<typeof setTimeout> | null = null;
   hubCommandBusy = false;
   declare loading: boolean;
   declare error: string | null;
@@ -904,6 +909,10 @@ class SofabatonWifiCommandsTab extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
+    if (this._followTimer) {
+      clearTimeout(this._followTimer);
+      this._followTimer = null;
+    }
     if (this._irFlashClearTimer) {
       clearTimeout(this._irFlashClearTimer);
       this._irFlashClearTimer = null;
@@ -919,6 +928,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   protected updated(changed: Map<string, unknown>) {
     if (changed.has("hub")) this._deviceSessionRestoreTried = false;
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
+    if (changed.has("changeKey") && changed.get("changeKey") !== undefined) this._scheduleFollow();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
     this._notifyDirtyDock();
@@ -2342,6 +2352,30 @@ class SofabatonWifiCommandsTab extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  /** The store or the cache moved (another tab, an automation, a deploy):
+   *  reload what this tab lists, shortly after the change settles. The
+   *  command editor's drafts are the user's and stay as they are. */
+  private _scheduleFollow() {
+    if (this._followTimer) clearTimeout(this._followTimer);
+    this._followTimer = setTimeout(() => {
+      this._followTimer = null;
+      void this._followStore();
+    }, 300);
+  }
+
+  private async _followStore() {
+    const entryId = String(this.hub?.entry_id || "").trim();
+    // Before the first full load of this hub there is nothing to follow.
+    if (!entryId || !this.hass || this._configLoadedForEntryId !== entryId || this._hubLoad) return;
+    await this._loadWifiDevices(true);
+    await this._loadHubEventActions(true);
+    await this._loadWifiEventsRows();
+    if (this._selectedDeviceKey) {
+      await this._loadCommandConfigFromBackend(true);
+      await this._loadCommandSyncProgress(true);
+    }
   }
 
   private _ensureLoadedForCurrentHub(): Promise<void> {
