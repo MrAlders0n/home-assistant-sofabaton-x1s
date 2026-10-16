@@ -42,6 +42,7 @@ from .device_create import (
 )
 from .backup_export import PAYLOAD_PROFILE_FULL
 from .entity_refs import iter_entity_references
+from .entity_tables import forget_entity_detail
 from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write
@@ -1187,6 +1188,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         self.state.buttons.pop(new_device_id, None)
         self.state.button_details.pop(new_device_id, None)
         self.clear_entity_cache(new_device_id, clear_buttons=True)
+        forget_entity_detail(self, new_device_id, kind="device")
         return new_device_id, None
 
     def _device_replay_parts(
@@ -1958,6 +1960,9 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         self.state.buttons.pop(new_activity_id, None)
         self.state.button_details.pop(new_activity_id, None)
         self.clear_entity_cache(new_activity_id, clear_buttons=True)
+        # Favorites, their order, members and macros too: the hub may hand
+        # out the id of an activity it deleted (W-8).
+        forget_entity_detail(self, new_activity_id, kind="activity")
 
         post_steps = []
         restored_button_bindings = 0

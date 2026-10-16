@@ -28,7 +28,7 @@ from .protocol_const import (
     OP_REQ_DEVICES,
     OP_REQ_MACRO_LABELS,
 )
-from .entity_tables import WRITE_GROUPS, forget_entity
+from .entity_tables import WRITE_GROUPS, cached_detail_ids, forget_entity
 from .state_helpers import normalize_device_entry
 
 if TYPE_CHECKING:
@@ -721,6 +721,7 @@ class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
             gone = (set(self._idle_behavior_values) | self._idle_behavior_absent) - set(committed)
         for dev_id in gone:
             self.forget_idle_behavior(dev_id)
+        before = set(self.state.entities("device")) | set(self.state.ip_devices)
         # The observe-mode capture of a device the hub no longer lists
         # would keep it "known" (get_known_device_ids) forever, and a
         # whole-hub backup would then ask the hub for it and fail.
@@ -729,6 +730,10 @@ class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
             self.state.ip_buttons.pop(dev_id, None)
         self.state.devices = committed
         self._devices_catalog_ready = True
+        self._prune_vanished_entities(
+            "device", before | cached_detail_ids(self, "device"), set(committed),
+            other_kind_ids=set(self.state.entities("activity")),
+        )
 
     @property
     def last_devices_burst_committed(self) -> bool:
@@ -817,10 +822,38 @@ class CatalogMixin(_ProxyHost if TYPE_CHECKING else object):
                 entry["raw_body"] = bytes(raw_payload[3:])
             committed[act_id] = entry
 
+        before = set(self.state.entities("activity"))
         self.state.activities = committed
         self._activity_row_payloads = dict(self._activity_pending_payloads)
         self.state.set_hint(self._activity_pending_hint)
         self._activities_catalog_ready = True
+        self._prune_vanished_entities(
+            "activity", before | cached_detail_ids(self, "activity"), set(committed),
+            other_kind_ids=set(self.state.entities("device")) | set(self.state.ip_devices),
+        )
+
+    def _prune_vanished_entities(
+        self, kind: str, held: set[int], listed: set[int], *, other_kind_ids: set[int]
+    ) -> None:
+        """Forget the cached detail of every id a committed catalog no
+        longer lists.
+
+        The hub reuses freed ids, so nothing a vanished entity left may
+        describe the next one. This ran only on an explicit catalog refresh
+        (HA's catalog request), so an activity the hub deleted on its own
+        (the last member of a sandbox activity removed) kept its cached
+        quick-access order, which the next activity created with that id
+        then showed (journey bench W-8, X2, 2026-10-16). Every committed
+        catalog now does it. Never an id of the other kind: the kinds share
+        the command, keymap and macro tables.
+        """
+
+        for ent_id in sorted(held - listed - other_kind_ids):
+            forget_entity(self, ent_id, kind=kind)
+        if held - listed - other_kind_ids:
+            bump = getattr(self, "bump_cache_generation", None)
+            if callable(bump):
+                bump()
 
     def _activities_read_queued(self) -> bool:
         """True while a REQ_ACTIVITIES still waits behind the current burst.
