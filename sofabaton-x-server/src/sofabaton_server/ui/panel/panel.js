@@ -19001,50 +19001,78 @@ function same(a4, b3) {
   if (a4 === void 0 || b3 === void 0) return false;
   return JSON.stringify(a4) === JSON.stringify(b3);
 }
-function rowId(row) {
-  if (!isPlainObject4(row) || !isPlainObject4(row.device)) return null;
-  const id = Number(row.device.device_id);
-  return Number.isFinite(id) ? id : null;
-}
-function isRowList(value) {
-  return Array.isArray(value) && value.every((row) => rowId(row) != null);
-}
 function clone(value) {
   return value === void 0 ? value : structuredClone(value);
+}
+function idKey(value) {
+  const id = Number(value);
+  return value != null && Number.isFinite(id) ? String(id) : null;
+}
+var LIST_ROW_KEYS = {
+  commands: (row) => idKey(row.command_id),
+  button_bindings: (row) => idKey(row.button_id),
+  macros: (row) => idKey(row.button_id),
+  favorite_slots: (row) => {
+    const device = idKey(row.device_id);
+    const command = idKey(row.command_id);
+    return device && command ? `${device}:${command}` : null;
+  }
+};
+var ENTITY_ROW_KEY = (row) => isPlainObject4(row.device) ? idKey(row.device.device_id) : null;
+function keyedRows(list, key) {
+  if (list === void 0 || list === null) return /* @__PURE__ */ new Map();
+  if (!Array.isArray(list)) return null;
+  const rows = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Map();
+  for (const row of list) {
+    if (!isPlainObject4(row)) return null;
+    const base = key(row);
+    if (base == null) return null;
+    const n7 = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n7);
+    rows.set(n7 === 1 ? base : `${base}#${n7}`, row);
+  }
+  return rows;
+}
+function mergeKeyedList(base, mine, theirs, key, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  const baseRows = keyedRows(base, key);
+  const mineRows = keyedRows(mine, key);
+  const theirRows = keyedRows(theirs, key);
+  if (!baseRows || !mineRows || !theirRows) return mergeWhole(base, mine, theirs, overlap);
+  const out = [];
+  for (const [rowKey, row] of mineRows) {
+    const merged = mergeValue(baseRows.get(rowKey), row, theirRows.get(rowKey), overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  for (const [rowKey, row] of theirRows) {
+    if (mineRows.has(rowKey)) continue;
+    const merged = mergeValue(baseRows.get(rowKey), void 0, row, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  return out;
+}
+function mergeWhole(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  overlap.hit = true;
+  return mine;
 }
 function mergeValue(base, mine, theirs, overlap) {
   if (same(mine, base)) return clone(theirs);
   if (same(theirs, base) || same(mine, theirs)) return mine;
   if (isPlainObject4(base) && isPlainObject4(mine) && isPlainObject4(theirs)) {
     const out = {};
-    const keys = /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)]);
-    for (const key of keys) {
-      const value = mergeValue(base[key], mine[key], theirs[key], overlap);
+    for (const key of /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)])) {
+      const rowKey = LIST_ROW_KEYS[key];
+      const value = rowKey ? mergeKeyedList(base[key], mine[key], theirs[key], rowKey, overlap) : mergeValue(base[key], mine[key], theirs[key], overlap);
       if (value !== void 0) out[key] = value;
     }
     return out;
   }
   overlap.hit = true;
   return mine;
-}
-function mergeRows(base, mine, theirs, overlap) {
-  const byId = (rows) => new Map(rows.map((row) => [rowId(row), row]));
-  const baseRows = byId(base);
-  const mineRows = byId(mine);
-  const out = [];
-  for (const row of theirs) {
-    const id = rowId(row);
-    const merged = mergeValue(baseRows.get(id), mineRows.get(id), row, overlap);
-    if (merged !== void 0) out.push(merged);
-  }
-  const theirIds = new Set(theirs.map((row) => rowId(row)));
-  for (const row of mine) {
-    const id = rowId(row);
-    if (theirIds.has(id)) continue;
-    const merged = mergeValue(baseRows.get(id), row, void 0, overlap);
-    if (merged !== void 0) out.push(merged);
-  }
-  return out;
 }
 function rebaseBundle(base, mine, theirs) {
   const overlap = { hit: false };
@@ -19053,11 +19081,7 @@ function rebaseBundle(base, mine, theirs) {
   const m3 = mine;
   const t5 = theirs;
   for (const key of /* @__PURE__ */ new Set([...Object.keys(t5), ...Object.keys(m3)])) {
-    if ((key === "devices" || key === "activities") && isRowList(b3[key] ?? []) && isRowList(m3[key] ?? []) && isRowList(t5[key] ?? [])) {
-      out[key] = mergeRows(b3[key] ?? [], m3[key] ?? [], t5[key] ?? [], overlap);
-      continue;
-    }
-    const value = mergeValue(b3[key], m3[key], t5[key], overlap);
+    const value = key === "devices" || key === "activities" ? mergeKeyedList(b3[key], m3[key], t5[key], ENTITY_ROW_KEY, overlap) : mergeValue(b3[key], m3[key], t5[key], overlap);
     if (value !== void 0) out[key] = value;
   }
   return { bundle: out, overlap: overlap.hit };
@@ -21432,15 +21456,18 @@ var SbPanelEntityEditor = class extends i4 {
     this._commit(carried.bundle);
   }
   // -- following the cache ---------------------------------------------------------------------------
-  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read. */
+  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read.
+   *  Nor while a job runs on the hub: the next hub update after its end (updated() re-checks on every one) brings the follow. */
   _maybeFollowCache() {
     if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) return;
     if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
     this._follow.poke();
   }
   async _followCache() {
     const hubId = this._hub?.hub_id;
     if (!hubId || this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) return;
     const key = this._loadedKey;
     const versionAtStart = this.ctx?.hub?.cache ?? null;
     this._following = true;
@@ -21448,6 +21475,7 @@ var SbPanelEntityEditor = class extends i4 {
     try {
       const response = await this.api.snapshot(hubId);
       if (!this._stillOn(key) || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+      if (activeJob(this._hub)) return;
       if (!response.ok || !response.body) return;
       read = true;
       const outcome = this._adoptSnapshot(response.body, versionAtStart);

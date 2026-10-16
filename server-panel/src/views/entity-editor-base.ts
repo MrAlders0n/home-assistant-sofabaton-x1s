@@ -15,7 +15,9 @@
 // snapshot is carried over the same way when the editor opens, and a Sync
 // refused because the snapshot moved (412) is carried over and sent again
 // once. Deleted elsewhere: a clean editor closes, a dirty one shows the
-// missing screen.
+// missing screen. Never while a job runs on the hub: mid job the cache
+// passes through partial states (a command re-read clears the table before
+// it refills), so the editor follows once, when the job has ended.
 //
 // Busy states are the card's: while this editor's own sync or delete runs,
 // the screen is replaced by the full-panel progress view (never an overlay);
@@ -330,9 +332,11 @@ export abstract class SbPanelEntityEditor extends LitElement {
 
   // -- following the cache ---------------------------------------------------------------------------
 
-  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read. */
+  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read.
+   *  Nor while a job runs on the hub: the next hub update after its end (updated() re-checks on every one) brings the follow. */
   private _maybeFollowCache(): void {
     if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) return;
     if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
     this._follow.poke();
   }
@@ -340,6 +344,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
   private async _followCache(): Promise<void> {
     const hubId = this._hub?.hub_id;
     if (!hubId || this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    // A job started since the poke: wait for its end.
+    if (activeJob(this._hub)) return;
     const key = this._loadedKey;
     const versionAtStart = this.ctx?.hub?.cache ?? null;
     this._following = true;
@@ -347,6 +353,8 @@ export abstract class SbPanelEntityEditor extends LitElement {
     try {
       const response = await this.api.snapshot(hubId);
       if (!this._stillOn(key) || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+      // A job started while this was read: the rows may be a partial state; its end follows again.
+      if (activeJob(this._hub)) return;
       if (!response.ok || !response.body) return;
       read = true;
       const outcome = this._adoptSnapshot(response.body, versionAtStart);

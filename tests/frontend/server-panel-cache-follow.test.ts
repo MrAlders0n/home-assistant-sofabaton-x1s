@@ -160,7 +160,9 @@ test("the coalescer runs once after a quiet spell, and no later than the max wai
 
 // -- draft carry-over helpers ---------------------------------------------------------------------
 
-function doc(id: string, generation: number, tv: Record<string, unknown> = {}, extra: Record<string, unknown>[] = []): SnapshotDocument {
+const COMMANDS = [{ command_id: 1, name: "Power" }];
+
+function doc(id: string, generation: number, tv: Record<string, unknown> = {}, extra: Record<string, unknown>[] = [], commands: { command_id: number; name: string }[] = COMMANDS): SnapshotDocument {
   return {
     snapshot_id: id,
     captured_at: "t",
@@ -169,7 +171,7 @@ function doc(id: string, generation: number, tv: Record<string, unknown> = {}, e
     payload_profile: "structural",
     hub: { name: "X1S HUB", version: "X1S" },
     devices: [
-      { kind: "device_backup", device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1, ...tv }, complete: true, editable: true, fetched_at: "t", commands: [{ command_id: 1, name: "Power" }], button_bindings: [], macros: [] },
+      { kind: "device_backup", device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1, ...tv }, complete: true, editable: true, fetched_at: "t", commands: structuredClone(commands), button_bindings: [], macros: [] },
       ...extra,
     ],
     activities: [],
@@ -256,7 +258,7 @@ class FakeStore {
 // The editor's private and protected members, as the test drives them.
 type Editor = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-async function openEditor(initial: SnapshotDocument, draft: Draft | null = null): Promise<{ editor: Editor; api: EditorApi; store: FakeStore; setCache: (version: ReturnType<typeof v>) => void }> {
+async function openEditor(initial: SnapshotDocument, draft: Draft | null = null): Promise<{ editor: Editor; api: EditorApi; store: FakeStore; setCache: (version: ReturnType<typeof v>, activeJob?: JobView | null) => void }> {
   defineDeviceEditor();
   const api = new EditorApi(initial);
   const store = new FakeStore();
@@ -265,9 +267,9 @@ async function openEditor(initial: SnapshotDocument, draft: Draft | null = null)
   editor.api = api as never;
   editor.store = store as never;
   editor.deviceId = 1;
-  const setCache = (version: ReturnType<typeof v>) => {
+  const setCache = (version: ReturnType<typeof v>, activeJob: JobView | null = null) => {
     editor.ctx = {
-      hub: hub({ status: { hub_connected: true, app_connected: false, controllable: true, mode: "control", hub_version: "X1S", proxy_enabled: true, running_activity: null, activities_cached: 0, devices_cached: 1, catalog_ready: true } as HubView["status"], cache: version }),
+      hub: hub({ status: { hub_connected: true, app_connected: false, controllable: true, mode: "control", hub_version: "X1S", proxy_enabled: true, running_activity: null, activities_cached: 0, devices_cached: 1, catalog_ready: true } as HubView["status"], cache: version, active_job: activeJob }),
       runtime: { draft: store.draft } as never,
       gate: "pass",
       busy: null,
@@ -330,6 +332,55 @@ test("where both changed the same thing the user's edit wins and one line says s
   assert.equal(tvName(editor, "_working"), "Mine");
   assert.equal(editor._changedElsewhere, true);
   assert.match(TOOLS_CARD_STRINGS.activities.changedElsewhere("device"), /your edit is kept/);
+});
+
+test("edits of different commands on both sides both survive, with no line (the live X1S case)", async () => {
+  const commands = [{ command_id: 1, name: "Input" }, { command_id: 5, name: "Mute" }];
+  const { editor, api, store, setCache } = await openEditor(doc("s1", 1, {}, [], commands));
+  const tv = entityElement(editor._working, "device", 1)!;
+  editor._commit(withEntityElement(editor._working, "device", 1, { ...tv, commands: [{ command_id: 1, name: "Input" }, { command_id: 5, name: "Mute A" }] } as typeof tv));
+  api.doc = doc("s2", 2, {}, [], [{ command_id: 1, name: "Input B" }, { command_id: 5, name: "Mute" }]);
+  setCache(v(2));
+  await editor._followCache();
+  const names = (entityElement(editor._working, "device", 1) as { commands: { name: string }[] }).commands.map((c) => c.name);
+  assert.deepEqual(names, ["Input B", "Mute A"]);
+  assert.equal(editor._changedElsewhere, false);
+  assert.equal(store.draft?.snapshotId, "s2");
+});
+
+test("an open editor waits while a job runs on the hub and follows once it has ended", async () => {
+  const { editor, api, setCache } = await openEditor(doc("s1", 1));
+  editor._commit(renamed(editor._working, "name", "Mine"));
+  const reads = api.snapshots;
+  // Mid job the cache passes through partial states: no follow.
+  api.doc = doc("s2", 2, { brand: "Half" });
+  setCache(v(2), job("jz", "running"));
+  editor._maybeFollowCache();
+  assert.equal(editor._follow.pending, false);
+  await editor._followCache();
+  assert.equal(api.snapshots, reads, "nothing is read while the job runs");
+  assert.equal(tvBrand(editor, "_baseline"), "Sony");
+  // The job ended: one follow, onto what the job left.
+  api.doc = doc("s3", 3, { brand: "LG" });
+  setCache(v(3));
+  editor._maybeFollowCache();
+  assert.equal(editor._follow.pending, true);
+  editor._follow.cancel();
+  await editor._followCache();
+  assert.equal(api.snapshots, reads + 1);
+  assert.equal(tvBrand(editor, "_baseline"), "LG");
+  assert.equal(tvName(editor, "_working"), "Mine");
+});
+
+test("a job that starts while the editor reads leaves the read unused", async () => {
+  const { editor, api, setCache } = await openEditor(doc("s1", 1));
+  api.doc = doc("s2", 2, { name: "Partial" });
+  setCache(v(2));
+  const reading = editor._followCache();
+  setCache(v(2), job("jz", "running"));
+  await reading;
+  assert.equal(tvName(editor, "_baseline"), "TV");
+  assert.equal(editor._snapshot.snapshot_id, "s1");
 });
 
 test("deleted elsewhere: a clean editor closes, a dirty one shows the missing screen and drops its draft", async () => {
