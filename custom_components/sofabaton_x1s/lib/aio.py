@@ -3329,6 +3329,7 @@ ENGINE_ONLY: dict[str, str] = {
             "record_hub_name",
             "record_idle_behavior_value",
             "record_idle_behavior_absent",
+            "record_written_key_sort",
             "forget_idle_behavior",
             "try_finish_activities_burst",
             "try_finish_activity_map_burst",

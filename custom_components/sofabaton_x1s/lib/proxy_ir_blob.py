@@ -663,8 +663,9 @@ class IrBlobMixin(_ProxyHost if TYPE_CHECKING else object):
             )
             return
 
-        # Mirror the position we just told the hub about so a follow-up
-        # save against the same device doesn't reuse the same slot.
+        # Mirror the table and the position we just told the hub about so a
+        # follow-up save against the same device doesn't reuse the slot.
+        self.record_written_key_sort(dev_lo, ordered_pairs)
         bucket = self.state.command_metadata.setdefault(dev_lo, {})
         bucket[new_command_id & 0xFF] = {
             **(bucket.get(new_command_id & 0xFF) or {}),

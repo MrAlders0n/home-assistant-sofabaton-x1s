@@ -670,6 +670,17 @@ class AckWaitersMixin(_ProxyHost if TYPE_CHECKING else object):
             ],
         }
 
+    def record_written_key_sort(self, device_id: int, pairs: list[tuple[int, int]]) -> None:
+        """Cache a key-sort table this proxy just wrote, as a read stores it.
+
+        A writer reads the table, writes a new one and must not leave the
+        read one behind: the cache would describe the order before the
+        write (journey bench, W-4's sort-rewrite note)."""
+
+        dev_lo = device_id & 0xFF
+        body = bytes(b for cmd, pos in pairs for b in (cmd & 0xFF, pos & 0xFF))
+        self.state.device_key_sorts[dev_lo] = {"device_id": dev_lo, "msg_hex": body.hex(" ")}
+
     def fetch_device_key_sort(
         self,
         device_id: int,
