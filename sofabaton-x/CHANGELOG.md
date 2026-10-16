@@ -55,6 +55,24 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   tied with another one), and a later delete then shifted the whole list.
 - Updating a Wifi Device that removes commands also updates the device's
   command display order, as editing any other device does.
+- X1: writes that rewrite an activity's shortcut order (`sync_activity()`,
+  Wifi Device deploys and updates, `restore()`) leave out ids that no
+  favorite or macro holds any more, and write a refused order once more
+  from a fresh read. The X1 keeps the order slot of a macro removed by its
+  key delete and refuses an order that lists that id again (status
+  `0x06`): a `sync_activity()` that removed a macro and then a favorite
+  failed although both had landed, and every later order write failed the
+  same way.
+- `add_device()` reads the new device's idle behavior, so the cache and
+  `snapshot()` have it without a device refresh.
+- A committed device or activity catalog forgets what the cache held for
+  every id it no longer lists, and a create forgets what the cache held for
+  the id the hub hands out. The hub reuses freed ids: an activity the hub
+  removed on its own (its last member deleted) kept its cached shortcut
+  order, and the next activity created with that id showed it.
+- `sync_device()` adding or removing commands keeps the device's cached
+  command display order in step with the order it wrote. It wrote a new
+  order to the hub but kept the one it had read before.
 
 ## 0.2.4 (2026-10-10)
 

@@ -23,7 +23,6 @@ from .const import (
     signal_command_sync,
 )
 from .lib.wifi_inplace_plan import (
-    COMMAND_RECORD_STEP_KINDS,
     REFERENCED_RECORD_STEP_KINDS,
     baseline_snapshot_from_bundle,
     build_wifi_inplace_plan,
