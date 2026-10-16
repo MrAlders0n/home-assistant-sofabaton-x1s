@@ -1228,8 +1228,10 @@ class CommandConfigStore:
 
         ``command_id`` is the event's one hub record (slot index + 1;
         wifi-events-single-record-plan). ``deployed`` is True when the
-        slot index is covered by the deployed snapshot; a freshly
-        allocated slot reads False until its sync lands.
+        deployed snapshot holds the slot under the same name; a freshly
+        allocated or renamed slot reads False until its sync lands. (The
+        snapshot lists every slot, configured or not, so the slot index
+        alone said nothing: journey bench W-2.)
         """
 
         record = self._wifi_events_record(entry_id)
@@ -1237,8 +1239,18 @@ class CommandConfigStore:
             return []
         commands, _slot_count = self._wifi_events_slots(record)
         deployed_commands = record.get("deployed_commands")
-        deployed_len = len(deployed_commands) if isinstance(deployed_commands, list) else 0
+        deployed_list = deployed_commands if isinstance(deployed_commands, list) else []
         deployed_device_id = record.get("deployed_device_id")
+
+        def _deployed(idx: int, slot: dict[str, Any]) -> bool:
+            if not isinstance(deployed_device_id, int) or idx >= len(deployed_list):
+                return False
+            row = deployed_list[idx]
+            if not isinstance(row, dict):
+                return False
+            name = str(row.get("name") or "").strip()
+            return name not in ("", f"Command {idx + 1}") and name == str(slot.get("name") or "").strip()
+
         events: list[dict[str, Any]] = []
         for idx, slot in enumerate(commands):
             if slot == _default_slot(idx):
@@ -1250,7 +1262,7 @@ class CommandConfigStore:
                     "action": _normalize_action(slot.get("action")),
                     "command_id": idx + 1,
                     "device_id": deployed_device_id if isinstance(deployed_device_id, int) else None,
-                    "deployed": isinstance(deployed_device_id, int) and idx < deployed_len,
+                    "deployed": _deployed(idx, slot),
                 }
             )
         return events
