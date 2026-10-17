@@ -18,7 +18,8 @@ import pytest
 
 from custom_components.sofabaton_x1s.lib import proxy_activity_sync, proxy_ir_blob
 from custom_components.sofabaton_x1s.lib.activity_sync import build_device_sync_plan
-from custom_components.sofabaton_x1s.lib.device_create import encode_command_sort_body
+from custom_components.sofabaton_x1s.lib.device_create import encode_command_sort_body, sort_pairs_from_hex
+from custom_components.sofabaton_x1s.lib.proxy_ack_waiters import AckWaitersMixin
 from custom_components.sofabaton_x1s.lib.proxy_activity_sync import ActivitySyncMixin
 from test_device_sync_plan import DEVICE_ID, _device, _kinds, base_bundle
 
@@ -47,10 +48,16 @@ def _pairs_written(steps) -> list[tuple[int, int]]:
 
 class _Fake:
     def __init__(self, *, commands, metadata, table_hex=""):
-        self.state = SimpleNamespace(commands=commands, command_metadata=metadata)
+        self.state = SimpleNamespace(commands=commands, command_metadata=metadata, device_key_sorts={})
         self._log = logging.getLogger("test")
         self.table_hex = table_hex
         self.fetched = []
+
+    def record_written_key_sort(self, device_id, pairs):
+        AckWaitersMixin.record_written_key_sort(self, device_id, pairs)
+
+    def cached_pairs(self, device_id):
+        return sort_pairs_from_hex(self.state.device_key_sorts[device_id]["msg_hex"])
 
     def clear_ack_queue(self):
         pass
@@ -100,6 +107,8 @@ def test_add_registration_keeps_real_positions_and_appends(monkeypatch):
     _IR_BLOB_CLASS._register_command_in_device_sort(fake, dev_lo=1, new_command_id=9, ack_timeout=5.0)
     assert fake.fetched == [1]
     assert _pairs_written(captured["steps"]) == [(7, 1), (8, 2), (9, 3)]
+    # The cache holds the table just written, not the one read before it.
+    assert fake.cached_pairs(1) == [(7, 1), (8, 2), (9, 3)]
 
 
 def test_add_registration_falls_back_to_cached_positions_when_the_table_is_unreadable(monkeypatch):
@@ -167,6 +176,8 @@ def test_rewrite_prunes_removed_ids_folds_survivors_and_renumbers(monkeypatch):
     assert _pairs_written(captured["steps"]) == [(2, 1), (4, 2), (5, 3), (6, 4)]
     assert fake.state.command_metadata[1][6]["sort_id"] == 4
     assert fake.state.command_metadata[1][4]["sort_id"] == 2
+    # The cache holds the rewritten table, not the one read before it.
+    assert fake.cached_pairs(1) == [(2, 1), (4, 2), (5, 3), (6, 4)]
 
 
 def test_rewrite_keeps_existing_order_not_id_order(monkeypatch):

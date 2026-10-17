@@ -79,8 +79,8 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubCommandInProgress: "Hub command in progress…",
   },
   sidebarPanel: {
-    // The sidebar entry and the panel header. A product name: the same in
-    // every language.
+    // The sidebar entry's name until someone renames it. A product name:
+    // the same in every language.
     title: "Sofabaton X",
   },
   adminOnly: {
@@ -157,6 +157,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
     hubNameInvalid: "The hub cannot store this name.",
     hubRenameFailed: "The hub did not accept the new name.",
@@ -201,12 +202,16 @@ export const TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription:
-      "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
+    // The name is the panel's sidebar name (renameable while it is shown).
+    sidebarPanelDescription: (name: string) =>
+      `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
+    renameSidebarPanel: "Rename sidebar panel",
+    sidebarPanelNameLabel: "Name in the sidebar",
+    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
     hubNameHelper: "Use 1–30 characters: A–Z, a–z, 0–9, spaces or basic punctuation except backslash (\\). Other characters are removed.",
@@ -243,7 +248,6 @@ export const TOOLS_CARD_STRINGS_EN = {
     buttons: "Buttons",
     noCachedData: "No cached data yet.",
     noCachedCommands: "No cached commands.",
-    staleBanner: "Cache was updated externally. Refresh to see latest data.",
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
@@ -334,6 +338,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     operationCacheRefresh: "Refreshing hub cache",
     operationEntitySync: "Syncing with hub",
     operationWifiDeploy: "Syncing Wifi Commands",
+    operationHubWrite: "Working on the hub",
     working: "Working…",
     step: (current: number, total: number) => `Step ${current} of ${total}`,
     backupPreparing: "Preparing backup…",
@@ -410,6 +415,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiStepActivityJoin: "Adding the device to an activity…",
     wifiStepActivityLeave: "Removing the device from an activity…",
     wifiStepHeadCommit: "Saving the device…",
+    wifiStepCommandSortRewrite: "Updating the command order…",
     wifiStepBindingWrite: "Assigning a button…",
   },
   activities: {
@@ -452,6 +458,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
+    // The cache moved under an open editor and an edit of the user's was
+    // also changed elsewhere: the user's version was kept.
+    changedElsewhere: (kind: "activity" | "device") =>
+      `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
     exitUnsyncedTitle: "Unsynced changes",
     exitUnsyncedBody: (kind: "activity" | "device") =>
       `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
@@ -704,7 +714,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     macroTargetOwnGroup: "In this activity",
     macroTargetCopyGroup: "Copy from another activity",
     macroTargetCopyNote: (steps: number, activity: string) =>
-      `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
+      `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button’s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
@@ -1005,10 +1015,13 @@ export const TOOLS_CARD_STRINGS_EN = {
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
     powerOffCommand: "Power OFF command",
-    thisDevice: "this device",
     replacesOnButton: (slot: string) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot: string, device: string) =>
       `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot: string, activities: string[]) =>
+      `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot: string, device: string, activities: string[]) =>
+      `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
     none: "None",
     commandSlotDescription:
       "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",

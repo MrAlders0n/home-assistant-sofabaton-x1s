@@ -24,11 +24,15 @@ const baselinePath = join(root, "pyright-baseline.json");
 const update = process.argv.includes("--update");
 
 function runPyright() {
-  const run = spawnSync("npx", ["--no-install", "pyright", "--outputjson"], {
+  // npx is npx.cmd on Windows and only runs through a shell; the shell gets
+  // one command line, since args beside shell: true is DEP0190.
+  const win = process.platform === "win32";
+  const args = ["--no-install", "pyright", "--outputjson"];
+  const run = spawnSync(win ? ["npx", ...args].join(" ") : "npx", win ? [] : args, {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
-    shell: process.platform === "win32",
+    shell: win,
   });
   try {
     return JSON.parse(run.stdout);

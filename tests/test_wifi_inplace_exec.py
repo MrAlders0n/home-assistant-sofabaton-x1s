@@ -77,7 +77,7 @@ def test_walker_runs_all_steps_in_order():
     assert result["completed_steps"] == len(plan.steps)
     assert proxy.dispatched == [s.kind for s in plan.steps]
     assert proxy.dispatched == [
-        "command_add", "command_delete", "wifi_power_config",
+        "command_add", "command_delete", "command_sort_rewrite", "wifi_power_config",
         "membership_remove", "wifi_head_commit",
     ]
     assert result["counters"]["command_add"] == 1
@@ -91,7 +91,7 @@ def test_walker_stops_on_first_rejection_after_one_retry():
     assert result["failed_at"] == "wifi_power_config"
     # the failing step is retried once (idempotent rewrites); nothing after
     assert proxy.dispatched == [
-        "command_add", "command_delete", "wifi_power_config", "wifi_power_config",
+        "command_add", "command_delete", "command_sort_rewrite", "wifi_power_config", "wifi_power_config",
     ]
     assert "wifi_head_commit" not in proxy.dispatched
 

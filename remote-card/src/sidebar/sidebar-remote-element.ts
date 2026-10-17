@@ -14,6 +14,11 @@ import { runtimeButtonVisibility } from "../remote-card-runtime-display";
 import type { RemoteCardConfig } from "../remote-card-types";
 import { LAST_DEVICE_STORAGE_PREFIX, RemoteCardStore } from "../state/remote-card-store";
 import { sidebarBusyState, type SidebarRuntimeState } from "./sidebar-busy";
+import {
+  DOCK_MONOGRAM, DOCK_SLOTS, dockIconFor, dockIsFull, dockMonogram, dockScope, dockSlotOf, moveDockSlot,
+  pinToFreeSlot, readDockTable, sameDockRef, setDockIcon, unpinDockSlot, withDockSlots, writeDockTable,
+  type DockPin, type DockRef, type DockSlot, type DockSlots, type DockTable,
+} from "./sidebar-dock";
 import { SidebarPressController } from "./sidebar-press";
 import { wantsLandscape } from "./sidebar-layout";
 import { sidebarRemoteStyles } from "./sidebar-remote-styles";
@@ -22,6 +27,26 @@ import { applySidebarTheme } from "./sidebar-remote-theme";
 export const SIDEBAR_REMOTE_TAG = "sofabaton-sidebar-remote";
 
 type SheetPane = "favorites" | "macros" | "commands" | "activities" | "devices";
+type Derived = ReturnType<RemoteCardStore["deriveRuntimeState"]>;
+type Point = { x: number; y: number };
+
+/** A pinnable item of the current scope: a favorite or macro (activity mode) or a device command. */
+interface DockItem {
+  ref: DockRef;
+  label: string;
+  /** A favorite's device, as the sheet names it; macros and commands have none (the activity or device on screen says it). */
+  owner: string | null;
+  ownIcon: string | null;
+  send: () => Promise<void>;
+}
+
+/** The dock shortcuts are keys to the press controller (a tap sends), under
+ *  ids no hub key uses. */
+const DOCK_KEY_IDS: Record<DockSlot, number> = { left: -101, right: -102 };
+
+function dockSlotForKey(id: number): DockSlot | null {
+  return id === DOCK_KEY_IDS.left ? "left" : id === DOCK_KEY_IDS.right ? "right" : null;
+}
 
 /** Spec key per hub key id (the press controller resolves on these). */
 const KEY_BY_ID: Record<number, string> = {
@@ -121,6 +146,16 @@ export class SofabatonSidebarRemote extends LitElement {
   private _numpadOpen = false;
   private _numpadPageKey = "";
   private _outsideTap: ((ev: Event) => void) | null = null;
+  /** The dock shortcuts of `_dockEntity`, read once per entity (sidebar-dock.ts). */
+  private _dockEntity = "";
+  private _dockTable: DockTable = {};
+  /** The dock drawer: open or not, and the side it shows (kept while it slides out). */
+  private _dockSheetOpen = false;
+  private _dockSheetSlot: DockSlot | null = null;
+  /** The pin that opened the dock drawer: focus goes back to it on close. */
+  private _dockSheetOpener: HTMLElement | null = null;
+  /** The side just pinned: its shortcut pops in once the sheet closes. */
+  private _justPinned: DockSlot | null = null;
 
   constructor() {
     super();
@@ -166,6 +201,10 @@ export class SofabatonSidebarRemote extends LitElement {
     if (next === this._entityId) return;
     this._entityId = next;
     this._sheet = null;
+    this._dockSheetOpen = false;
+    this._dockSheetSlot = null;
+    this._dockSheetOpener = null;
+    this._justPinned = null;
     this._numpadOpen = false;
     if (next) {
       this._store.setConfig(sidebarConfig(next));
@@ -229,7 +268,8 @@ export class SofabatonSidebarRemote extends LitElement {
 
   private readonly _onKeydown = (ev: KeyboardEvent): void => {
     if (ev.key !== "Escape") return;
-    if (this._sheet) { this._openSheet(null); ev.preventDefault(); }
+    if (this._dockSheetOpen) { this._closeDockSheet(); ev.preventDefault(); }
+    else if (this._sheet) { this._openSheet(null); ev.preventDefault(); }
     else if (this._numpadOpen) { this._numpadOpen = false; this.requestUpdate(); ev.preventDefault(); }
   };
 
@@ -250,7 +290,7 @@ export class SofabatonSidebarRemote extends LitElement {
         if (!Number.isFinite(id)) return null;
         return { id, key: KEY_BY_ID[id] ?? String(id) };
       },
-      hasLongPress: (id) => this._store.longPressAvailableForButton(id, this._scopeFor(id)),
+      hasLongPress: (id) => dockSlotForKey(id) == null && this._store.longPressAvailableForButton(id, this._scopeFor(id)),
       isEnabled: (id) => this._keyEnabled(id),
       onTap: (id, el, at) => this._send(id, el, at),
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
@@ -316,6 +356,8 @@ export class SofabatonSidebarRemote extends LitElement {
 
   private _keyEnabled(id: number): boolean {
     if (this._busy().inert) return false;
+    const dock = dockSlotForKey(id);
+    if (dock) return this._dockShortcut(dock) != null;
     return this._store.isEnabled(id);
   }
 
@@ -327,6 +369,8 @@ export class SofabatonSidebarRemote extends LitElement {
   }
 
   private _send(id: number, el: Element, at?: { x: number; y: number }): void {
+    const dock = dockSlotForKey(id);
+    if (dock) return this._fireDockShortcut(dock, el, at);
     this._store.triggerCommandPulse();
     this._ring(el, false, at);
     this._control(this._store.sendCommand(id, this._scopeFor(id)), el);
@@ -435,10 +479,11 @@ export class SofabatonSidebarRemote extends LitElement {
     if (pane === "favorites" || pane === "macros") this._lastDrawer = pane;
     const opening = pane != null && this._sheet == null;
     this._sheet = pane;
+    this._dockSheetOpen = false;
     this.requestUpdate();
     if (opening) {
       // Keyboard users land on the close button; Escape closes.
-      void this.updateComplete.then(() => (this.renderRoot.querySelector(".sheet .close") as HTMLElement | null)?.focus({ preventScroll: true }));
+      void this.updateComplete.then(() => (this.renderRoot.querySelector(".sheet:not(.dsheet) .close") as HTMLElement | null)?.focus({ preventScroll: true }));
     }
   }
 
@@ -481,6 +526,7 @@ export class SofabatonSidebarRemote extends LitElement {
     this._store.toggleMode();
     this._rememberView();
     this._sheet = null;
+    this._dockSheetOpen = false;
     this._numpadOpen = false;
     this.requestUpdate();
   }
@@ -490,6 +536,241 @@ export class SofabatonSidebarRemote extends LitElement {
     const store = this._store;
     // Device mode: the device's power toggle. Activity mode: all off.
     this._control(store.mode() === "device" ? store.toggleDevicePower() : store.setActivity(str().card.poweredOff), el);
+  }
+
+  // ---------- dock shortcuts (sidebar-dock.ts) ----------
+
+  private _dockScopeNow(): string | null {
+    const store = this._store;
+    return dockScope(store.mode(), store.currentActivityId(), store.currentDeviceId());
+  }
+
+  private _dockSlots(scope: string): DockSlots {
+    if (this._dockEntity !== this._entityId) {
+      this._dockEntity = this._entityId;
+      this._dockTable = readDockTable(this._entityId);
+    }
+    return this._dockTable[scope] ?? {};
+  }
+
+  private _saveDock(scope: string, slots: DockSlots): void {
+    this._dockSlots(scope);
+    this._dockTable = withDockSlots(this._dockTable, scope, slots);
+    writeDockTable(this._entityId, this._dockTable);
+    this.requestUpdate();
+  }
+
+  /** Everything pinnable in the current scope, or null while a device's command list is still unknown. */
+  private _dockItems(derived: Derived): DockItem[] | null {
+    const store = this._store;
+    if (derived.mode === "device") {
+      const deviceId = Number(derived.deviceId);
+      if (derived.deviceId == null || !Number.isFinite(deviceId)) return [];
+      if (derived.keymapEntry?.status !== "ready") return null;
+      return derived.keymapEntry.commands.map((command) => ({
+        ref: { kind: "commands", commandId: Number(command.command_id), deviceId },
+        label: command.name,
+        owner: null,
+        ownIcon: null,
+        send: () => store.sendCommand(command.command_id, store.currentDeviceId()),
+      }));
+    }
+    const fallbackDevice = store.currentActivityId();
+    const items = (kind: "favorites" | "macros", list: unknown): DockItem[] =>
+      (Array.isArray(list) ? (list as Array<Record<string, unknown>>) : []).map((raw) => {
+        const model = drawerButtonModel(raw, kind, fallbackDevice);
+        return {
+          ref: { kind, commandId: model.commandId, deviceId: model.deviceId },
+          label: model.label,
+          owner: kind === "favorites" ? store.deviceNameForId(model.deviceId) : null,
+          ownIcon: model.icon,
+          send: () => store.sendDrawerItem(kind, model.commandId, model.deviceId, raw),
+        };
+      });
+    return [...items("favorites", derived.favorites), ...items("macros", derived.macros)];
+  }
+
+  /** The scope's slots without pins whose item is gone from the hub; as stored while the lists are unknown. */
+  private _liveDockSlots(scope: string, items: DockItem[] | null): DockSlots {
+    let slots = this._dockSlots(scope);
+    if (!items) return slots;
+    for (const slot of DOCK_SLOTS) {
+      const pin = slots[slot];
+      if (pin && !items.some((it) => sameDockRef(it.ref, pin))) slots = unpinDockSlot(slots, slot);
+    }
+    return slots;
+  }
+
+  /** A pinned side with its live item, or null. */
+  private _dockShortcut(slot: DockSlot, derived: Derived = this._store.deriveRuntimeState()): { pin: DockPin; item: DockItem; icon: string } | null {
+    const scope = this._dockScopeNow();
+    if (!scope) return null;
+    const pin = this._dockSlots(scope)[slot];
+    const item = pin ? (this._dockItems(derived) ?? []).find((it) => sameDockRef(it.ref, pin)) : undefined;
+    return pin && item ? { pin, item, icon: dockIconFor(pin, item.label, item.ownIcon) } : null;
+  }
+
+  /** A list's pin: an unpinned item pins into a free side (a full dock pins
+   *  nothing more); a pinned one opens its options, Unpin among them. */
+  private _pinTapped(ref: DockRef, el: HTMLElement): void {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    // The list in front of the user is the truth here: a pin whose item is
+    // gone from the hub no longer holds its side.
+    const slots = this._liveDockSlots(scope, this._dockItems(this._store.deriveRuntimeState()));
+    const pinned = dockSlotOf(slots, ref);
+    if (pinned) return this._openDockSheet(pinned, el);
+    const free = pinToFreeSlot(slots, ref);
+    if (!free) return;
+    this._haptic();
+    this._justPinned = free.slot;
+    this._saveDock(scope, free.slots);
+  }
+
+  /** A tap on a dock shortcut sends its item, like the sheet does. */
+  private _fireDockShortcut(slot: DockSlot, el: Element, at?: Point): void {
+    const shortcut = this._dockShortcut(slot);
+    if (!shortcut) return;
+    this._store.triggerCommandPulse();
+    this._ring(el, false, at);
+    this._control(shortcut.item.send(), el);
+  }
+
+  /** A pinned item's pin opens the shortcut's options in a drawer stacked on the sheet. */
+  private _openDockSheet(slot: DockSlot, opener: HTMLElement): void {
+    if (!this._dockShortcut(slot) || this._busy().inert) return;
+    this._dockSheetSlot = slot;
+    this._dockSheetOpener = opener;
+    this._dockSheetOpen = true;
+    this.requestUpdate();
+    void this.updateComplete.then(() => (this.renderRoot.querySelector(".dsheet .close") as HTMLElement | null)?.focus({ preventScroll: true }));
+  }
+
+  /** Back to the sheet underneath, focus on the pin that opened the drawer. */
+  private _closeDockSheet(): void {
+    if (!this._dockSheetOpen) return;
+    // The slot stays set so the content slides out with the drawer.
+    this._dockSheetOpen = false;
+    this.requestUpdate();
+    const opener = this._dockSheetOpener;
+    this._dockSheetOpener = null;
+    void this.updateComplete.then(() => { if (opener?.isConnected) opener.focus({ preventScroll: true }); });
+  }
+
+  private _moveSlot(from: DockSlot, to: DockSlot): void {
+    const scope = this._dockScopeNow();
+    if (!scope || from === to) return;
+    this._dockSheetSlot = to;
+    // A shortcut still waiting to pop in moves with it (the two trade places).
+    if (this._justPinned) this._justPinned = this._justPinned === from ? to : from;
+    this._saveDock(scope, moveDockSlot(this._dockSlots(scope), from, to));
+  }
+
+  private _unpin(slot: DockSlot): void {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    if (this._justPinned === slot) this._justPinned = null;
+    this._haptic();
+    this._saveDock(scope, unpinDockSlot(this._dockSlots(scope), slot));
+    this._closeDockSheet();
+  }
+
+  private _setDockIcon(slot: DockSlot, icon: string | null): void {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    this._saveDock(scope, setDockIcon(this._dockSlots(scope), slot, icon));
+  }
+
+  /** A shortcut's face: its icon, or the label's initials. */
+  private _dockGlyph(icon: string, label: string): TemplateResult {
+    return icon === DOCK_MONOGRAM
+      ? html`<span class="mono">${dockMonogram(label)}</span>`
+      : html`<ha-icon .icon=${icon}></ha-icon>`;
+  }
+
+  /** The pin at the end of a sheet item: pins it, or, once pinned, opens the
+   *  shortcut's options. Dimmed while the dock is full. */
+  private _pinButton(ref: DockRef, label: string, slots: DockSlots): TemplateResult | typeof nothing {
+    if (!Number.isFinite(ref.commandId) || !Number.isFinite(ref.deviceId)) return nothing;
+    const s = str();
+    const pinned = dockSlotOf(slots, ref) != null;
+    const blocked = !pinned && dockIsFull(slots);
+    return html`<button class=${classMap({ pin: true, on: pinned, blocked })} type="button" data-press
+      aria-label=${pinned ? s.sidebar.pinnedToDock(label) : s.sidebar.pinToDock(label)} aria-haspopup=${pinned ? "dialog" : nothing}
+      aria-disabled=${blocked ? "true" : nothing} title=${blocked ? s.sidebar.dockFull : nothing}
+      @click=${(ev: Event) => this._pinTapped(ref, ev.currentTarget as HTMLElement)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
+  }
+
+  private _renderDock(derived: Derived, deviceMode: boolean, inert: boolean): TemplateResult {
+    const s = str();
+    const popSlot = this._sheet == null && !this._dockSheetOpen ? this._justPinned : null;
+    return html`
+      <div class="dock">
+        <button class="pull" type="button" aria-label=${deviceMode ? s.sidebar.pullHandleCommands : s.sidebar.pullHandle} @click=${this._togglePull}>
+          <span class="grip"></span>
+          <span class="knob"><ha-icon .icon=${"mdi:chevron-up"}></ha-icon></span>
+        </button>
+        ${DOCK_SLOTS.map((slot) => {
+          const shortcut = this._dockShortcut(slot, derived);
+          if (!shortcut) return nothing;
+          const { item, icon } = shortcut;
+          // A key to the press controller: a tap sends. Its options are on the item's pin in the sheet.
+          return html`<button class=${classMap({ sc: true, [slot]: true, new: popSlot === slot })} type="button" data-key=${DOCK_KEY_IDS[slot]}
+            aria-label=${item.label} title=${item.label} aria-disabled=${inert ? "true" : nothing}
+            @animationend=${() => { this._justPinned = null; this.requestUpdate(); }}>${this._dockGlyph(icon, item.label)}</button>`;
+        })}
+      </div>
+    `;
+  }
+
+  /** The dock shortcut's options: a second drawer, stacked on the sheet whose
+   *  pin opened it. It always shows that pin's shortcut: Swap sides is an action
+   *  that moves it (trading places with the other one), never a picker between the two. */
+  private _renderDockSheet(derived: Derived): TemplateResult {
+    const s = str();
+    const open = this._dockSheetOpen;
+    const slot = this._dockSheetSlot;
+    const shortcut = slot ? this._dockShortcut(slot, derived) : null;
+    const label = shortcut?.item.label ?? "";
+    // The automatic icon shows as the picker's placeholder; clearing the picker returns to it.
+    const automatic = shortcut ? dockIconFor({ ...shortcut.pin, icon: null }, label, shortcut.item.ownIcon) : DOCK_MONOGRAM;
+    return html`
+      <div class="sheet dsheet" role="dialog" aria-modal="true" aria-hidden=${open ? "false" : "true"} ?inert=${!open} aria-label=${label}>
+        <div class="grip"></div>
+        ${shortcut && slot
+          ? html`
+            <div class="phead">
+              <span class="prev">${this._dockGlyph(shortcut.icon, label)}</span>
+              <div class="titles">
+                <span class="eyebrow">${s.sidebar.dockShortcut}</span>
+                <span class="name">${label}</span>
+                ${shortcut.item.owner ? html`<span class="owner">${shortcut.item.owner}</span>` : nothing}
+              </div>
+              <button class="close" type="button" aria-label=${s.sidebar.close} @click=${() => this._closeDockSheet()}><ha-icon .icon=${"mdi:close"}></ha-icon></button>
+            </div>
+            <div class="dbody">
+              <ha-form
+                .hass=${this._hass}
+                .schema=${[{ name: "icon", selector: { icon: automatic === DOCK_MONOGRAM ? {} : { placeholder: automatic } } }]}
+                .data=${{ icon: shortcut.pin.icon ?? "" }}
+                .computeLabel=${() => s.sidebar.dockIcon}
+                @value-changed=${(ev: CustomEvent<{ value?: Record<string, unknown> }>) => {
+                  ev.stopPropagation();
+                  const icon = String(ev.detail?.value?.icon ?? "").trim();
+                  this._setDockIcon(slot, icon || null);
+                }}
+              ></ha-form>
+              <div class="pfoot">
+                <button class="swap" type="button" data-press aria-description=${slot === "left" ? s.sidebar.dockOnLeft : s.sidebar.dockOnRight}
+                  @click=${() => this._moveSlot(slot, slot === "left" ? "right" : "left")}>
+                  <span class=${classMap({ dot: true, on: slot === "left" })}></span>${s.sidebar.dockSwap}<span class=${classMap({ dot: true, on: slot === "right" })}></span>
+                </button>
+                <button class="unpin" type="button" data-press @click=${() => this._unpin(slot)}><ha-icon .icon=${"mdi:pin-off-outline"}></ha-icon>${s.sidebar.unpin}</button>
+              </div>
+            </div>`
+          : nothing}
+      </div>
+    `;
   }
 
   // ---------- render ----------
@@ -551,7 +832,7 @@ export class SofabatonSidebarRemote extends LitElement {
       : html`<div class=${classMap({ pill: true, single: true, off: allOff(ID.PAUSE) })}>${key(ID.PAUSE, { seg: true }, icon("mdi:play-pause"))}</div>`;
 
     return html`
-      <div class=${classMap({ app: true, landscape: this._landscape, inert: busy.inert, busy: busy.busy, pick: busy.reason === "no-device" || busy.reason === "off", "powered-off": busy.reason === "off", open: this._sheet != null })} data-mode=${derived.mode}>
+      <div class=${classMap({ app: true, landscape: this._landscape, inert: busy.inert, busy: busy.busy, pick: busy.reason === "no-device" || busy.reason === "off", "powered-off": busy.reason === "off", open: this._sheet != null, "dock-open": this._dockSheetOpen })} data-mode=${derived.mode}>
         <main class="remote" aria-busy=${busy.busy ? "true" : "false"}>
           <div class="activity">
             ${modeAvailable
@@ -640,13 +921,12 @@ export class SofabatonSidebarRemote extends LitElement {
           <div class="sp"></div>
         </main>
 
-        <button class="pull" type="button" aria-label=${deviceMode ? s.sidebar.pullHandleCommands : s.sidebar.pullHandle} @click=${this._togglePull}>
-          <span class="grip"></span>
-          <span class="knob">${icon("mdi:chevron-up")}</span>
-        </button>
+        ${this._renderDock(derived, deviceMode, busy.inert)}
 
         <div class="scrim" @click=${() => this._openSheet(null)}></div>
         ${this._renderSheet(derived, deviceMode)}
+        <div class="scrim dscrim" @click=${() => this._closeDockSheet()}></div>
+        ${this._renderDockSheet(derived)}
       </div>
     `;
   }
@@ -668,7 +948,7 @@ export class SofabatonSidebarRemote extends LitElement {
       : pane === "favorites" ? s.card.favoritesTab : pane === "macros" ? s.card.macrosTab : s.sidebar.activities;
     const eyebrow = pane === "commands" ? (this._store.deviceNameForId(derived.deviceId) ?? "") : "";
     return html`
-      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>
+      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} ?inert=${this._dockSheetOpen} aria-label=${title}>
         <div class="grip"></div>
         ${headed
           ? html`<div class="phead"><div class="titles">${eyebrow ? html`<span class="eyebrow">${eyebrow}</span>` : nothing}<span>${title}</span></div>${close}</div>`
@@ -690,17 +970,24 @@ export class SofabatonSidebarRemote extends LitElement {
     const devices = store.devices();
     const classOf = (deviceId: number) => deviceClassIcon(devices.find((d) => d.id === deviceId)?.device_class);
     const fallbackDevice = store.currentActivityId();
+    const scope = this._dockScopeNow();
+    const slots = scope ? this._liveDockSlots(scope, this._dockItems(derived)) : {};
+    // Only the current scope pins: the pin goes on items of the activity or device on screen.
+    const pin = (ref: DockRef, label: string) => (scope ? this._pinButton(ref, label, slots) : nothing);
 
     if (pane === "favorites") {
       const favorites = (derived.favorites as Array<Record<string, unknown>>).map((raw) => ({ raw, model: drawerButtonModel(raw, "favorites", fallbackDevice) }));
       const custom = (derived.customFavorites as Array<Record<string, unknown>>).map((raw) => ({ raw, model: customFavoriteButtonModel(raw, fallbackDevice) }));
       if (!favorites.length && !custom.length) return html`<div class="empty">${s.card.noFavorites}</div>`;
+      // Hub order, as the physical remote shows them: one per row on a phone, never more than two.
       return html`<div class="grid">
-        ${favorites.map(({ raw, model }) => html`
+        ${favorites.map(({ raw, model }) => html`<div class="item">
           <button class="tile" type="button" data-press @click=${(ev: Event) => this._drawerItem("favorites", model, raw, ev.currentTarget as Element, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
-          </button>`)}
+          </button>
+          ${pin({ kind: "favorites", commandId: model.commandId, deviceId: model.deviceId }, model.label)}
+        </div>`)}
         ${custom.map(({ model }) => html`
           <button class="tile" type="button" data-press @click=${(ev: Event) => this._customFavorite(model, ev.currentTarget as Element, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
@@ -712,25 +999,28 @@ export class SofabatonSidebarRemote extends LitElement {
       const macros = (derived.macros as Array<Record<string, unknown>>).map((raw) => ({ raw, model: drawerButtonModel(raw, "macros", fallbackDevice) }));
       if (!macros.length) return html`<div class="empty">${s.card.noMacros}</div>`;
       return html`<div class="list">
-        ${macros.map(({ raw, model }) => html`
+        ${macros.map(({ raw, model }) => html`<div class="item">
           <button class="lrow" type="button" data-press @click=${(ev: Event) => this._drawerItem("macros", model, raw, ev.currentTarget as Element, clickPoint(ev))}>
             <ha-icon class="li" .icon=${model.icon ?? "mdi:playlist-play"}></ha-icon>
             <span class="t"><b>${model.label}</b></span>
-            <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
-          </button>`)}
+          </button>
+          ${pin({ kind: "macros", commandId: model.commandId, deviceId: model.deviceId }, model.label)}
+        </div>`)}
       </div>`;
     }
     if (pane === "commands") {
       const commands = derived.commands;
       const deviceIcon = classOf(derived.deviceId ?? -1);
       if (!commands.length) return html`<div class="empty">${derived.keymapLoading ? s.sidebar.working : s.card.noCommands}</div>`;
+      const deviceId = Number(derived.deviceId);
       return html`<div class="list">
-        ${commands.map((command) => html`
+        ${commands.map((command) => html`<div class="item">
           <button class="lrow" type="button" data-press @click=${(ev: Event) => this._command(command.command_id, ev.currentTarget as Element, clickPoint(ev))}>
             <ha-icon class="li" .icon=${deviceIcon}></ha-icon>
             <span class="t"><b>${command.name}</b></span>
-            <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
-          </button>`)}
+          </button>
+          ${pin({ kind: "commands", commandId: Number(command.command_id), deviceId }, command.name)}
+        </div>`)}
       </div>`;
     }
     if (pane === "devices") {

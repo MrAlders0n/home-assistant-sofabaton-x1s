@@ -1851,6 +1851,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                 dev_lo,
             )
             return True
+        self.record_written_key_sort(dev_lo, new_pairs)
         bucket = self.state.command_metadata.setdefault(dev_lo, {})
         for cmd, pos in new_pairs:
             if cmd in bucket:

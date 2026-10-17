@@ -412,7 +412,7 @@ export class MacroStepEditorController implements ReactiveController {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this.closeEditor}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this.host._renderDetailCrumbs([

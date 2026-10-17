@@ -33,7 +33,7 @@ The default branch is `main`; day-to-day development happens on `dev`. Target PR
 ## ◇ Prerequisites
 
 - **Python 3.11+** (development and CI primarily use 3.13)
-- **Node 20+** (only needed for frontend work)
+- **Node 22+** (only needed for frontend work; CI uses 24)
 
 Python setup (Windows shown; the checked-in `pytest.cmd` wrapper picks up
 `.venv-py313`, then `.venv-py313-smoke`, then `.venv`):
@@ -212,7 +212,7 @@ The integration, Virtual Remote card, library, server and npm remote package are
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | HA integration        | `custom_components/sofabaton_x1s/manifest.json` | Publishing a GitHub release. `release.yml` zips `custom_components/sofabaton_x1s/` (excluding `www/src/`) and attaches `sofabaton_x1s.zip`, which HACS installs (`hacs.json` uses `zip_release`). The README release badge updates automatically. |
 | `sofabaton-x` library | `custom_components/sofabaton_x1s/lib/version.py`                                | Pushing a tag `sofabaton-x-vX.Y.Z`. `sofabaton-x-release.yml` verifies the tag matches `version.py`, runs the tests, builds, and publishes to PyPI via trusted publishing.                        |
-| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.4,<0.3` in its `pyproject.toml`) must be on PyPI first. |
+| `sofabaton-x-server`  | `sofabaton-x-server/src/sofabaton_server/__init__.py` (`API_VERSION` only when the OpenAPI document changes incompatibly) | Pushing a tag `sofabaton-x-server-vX.Y.Z`. `sofabaton-x-server-release.yml` verifies the tag, runs the server tests and the OpenAPI drift check, builds, installs the wheel with the library from PyPI, and publishes. The library version it depends on (`sofabaton-x>=0.2.5,<0.3` in its `pyproject.toml`) must be on PyPI first. |
 
 The npm remote version lives in `packages/sofabaton-x-remote/package.json`.
 Record its changes in that directory's `CHANGELOG.md`; pushing
@@ -228,11 +228,11 @@ publish the matching card release. Home Assistant installations with the HACS
 card use that copy instead of the integration's bundled card, so updating the
 integration alone does not update their remote.
 
-For the coordinated 0.7.0 release, prepare the integration release body
-from [docs/releases/0.7.0.md](docs/releases/0.7.0.md). The companion versions
-are card **0.2.7**, library **0.2.4**, server **0.2.5**, and npm remote
-**0.1.2**. Verify changelog dates on publication day. Publish the library
-before the server; use `sofabaton-x-remote-v0.1.2` for the npm package.
+For the coordinated 0.7.1 release, prepare the integration release body
+from [docs/releases/0.7.1.md](docs/releases/0.7.1.md). The companion versions
+are card **0.2.8**, library **0.2.5**, server **0.2.6**, and npm remote
+**0.1.3**. Verify changelog dates on publication day. Publish the library
+before the server; use `sofabaton-x-remote-v0.1.3` for the npm package.
 The separate card repository needs its own release and the rebuilt HA
 bundle as `sofabaton-virtual-remote.js`. Preparation does not publish any
 of these releases.

@@ -688,7 +688,7 @@ class SofabatonBackupTab extends LitElement {
           <span class="selection-label">${option.label}</span>
         </span>
         ${option.meta ? html`<span class="selection-meta">${option.meta}</span>` : nothing}
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
       </button>
     `;
   }

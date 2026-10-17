@@ -56,6 +56,7 @@ import {
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
+import { Coalescer, FOLLOW_MAX_WAIT_MS, needsReload, versionAsLoaded, type LoadedVersion } from "../cache-follow";
 import type { HubContext } from "../panel-context";
 import type { PanelStream, StreamMessage } from "../panel-stream";
 import { firmwareFloor, type Gate } from "../panel-selectors";
@@ -77,7 +78,7 @@ import {
   isSlotConfigured,
   mqttProblem,
   nameProblem,
-  otherDeviceHoldingButton,
+  otherDevicesHoldingButton,
   pressIsFresh,
   pressMatchesDevice,
   pressMatchesSlot,
@@ -368,6 +369,12 @@ export class SbPanelWifiDevices extends LitElement {
   private _loadedGate: Gate | null = null;
   private _loadSeq = 0;
   private _lastJobId: string | null = null;
+  /** The hub's cache version when the lists were read: a newer one reads them again (cache-follow.ts). */
+  private _loadedVersion: LoadedVersion | null = null;
+  /** Re-reads for a change made elsewhere, 300 ms after the last (the card's Wifi Commands tab), at most 1.5 s apart; drafts stay. */
+  private readonly _follow = new Coalescer(() => {
+    if (this._loadedFor && !this._working) void this._load();
+  }, { debounceMs: 300, maxWaitMs: FOLLOW_MAX_WAIT_MS });
   private _flashTimer: ReturnType<typeof setTimeout> | null = null;
   private _flashFor: number | null = null;
   private _reportedDirty = false;
@@ -394,6 +401,7 @@ export class SbPanelWifiDevices extends LitElement {
     super.disconnectedCallback();
     this._offStream?.();
     this._offStream = null;
+    this._follow.cancel();
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -481,15 +489,19 @@ export class SbPanelWifiDevices extends LitElement {
         this._create = this._delete = this._slotEdit = this._rename = null;
         this._powerPicker = null;
         this._confirmClear = null;
+        this._follow.cancel();
+        this._loadedVersion = null;
         if (hubId) void this._load();
       } else {
         // A job that ended elsewhere (the activity editor in another tab, the API
         // console) may have moved a device or its usage: re-read once per job.
+        // A newer cache version (a change without a job) re-reads too.
         const jobId = this.ctx?.hub?.last_job?.job_id ?? null;
         if (jobId && jobId !== this._lastJobId) {
           this._lastJobId = jobId;
-          if (!this._working) void this._load();
+          this._follow.poke();
         }
+        if (needsReload(this._loadedVersion, this.ctx?.hub?.cache)) this._follow.poke();
         // A load that ran while the hub could not answer (disabled: a 409; not
         // synced yet: no roster) is run again once the hub passes its gates.
         if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
@@ -528,6 +540,7 @@ export class SbPanelWifiDevices extends LitElement {
     if (!hubId) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
       const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
@@ -1127,10 +1140,12 @@ export class SbPanelWifiDevices extends LitElement {
       : inputHolder >= 0 ? S.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId))
       : S.activityInputHint;
     const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
-    const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
-    const buttonHint = buttonHolder >= 0 ? S.replacesOnButton(draft.slots[buttonHolder].label)
-      : otherHolder ? S.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name)
-      : "";
+    const buttonHints = [
+      ...(buttonHolder >= 0 ? [S.replacesOnButton(draft.slots[buttonHolder].label)] : []),
+      ...otherDevicesHoldingButton(this._devices, device.key, edit.button, edit.activities).map((holder) => holder.whole
+        ? S.replacesFromDevice(holder.slotLabel, holder.device.spec.name)
+        : S.replacesFromDeviceIn(holder.slotLabel, holder.device.spec.name, holder.shared.map((id) => this._activityName(id)))),
+    ];
     const keyLabels = S.keyLabels as Record<string, string>;
     const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
     return html`
@@ -1175,7 +1190,7 @@ export class SbPanelWifiDevices extends LitElement {
                     ${buttons.map((button) => html`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
                   </select>
                 </label>
-                ${buttonHint ? html`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : nothing}
+                ${buttonHints.length ? html`<div id="wifi-slot-button-hint">${buttonHints.map((hint) => html`<div class="button-conflict-hint">${hint}</div>`)}</div>` : nothing}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
                   <span class="checkbox-icon plain">${icon(mdiTimerSandFull)}</span>
                   <span class="checkbox-copy"><span>${S.enableLongPress}</span></span>

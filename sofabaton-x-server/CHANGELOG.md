@@ -6,6 +6,81 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+## 0.2.6 (2026-10-17)
+
+Changes since `sofabaton-x-server-v0.2.5`. Requires
+**sofabaton-x >=0.2.5,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+### Upgrade notes
+
+- Existing registrations, access settings, Wifi Devices and remote layouts
+  carry forward. Reload browser pages after updating.
+- The API changes are additions. Regenerate clients from `openapi.json`
+  to read the hub view's `cache` field and the `WsHubUpdate` message.
+  `hub_update` messages only arrive on a stream opened with
+  `?hub_updates=true`, so existing clients see no new message type.
+
+### Added
+
+- Every hub view (`GET /hubs`, `GET /hubs/{id}`) carries `cache`: the
+  cache version (`epoch`, `generation`, `snapshot_id`). A client that
+  holds rows from another `snapshot_id` with an older version re-reads
+  them. The id only moves when the content does.
+- `/api/v1/events?hub_updates=true` adds `hub_update` messages: the hub's
+  whole view, one per hub right after `hello`, then whenever the hub, its
+  jobs or its cache changed, coalesced per hub (0.15 s after the last
+  change, at most 0.5 s after the first). A cache that moves without an
+  event (another client's first look at a device, the vendor app's
+  session) is found by a watcher while such a client is connected.
+
+### Changed
+
+- The control panel follows changes made elsewhere, using the
+  `hub_update` push. Open tabs lock within a fraction of a second when
+  another client starts a job, and the Hub tab lists, Wifi Devices and the
+  Backup tab's device list follow changes made elsewhere.
+- An open device or activity editor carries a change made elsewhere into
+  its working copy. The user's edit wins where both changed the same
+  thing, and one line says so. Lists inside a device or activity merge
+  row by row: renaming one command here and another one elsewhere keeps
+  both. While a job runs on the hub the editor waits, and follows once
+  after the job's last changes have landed. A draft from an older snapshot
+  is carried over the same way when the editor opens; the "older
+  snapshot" prompt in the dock is gone. A Sync refused because the
+  snapshot moved is carried over and sent once more.
+- Updated the shared Virtual Remote bundle to 0.2.8 and the embedded
+  package build to 0.1.3. The shared translation changes are for the Home
+  Assistant sidebar; the web and embedded remotes' interfaces are unchanged.
+- Translation updates in the control panel.
+
+### Fixed
+
+- Wifi Commands: assigning a remote button to a command on one Wifi
+  Device no longer removes that button from another Wifi Device used in
+  separate activities (issue #306). For example, VOL+ can run an Amp
+  command in Cinema and a Soundbar command in TV. Previously, saving the
+  Soundbar assignment also removed the Amp assignment in Cinema.
+  If the assignments overlap in an activity, the new assignment replaces
+  the old one there. If the old command is also a favorite, its button
+  assignment is cleared in all its activities; its favorite assignments
+  remain. The editor shows which assignments will be replaced. Within one
+  Wifi Device, a button still belongs to one command.
+- Restoring a backup keeps its display order, and the remotes only start
+  syncing once the whole restore has finished (library 0.2.5, issue #307).
+- New devices, activities and Wifi Devices go last in the display order;
+  on the X1S, deleting a device no longer shifts the rest of the list.
+  Adding a favorite or restoring an activity keeps the activity's shortcut
+  order, and removing commands from a Wifi Device keeps the command order
+  on the remote (library 0.2.5).
+- X2: reordering devices or activities, or creating a Wifi Device, makes
+  the X2 remote sync the change (library 0.2.5).
+- X1: an activity edit that removes a macro and then a favorite no longer
+  fails, and later edits of that activity no longer fail the same way
+  (library 0.2.5).
+- RTL languages: the activity editor's role menu opens under its button
+  instead of past the edge of the panel.
+
 ## 0.2.5 (2026-10-10)
 
 Changes since `sofabaton-x-server-v0.2.4`. Requires

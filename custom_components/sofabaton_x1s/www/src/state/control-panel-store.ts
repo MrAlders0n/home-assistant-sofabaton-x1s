@@ -1,9 +1,12 @@
 import type {
   BackupProgressEvent,
   BackupSectionId,
+  CacheContentsResponse,
+  CacheHubState,
   ControlPanelRuntimeState,
   ControlPanelSnapshot,
   HassLike,
+  HubStatePush,
   HubAction,
   HubClickAction,
   SidebarPanelMode,
@@ -19,12 +22,11 @@ import type {
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import {
-  cacheGenerationSnapshot,
+  cacheVersionOf,
+  compareCacheVersion,
   connectionFingerprint,
-  didHubGenerationChange,
   entityForHub,
   formatError,
-  hassFingerprint,
   hubClickAction,
   sidebarPanelMode,
   isBackendUnavailableError,
@@ -43,6 +45,16 @@ const BACKEND_RETRY_MAX_MS = 10000;
 // A refresh-all whose operation never shows up in the polled state (it ended
 // before the first poll saw it, and its event was lost) settles after this.
 const REFRESH_ALL_UNSEEN_MS = 30_000;
+
+// A hub's cache rows are reloaded once its generation moves past the one they
+// were read at: a burst of changes is coalesced, but a steady stream (a sync
+// writing for a minute) still shows up at least this often.
+const CONTENTS_RELOAD_DEBOUNCE_MS = 250;
+const CONTENTS_RELOAD_MAX_WAIT_MS = 1500;
+
+// While the hub-state push is live the state poll is only a safety net
+// (and the way other hubs' generations come in).
+const RUNTIME_POLL_PUSHED_MS = 10_000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache", "logs"]);
@@ -153,7 +165,6 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   selectedBackupSection: "make",
   selectedWifiSection: "wifi",
   openEntity: null,
-  staleData: false,
   refreshBusyByHub: {},
   externalHubCommandByHub: {},
   runtimeCompletionNoticeByHub: {},
@@ -183,12 +194,9 @@ export class ControlPanelStore {
   private _loadingStatePromise: Promise<void> | null = null;
   private _pendingLiveStateRefresh: Promise<void> | null = null;
   private _isConnected = false;
-  private _refreshGraceUntil = 0;
   private _logsUnsub: (() => void) | null = null;
   private _logsLoadSeq = 0;
   private _logsSubscribeSeq = 0;
-  private _lastObservedGenerations = cacheGenerationSnapshot(null);
-  private _lastHassFingerprint = "";
   private _lastConnectionFingerprint = "";
   private _backendRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private _backendRetryDelay = BACKEND_RETRY_MIN_MS;
@@ -210,6 +218,20 @@ export class ControlPanelStore {
   private _wifiPressSubscribeSeq = 0;
   private _hubEventsUnsub: (() => void) | null = null;
   private _hubEventsSubscribeSeq = 0;
+  private _hubStateUnsub: (() => void) | null = null;
+  private _hubStateEntryId: string | null = null;
+  private _hubStateSubscribeSeq = 0;
+  // The newest cache version the backend reported per hub (push or poll):
+  // only ever moves forward, so an older state response can't hide a change.
+  private _reportedVersions = new Map<string, { epoch: number; generation: number }>();
+  // Pending per-hub contents reloads (see _scheduleContentsReload).
+  private _contentsReloads = new Map<string, {
+    timer: ReturnType<typeof setTimeout> | null;
+    firstAt: number;
+    inflight: boolean;
+    again: boolean;
+    force: boolean;
+  }>();
   // Hub to pre-select when the card was created from a hub-specific entity (via
   // the card picker). Applied once when the hub becomes available; the user can
   // freely switch hubs afterwards.
@@ -243,6 +265,7 @@ export class ControlPanelStore {
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
     void this._syncHubEventsFeed();
+    void this._syncHubStateFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -261,10 +284,12 @@ export class ControlPanelStore {
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimers();
+    this._clearContentsReloads();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
     void this._teardownHubEventsFeed();
+    void this._teardownHubStateFeed();
     void this.unsubscribeLogs();
   }
 
@@ -299,7 +324,8 @@ export class ControlPanelStore {
     if (!this._isConnected) return;
     const hub = selectedHub(this._snapshot);
     const isRunning = hub?.runtime_state?.kind === "operation_running";
-    const interval = isRunning ? 1000 : 5000;
+    const pushed = !!this._hubStateUnsub && !!hub && this._hubStateEntryId === hub.entry_id;
+    const interval = pushed ? RUNTIME_POLL_PUSHED_MS : isRunning ? 1000 : 5000;
     this._runtimeStatePollTimer = setTimeout(() => {
       this._runtimeStatePollTimer = null;
       void this._refreshRuntimeState();
@@ -347,52 +373,40 @@ export class ControlPanelStore {
     this._clearBackendRetry();
   }
 
+  /** Cache freshness never comes from `hass`: the hub-state push (and the
+   *  poll behind it) report each hub's generation. A remote entity's state
+   *  or app-connection change still reloads the panel state, and renews the
+   *  push subscription (an HA restart drops it). */
   setHass(hass: HassLike) {
     const previousHass = this._snapshot.hass;
     this._snapshot = { ...this._snapshot, hass };
-    const fingerprint = hassFingerprint(hass);
     const nextConnectionFingerprint = connectionFingerprint(hass);
-    const generationSnapshot = cacheGenerationSnapshot(hass);
 
     if (!previousHass) {
-      this._lastObservedGenerations = generationSnapshot;
-      this._lastHassFingerprint = fingerprint;
       this._lastConnectionFingerprint = nextConnectionFingerprint;
       this.emit();
       return;
     }
+    if (nextConnectionFingerprint === this._lastConnectionFingerprint) return;
+    this._lastConnectionFingerprint = nextConnectionFingerprint;
 
-    if (fingerprint !== this._lastHassFingerprint) {
-      const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (
-        this._isConnected &&
-        !this._isAnyHubCommandBusy() &&
-        !this._snapshot.loading &&
-        Date.now() > this._refreshGraceUntil &&
-        didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)
-      ) {
-        this._snapshot = { ...this._snapshot, staleData: true };
-      }
-      this._lastObservedGenerations = generationSnapshot;
-      this._lastHassFingerprint = fingerprint;
-      this._lastConnectionFingerprint = nextConnectionFingerprint;
-
-      if (
-        this._isConnected &&
-        connectionChanged &&
-        !this._snapshot.loading &&
-        !this._loadingStatePromise &&
-        !this._pendingLiveStateRefresh
-      ) {
-        this._pendingLiveStateRefresh = this.loadControlPanelState()
-          .catch(() => undefined)
-          .finally(() => {
-            this._pendingLiveStateRefresh = null;
-            if (this._isConnected) this.emit();
-          });
-      }
-      this.emit();
+    if (
+      this._isConnected &&
+      !this._snapshot.loading &&
+      !this._loadingStatePromise &&
+      !this._pendingLiveStateRefresh
+    ) {
+      this._pendingLiveStateRefresh = this.loadControlPanelState()
+        .catch(() => undefined)
+        .finally(() => {
+          this._pendingLiveStateRefresh = null;
+          if (this._isConnected) this.emit();
+        });
     }
+    if (this._isConnected) {
+      void this._teardownHubStateFeed().then(() => this._syncHubStateFeed());
+    }
+    this.emit();
   }
 
   selectHub(entryId: string) {
@@ -415,11 +429,13 @@ export class ControlPanelStore {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
       await this._teardownHubEventsFeed();
+      await this._teardownHubStateFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
       await this._syncHubEventsFeed();
+      await this._syncHubStateFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -557,13 +573,14 @@ export class ControlPanelStore {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([api.loadState(), api.loadCacheContents()]);
+        this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
         this.applyControlPanelState(state);
-        this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
         await this._syncHubEventsFeed();
+        await this._syncHubStateFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -573,8 +590,7 @@ export class ControlPanelStore {
         }
       } finally {
         this._loadingStatePromise = null;
-        this._snapshot = { ...this._snapshot, loading: false, staleData: false };
-        this._refreshGraceUntil = Date.now() + 10000;
+        this._snapshot = { ...this._snapshot, loading: false };
         this.emit();
         if (this._snapshot.selectedTab === "logs") void this.syncLogsFeed();
       }
@@ -589,12 +605,13 @@ export class ControlPanelStore {
       this.syncSelection();
       if (this._contentsMissingStateHubs()) {
         const contents = await this.api().loadCacheContents();
-        this._snapshot = { ...this._snapshot, contents };
+        this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
       }
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
       await this._syncHubEventsFeed();
+      await this._syncHubStateFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -626,8 +643,141 @@ export class ControlPanelStore {
 
   async loadCacheContents() {
     const contents = await this.api().loadCacheContents();
-    this._snapshot = { ...this._snapshot, contents };
+    this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
     this.emit();
+  }
+
+  /** Fold a contents response into the rows held, hub by hub: a hub's rows
+   *  are only replaced by rows read at the same or a newer cache version, so
+   *  a full load that raced a per-hub reload can't roll the hub back. */
+  private _mergeContents(next: CacheContentsResponse): CacheContentsResponse {
+    const current = this._snapshot.contents;
+    if (!next?.enabled || !current?.enabled) return next;
+    const held = new Map((current.hubs ?? []).map((hub) => [hub.entry_id, hub]));
+    return {
+      ...next,
+      hubs: (next.hubs ?? []).map((hub) => {
+        const mine = held.get(hub.entry_id);
+        return mine && this._rowsNewer(mine, hub) ? mine : hub;
+      }),
+    };
+  }
+
+  private _rowsNewer(a: CacheHubState, b: CacheHubState): boolean {
+    const va = cacheVersionOf(a);
+    const vb = cacheVersionOf(b);
+    return !!va && !!vb && compareCacheVersion(va, vb) > 0;
+  }
+
+  /** Record what the backend reports for each hub's cache, then reload the
+   *  rows of every hub that fell behind. `force` also reloads that hub
+   *  (an operation on it just ended: its last writes land with the end). */
+  private _noteReportedVersions(force: string | null = null) {
+    for (const hub of this._snapshot.state?.hubs ?? []) {
+      const reported = cacheVersionOf(hub);
+      if (!reported) continue;
+      const known = this._reportedVersions.get(hub.entry_id);
+      if (!known || compareCacheVersion(reported, known) > 0) this._reportedVersions.set(hub.entry_id, reported);
+    }
+    if (!this._snapshot.contents?.enabled) return;
+    for (const hub of this._snapshot.state?.hubs ?? []) {
+      if (hub.entry_id === force) this._scheduleContentsReload(hub.entry_id, true);
+      else if (this._contentsBehind(hub.entry_id)) this._scheduleContentsReload(hub.entry_id);
+    }
+  }
+
+  /** True when the rows held for the hub are older than the newest version
+   *  the backend reported. A hub with no rows at all is left to the full
+   *  load (_contentsMissingStateHubs). */
+  private _contentsBehind(entryId: string): boolean {
+    const reported = this._reportedVersions.get(entryId);
+    if (!reported) return false;
+    const row = (this._snapshot.contents?.hubs ?? []).find((hub) => hub.entry_id === entryId);
+    if (!row) return false;
+    const loaded = cacheVersionOf(row);
+    return !loaded || compareCacheVersion(loaded, reported) < 0;
+  }
+
+  /** Reload one hub's rows soon: waits for a quiet moment (debounce), but
+   *  never longer than the max wait while changes keep coming. */
+  private _scheduleContentsReload(entryId: string, force = false) {
+    if (!this._isConnected) return;
+    let entry = this._contentsReloads.get(entryId);
+    if (!entry) {
+      entry = { timer: null, firstAt: Date.now(), inflight: false, again: false, force: false };
+      this._contentsReloads.set(entryId, entry);
+    }
+    entry.force = entry.force || force;
+    if (entry.inflight) {
+      entry.again = true;
+      return;
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    const waited = Date.now() - entry.firstAt;
+    const delay = Math.max(0, Math.min(CONTENTS_RELOAD_DEBOUNCE_MS, CONTENTS_RELOAD_MAX_WAIT_MS - waited));
+    entry.timer = setTimeout(() => void this._reloadHubContents(entryId), delay);
+  }
+
+  private async _reloadHubContents(entryId: string) {
+    const entry = this._contentsReloads.get(entryId);
+    if (!entry) return;
+    entry.timer = null;
+    if (!entry.force && !this._contentsBehind(entryId)) {
+      // A full load caught up meanwhile.
+      this._contentsReloads.delete(entryId);
+      return;
+    }
+    entry.inflight = true;
+    entry.again = false;
+    entry.force = false;
+    let failed = false;
+    try {
+      const response = await this.api().loadCacheContents(entryId);
+      if (this._contentsReloads.get(entryId) === entry) this._applyHubContents(entryId, response);
+    } catch {
+      // The next report (push or poll) tries again.
+      failed = true;
+    } finally {
+      entry.inflight = false;
+      if (this._contentsReloads.get(entryId) === entry) {
+        this._contentsReloads.delete(entryId);
+        if (!failed && (entry.again || this._contentsBehind(entryId))) {
+          this._scheduleContentsReload(entryId, entry.force);
+        }
+      }
+    }
+  }
+
+  private _applyHubContents(entryId: string, response: CacheContentsResponse) {
+    if (!response?.enabled) {
+      // The cache was switched off meanwhile.
+      this._snapshot = { ...this._snapshot, contents: response };
+      this.emit();
+      return;
+    }
+    const current = this._snapshot.contents;
+    if (!current?.enabled) return;
+    const incoming = (response.hubs ?? []).find((hub) => hub.entry_id === entryId) ?? null;
+    const hubs = [...(current.hubs ?? [])];
+    const index = hubs.findIndex((hub) => hub.entry_id === entryId);
+    if (!incoming) {
+      if (index < 0) return;
+      hubs.splice(index, 1);
+    } else if (index < 0) {
+      hubs.push(incoming);
+    } else {
+      if (this._rowsNewer(hubs[index], incoming)) return;
+      hubs[index] = incoming;
+    }
+    this._snapshot = { ...this._snapshot, contents: { ...current, hubs } };
+    this.emit();
+  }
+
+  private _clearContentsReloads() {
+    for (const entry of this._contentsReloads.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this._contentsReloads.clear();
   }
 
   async setSetting(setting: SettingKey, enabled: boolean) {
@@ -724,6 +874,38 @@ export class ControlPanelStore {
       ...this._snapshot,
       state: { ...this._snapshot.state, sidebar_panel: value },
     };
+  }
+
+  /**
+   * Rename the sidebar panel (global; "" restores the product name). The
+   * backend re-registers a shown panel, so the sidebar follows at once.
+   * Resolves with `null` on success (state reloaded, so the Settings tab
+   * shows the new name) or a failure message for the rename dialog.
+   */
+  async renameSidebarPanel(title: string): Promise<string | null> {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "sidebar_panel" };
+    this.emit();
+    try {
+      const result = await this.api().setSidebarPanelTitle(hub.entry_id, title);
+      if (this._snapshot.state) {
+        this._snapshot = {
+          ...this._snapshot,
+          state: { ...this._snapshot.state, sidebar_panel_title: result?.title ?? title },
+        };
+      }
+      await this.loadControlPanelState();
+      return null;
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
   }
 
   private _applyOptimisticHubClickAction(value: HubClickAction) {
@@ -828,12 +1010,6 @@ export class ControlPanelStore {
     }
   }
 
-  async refreshStale() {
-    this._snapshot = { ...this._snapshot, staleData: false };
-    this.emit();
-    await this.loadState();
-  }
-
   private _setRefreshBusy(entryId: string, label: string | null) {
     this._snapshot = {
       ...this._snapshot,
@@ -845,7 +1021,7 @@ export class ControlPanelStore {
   private _clearRefreshBusy(entryId: string) {
     const byHub = { ...this._snapshot.refreshBusyByHub };
     delete byHub[entryId];
-    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub };
     this.emit();
   }
 
@@ -1221,9 +1397,15 @@ export class ControlPanelStore {
     };
     const nextHub = selectedHub(this._snapshot);
     const nextRuntime = nextHub?.runtime_state;
+    // Plain hub work ("hub_write") locks the panel but has no outcome of
+    // its own; it often trails a registry operation for a moment.
+    const announced = (runtime: ControlPanelRuntimeState | null | undefined): boolean =>
+      runtime?.kind === "operation_running" && runtime.operation !== "hub_write";
     if (
-      previousRuntime?.kind === "operation_running"
-      && nextRuntime?.kind !== "operation_running"
+      previousRuntime
+      && previousHub?.entry_id === nextHub?.entry_id
+      && announced(previousRuntime)
+      && !announced(nextRuntime)
       // Cache refreshes report their own completion (success or failure)
       // through refreshAllForHub's progress subscription, which knows the
       // real terminal status — the poll transition doesn't.
@@ -1258,8 +1440,76 @@ export class ControlPanelStore {
         this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
       }
     }
+    const ended = previousHub && nextHub && previousHub.entry_id === nextHub.entry_id
+      && previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running"
+      ? nextHub.entry_id
+      : null;
+    this._noteReportedVersions(ended);
     this._scheduleRuntimeStatePoll();
     this._checkRefreshAllWaits();
+  }
+
+  /** One `hub_state/subscribe` event: the hub's panel state replaces its
+   *  row (locks and progress follow at once), and its cache version may
+   *  start a contents reload. */
+  private _applyHubStatePush(entryId: string, payload: HubStatePush) {
+    const state = this._snapshot.state;
+    const hub = payload && typeof payload === "object" ? payload.hub : null;
+    if (!state || !hub || typeof hub !== "object") return;
+    if (!state.hubs.some((row) => row.entry_id === entryId)) return;
+    const revision = Number(payload.config_revision);
+    this.applyControlPanelState({
+      ...state,
+      ...(Number.isFinite(revision) ? { config_revision: revision } : {}),
+      hubs: state.hubs.map((row) => (row.entry_id === entryId ? { ...hub, entry_id: entryId } : row)),
+    });
+    void this._syncBackupOperationFeed();
+    this.emit();
+  }
+
+  private async _syncHubStateFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubStateFeed();
+      return;
+    }
+    if (this._hubStateEntryId === entryId && this._hubStateUnsub) return;
+
+    await this._teardownHubStateFeed();
+    const subscribeSeq = ++this._hubStateSubscribeSeq;
+    this._hubStateEntryId = entryId;
+
+    try {
+      const unsubscribe = await this.api().subscribeHubState(entryId, (payload) => {
+        if (subscribeSeq !== this._hubStateSubscribeSeq || this._hubStateEntryId !== entryId) return;
+        this._applyHubStatePush(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubStateSubscribeSeq) {
+        try { unsubscribe(); } catch { /* ignore */ }
+        return;
+      }
+      this._hubStateUnsub = unsubscribe;
+      this._scheduleRuntimeStatePoll();
+    } catch {
+      // Older backend or a transient WS error: the state poll carries on
+      // alone, at its old pace.
+      if (subscribeSeq === this._hubStateSubscribeSeq) this._hubStateEntryId = null;
+    }
+  }
+
+  private async _teardownHubStateFeed() {
+    this._hubStateSubscribeSeq++;
+    const unsub = this._hubStateUnsub;
+    this._hubStateUnsub = null;
+    this._hubStateEntryId = null;
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+      /* ignore */
+    }
   }
 
   private applyOptimisticSetting(setting: SettingKey, enabled: boolean) {
@@ -1364,21 +1614,6 @@ export class ControlPanelStore {
     return Boolean(
       (entryId && entryId in this._snapshot.refreshBusyByHub) ||
       (entryId && entryId in this._snapshot.externalHubCommandByHub) ||
-      this._snapshot.pendingActionKey ||
-      backupBusy,
-    );
-  }
-
-  /** Busy on ANY hub — used to suppress the stale-data banner while one of
-   * our own operations is bumping cache generations in the background. */
-  private _isAnyHubCommandBusy() {
-    const backupBusy = (this._snapshot.state?.hubs ?? []).some((hub) =>
-      !!hub.active_backup_operation &&
-      ["pending", "running"].includes(String(hub.active_backup_operation.status || "")),
-    );
-    return Boolean(
-      Object.keys(this._snapshot.refreshBusyByHub).length ||
-      Object.keys(this._snapshot.externalHubCommandByHub).length ||
       this._snapshot.pendingActionKey ||
       backupBusy,
     );

@@ -435,129 +435,154 @@ class HubOpsMixin:
             total_steps=total_steps,
         )
 
-        if use_replace_mode:
-            # Replace mode. Erase the hub first so device ids reset
-            # to a known empty slate before the bundle's devices are
-            # rewritten.
-            _progress(
-                status="running",
-                phase="erase",
-                message="Erasing the destination hub...",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-            erased = await self.async_erase_configuration()
-            if not erased:
-                raise HomeAssistantError(
-                    "Hub erase failed -- restore aborted before any wire writes. "
-                    "Check the hub is reachable and try again; if it persists, "
-                    "inspect the [ERASE] log lines for the specific failure mode."
+        # One remote sync for the whole restore, sent last: while this
+        # batch is open the bundle's writes (its display order included)
+        # only record the trigger, so the remotes no longer start syncing
+        # while the hub name is written and the cache read (issue #307).
+        # Opened before the erase, which sends no trigger: nothing is
+        # erased unless the batch is in place.
+        await self.hass.async_add_executor_job(self._proxy.begin_write_batch)
+        result: Any = None
+        try:
+            if use_replace_mode:
+                # Replace mode. Erase the hub first so device ids reset
+                # to a known empty slate before the bundle's devices are
+                # rewritten.
+                _progress(
+                    status="running",
+                    phase="erase",
+                    message="Erasing the destination hub...",
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
                 )
-            completed_steps += 1
-            _progress(
-                status="running",
-                phase="erase",
-                message="Destination hub erased.",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
+                erased = await self.async_erase_configuration()
+                if not erased:
+                    raise HomeAssistantError(
+                        "Hub erase failed -- restore aborted before any wire writes. "
+                        "Check the hub is reachable and try again; if it persists, "
+                        "inspect the [ERASE] log lines for the specific failure mode."
+                    )
+                completed_steps += 1
+                _progress(
+                    status="running",
+                    phase="erase",
+                    message="Destination hub erased.",
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
+                )
 
-        result = await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.restore_hub_bundle,
-                payload=payload,
-                wifi_commands_request_port=wifi_commands_request_port,
-                progress_callback=progress_callback,
-                progress_offset=completed_steps,
-                progress_total_steps=total_steps,
-            )
-        )
-        if isinstance(result, dict) and str(result.get("status") or "") == "success":
-            # ``restore_hub_bundle`` advances progress for each restored device
-            # and activity, but the outer counter still needs to absorb those
-            # completed steps before any replace-mode tail work runs.
-            completed_steps += len(result.get("restored_devices") or [])
-            completed_steps += len(result.get("restored_activities") or [])
-            total_steps = (
-                completed_steps
-                + (1 if rename_after_replace else 0)
-            )
-        if rename_after_replace and isinstance(result, dict) and result.get("status") == "success":
-            _progress(
-                status="running",
-                phase="hub",
-                message="Restoring hub name...",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-            if sync_identity_after_replace:
-                hub_name_restored = await self.async_set_hub_name(bundle_hub_name)
-            else:
-                hub_name_restored = await self.async_set_hub_name(
-                    bundle_hub_name,
-                    sync_identity=False,
+            result = await self.hass.async_add_executor_job(
+                partial(
+                    self._proxy.restore_hub_bundle,
+                    payload=payload,
+                    wifi_commands_request_port=wifi_commands_request_port,
+                    progress_callback=progress_callback,
+                    progress_offset=completed_steps,
+                    progress_total_steps=total_steps,
                 )
-            result = dict(result)
-            result["hub_name"] = bundle_hub_name
-            result["hub_name_restored"] = bool(hub_name_restored)
-            completed_steps += 1
-            _progress(
-                status="running",
-                phase="hub",
-                message=(
-                    "Restored hub name."
-                    if hub_name_restored
-                    else "Hub restore finished, but restoring the hub name failed."
-                ),
-                completed_steps=completed_steps,
-                total_steps=total_steps,
             )
-            if not hub_name_restored:
+            if isinstance(result, dict) and str(result.get("status") or "") == "success":
+                # ``restore_hub_bundle`` advances progress for each restored device
+                # and activity, but the outer counter still needs to absorb those
+                # completed steps before any replace-mode tail work runs.
+                completed_steps += len(result.get("restored_devices") or [])
+                completed_steps += len(result.get("restored_activities") or [])
+                total_steps = (
+                    completed_steps
+                    + (1 if rename_after_replace else 0)
+                )
+            if rename_after_replace and isinstance(result, dict) and result.get("status") == "success":
+                _progress(
+                    status="running",
+                    phase="hub",
+                    message="Restoring hub name...",
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
+                )
+                if sync_identity_after_replace:
+                    hub_name_restored = await self.async_set_hub_name(bundle_hub_name)
+                else:
+                    hub_name_restored = await self.async_set_hub_name(
+                        bundle_hub_name,
+                        sync_identity=False,
+                    )
+                result = dict(result)
+                result["hub_name"] = bundle_hub_name
+                result["hub_name_restored"] = bool(hub_name_restored)
+                completed_steps += 1
+                _progress(
+                    status="running",
+                    phase="hub",
+                    message=(
+                        "Restored hub name."
+                        if hub_name_restored
+                        else "Hub restore finished, but restoring the hub name failed."
+                    ),
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
+                )
+                if not hub_name_restored:
+                    self._log.warning(
+                        "[%s] replace-mode restore finished, but restoring hub name %r failed",
+                        self.entry_id,
+                        bundle_hub_name,
+                    )
+            if isinstance(result, dict) and result.get("status") == "success":
+                # Restore clears the per-entity structural caches for every
+                # rewritten device and activity and used to leave them cold.
+                # Finish with the blob-free whole-hub structural refresh (the
+                # same fetch as the Hub tab's "Refresh all") so the cache view
+                # and the live activity editor come back warm.
+                total_steps += 1
+                _progress(
+                    status="running",
+                    phase="cache_warm",
+                    message="Restore complete -- warming the hub cache...",
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
+                )
+                cache_warmed = True
+                try:
+                    await self.async_refresh_hub_cache()
+                    await self._async_persist_cache_if_enabled()
+                except Exception:  # noqa: BLE001 - warm is best-effort tail work
+                    cache_warmed = False
+                    self._log.warning(
+                        "[%s] restore finished, but the post-restore cache warm failed",
+                        self.entry_id,
+                        exc_info=True,
+                    )
+                completed_steps += 1
+                result = dict(result)
+                result["cache_warmed"] = cache_warmed
+                _progress(
+                    status="running",
+                    phase="cache_warm",
+                    message=(
+                        "Hub cache warmed."
+                        if cache_warmed
+                        else "Restore finished, but warming the hub cache failed; "
+                        "run Refresh all from the Hub tab to re-warm it."
+                    ),
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
+                )
+        finally:
+            if isinstance(result, dict) and result.get("status") == "success":
+                _progress(
+                    status="running",
+                    phase="remote_sync",
+                    message="Triggering the remote's sync...",
+                    completed_steps=completed_steps,
+                    total_steps=total_steps,
+                )
+            batch = await self.hass.async_add_executor_job(self._proxy.end_write_batch)
+            if batch.get("remote_sync") == "failed":
                 self._log.warning(
-                    "[%s] replace-mode restore finished, but restoring hub name %r failed",
+                    "[%s] restore finished, but the remote-sync trigger was not sent",
                     self.entry_id,
-                    bundle_hub_name,
                 )
-        if isinstance(result, dict) and result.get("status") == "success":
-            # Restore clears the per-entity structural caches for every
-            # rewritten device and activity and used to leave them cold.
-            # Finish with the blob-free whole-hub structural refresh (the
-            # same fetch as the Hub tab's "Refresh all") so the cache view
-            # and the live activity editor come back warm.
-            total_steps += 1
-            _progress(
-                status="running",
-                phase="cache_warm",
-                message="Restore complete -- warming the hub cache...",
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
-            cache_warmed = True
-            try:
-                await self.async_refresh_hub_cache()
-                await self._async_persist_cache_if_enabled()
-            except Exception:  # noqa: BLE001 - warm is best-effort tail work
-                cache_warmed = False
-                self._log.warning(
-                    "[%s] restore finished, but the post-restore cache warm failed",
-                    self.entry_id,
-                    exc_info=True,
-                )
-            completed_steps += 1
-            result = dict(result)
-            result["cache_warmed"] = cache_warmed
-            _progress(
-                status="running",
-                phase="cache_warm",
-                message=(
-                    "Hub cache warmed."
-                    if cache_warmed
-                    else "Restore finished, but warming the hub cache failed; "
-                    "run Refresh all from the Hub tab to re-warm it."
-                ),
-                completed_steps=completed_steps,
-                total_steps=total_steps,
-            )
+
         if isinstance(result, dict):
             result = dict(result)
             result["_progress_completed_steps"] = completed_steps
@@ -823,18 +848,28 @@ class HubOpsMixin:
     async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
         """Rewrite the hub's stored activity display order to *ordered_ids*."""
 
-        return await self.hass.async_add_executor_job(
+        result = await self.hass.async_add_executor_job(
             self._proxy.reorder_activities,
             list(ordered_ids),
         )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            # The proxy re-read the catalog, but an order-only change never
+            # moves the activities signature, so nothing else bumps.
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+        return result
 
     async def async_reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
         """Rewrite the hub's stored device display order to *ordered_ids*."""
 
-        return await self.hass.async_add_executor_job(
+        result = await self.hass.async_add_executor_job(
             self._proxy.reorder_devices,
             list(ordered_ids),
         )
+        if isinstance(result, dict) and str(result.get("status")) == "success":
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        return result
 
     async def async_create_activity(self, name: str) -> dict[str, Any] | None:
         """Create a fresh, empty activity named *name* on the selected hub."""

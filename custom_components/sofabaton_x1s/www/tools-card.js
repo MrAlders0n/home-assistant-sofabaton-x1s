@@ -1267,8 +1267,8 @@ var cardStyles = [secondaryTabStyles, i`
   .chip-prefix { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: color-mix(in srgb, var(--primary-color) 62%, var(--secondary-text-color)); flex-shrink: 0; }
   .chip-name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip-arrow { --mdc-icon-size: 13px; color: var(--secondary-text-color); flex-shrink: 0; transform: rotate(180deg); }
-  .hub-picker-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
-  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .hub-picker-menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: start; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--sb-accent-text); }
@@ -1285,7 +1285,7 @@ var cardStyles = [secondaryTabStyles, i`
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
-  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); inset-inline-end: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
   .logs-console-wrap {
@@ -1300,7 +1300,7 @@ var cardStyles = [secondaryTabStyles, i`
   .logs-title-row { display: flex; align-items: center; gap: 10px; }
   .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
   .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-  .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
+  .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label { color: var(--secondary-text-color); }
   .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, #8fb3d9 16%, var(--divider-color)); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, #16202b 92%, black), color-mix(in srgb, #0f151d 96%, black)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), inset 0 0 0 1px rgba(120, 150, 190, 0.04); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
   .logs-empty.error, .cache-state.error { color: var(--error-color, #db4437); }
@@ -1578,9 +1578,6 @@ var cardStyles = [secondaryTabStyles, i`
   .backend-unavailable-icon ha-icon { --mdc-icon-size: 40px; }
   .backend-unavailable-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .backend-unavailable-copy { font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); max-width: 320px; }
-  .stale-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent); }
-  .stale-banner-text { flex: 1; }
-  .stale-banner-btn { background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--primary-text-color); }
   .settings-hub-header { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 0; }
   .settings-content { flex-shrink: 0; display: flex; flex-direction: column; }
   .hub-compact-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: var(--ha-card-background, var(--card-background-color, #fff)); }
@@ -1598,6 +1595,9 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-rename-btn { width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0; }
   .hub-rename-btn ha-icon { --mdc-icon-size: 15px; }
+  /* The rename pencil inside a setting's sentence, right behind the name
+     chip; the negative block margins keep the line as tall as the text. */
+  .setting-inline-rename-btn { vertical-align: middle; margin-block: -4px; margin-inline-start: 4px; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }
@@ -1832,8 +1832,8 @@ var TOOLS_CARD_STRINGS_EN = {
     hubCommandInProgress: "Hub command in progress\u2026"
   },
   sidebarPanel: {
-    // The sidebar entry and the panel header. A product name: the same in
-    // every language.
+    // The sidebar entry's name until someone renames it. A product name:
+    // the same in every language.
     title: "Sofabaton X"
   },
   adminOnly: {
@@ -1907,6 +1907,7 @@ var TOOLS_CARD_STRINGS_EN = {
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
     hubNameInvalid: "The hub cannot store this name.",
     hubRenameFailed: "The hub did not accept the new name.",
@@ -1950,11 +1951,15 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
+    // The name is the panel's sidebar name (renameable while it is shown).
+    sidebarPanelDescription: (name) => `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
+    renameSidebarPanel: "Rename sidebar panel",
+    sidebarPanelNameLabel: "Name in the sidebar",
+    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
     hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
@@ -1988,7 +1993,6 @@ var TOOLS_CARD_STRINGS_EN = {
     buttons: "Buttons",
     noCachedData: "No cached data yet.",
     noCachedCommands: "No cached commands.",
-    staleBanner: "Cache was updated externally. Refresh to see latest data.",
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
@@ -2079,6 +2083,7 @@ var TOOLS_CARD_STRINGS_EN = {
     operationCacheRefresh: "Refreshing hub cache",
     operationEntitySync: "Syncing with hub",
     operationWifiDeploy: "Syncing Wifi Commands",
+    operationHubWrite: "Working on the hub",
     working: "Working\u2026",
     step: (current, total) => `Step ${current} of ${total}`,
     backupPreparing: "Preparing backup\u2026",
@@ -2155,6 +2160,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiStepActivityJoin: "Adding the device to an activity\u2026",
     wifiStepActivityLeave: "Removing the device from an activity\u2026",
     wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepCommandSortRewrite: "Updating the command order\u2026",
     wifiStepBindingWrite: "Assigning a button\u2026"
   },
   activities: {
@@ -2194,6 +2200,9 @@ var TOOLS_CARD_STRINGS_EN = {
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
+    // The cache moved under an open editor and an edit of the user's was
+    // also changed elsewhere: the user's version was kept.
+    changedElsewhere: (kind) => `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
     exitUnsyncedTitle: "Unsynced changes",
     exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
@@ -2424,7 +2433,7 @@ var TOOLS_CARD_STRINGS_EN = {
     macroTargetCreateNew: "Create new macro",
     macroTargetOwnGroup: "In this activity",
     macroTargetCopyGroup: "Copy from another activity",
-    macroTargetCopyNote: (steps, activity) => `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
+    macroTargetCopyNote: (steps, activity) => `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
@@ -2687,9 +2696,10 @@ var TOOLS_CARD_STRINGS_EN = {
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
     powerOffCommand: "Power OFF command",
-    thisDevice: "this device",
     replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot, activities) => `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot, device, activities) => `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
     none: "None",
     commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
@@ -2951,10 +2961,23 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/control_panel/state"
     });
   }
-  loadCacheContents() {
+  /** One hub's cache rows when `entryId` is given, every hub's otherwise. */
+  loadCacheContents(entryId) {
     return this.hass.callWS({
-      type: "sofabaton_x1s/persistent_cache/contents"
+      type: "sofabaton_x1s/persistent_cache/contents",
+      ...entryId ? { entry_id: entryId } : {}
     });
+  }
+  /** The hub's control-panel state, pushed whenever it changes (the first
+   *  event comes at once): runtime state, cache generation, config revision. */
+  subscribeHubState(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error(TOOLS_CARD_STRINGS.errors.hubStateNoSocket));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/hub_state/subscribe", entry_id: entryId }
+    );
   }
   setSetting(entryId, setting, enabled) {
     return this.hass.callWS({
@@ -2980,6 +3003,15 @@ var ControlPanelApi = class {
       entry_id: entryId,
       setting: "sidebar_panel",
       value
+    });
+  }
+  // Global setting: the panel's name in the sidebar ("" = the product name).
+  setSidebarPanelTitle(entryId, title) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/control_panel/set_setting",
+      entry_id: entryId,
+      setting: "sidebar_panel_title",
+      title
     });
   }
   runAction(entryId, action) {
@@ -3535,6 +3567,7 @@ var WIFI_INPLACE_STEP_KINDS = {
   command_payload: "wifiStepCommandPayload",
   command_rename: "wifiStepCommandRename",
   command_delete: "wifiStepCommandDelete",
+  command_sort_rewrite: "wifiStepCommandSortRewrite",
   wifi_power_config: "wifiStepPowerConfig",
   wifi_input_config: "wifiStepInputConfig",
   member_replay: "wifiStepInputSelect",
@@ -3575,6 +3608,7 @@ function normalizeOperation(value) {
     return "entity_sync";
   }
   if (operation === "wifi_deploy" || operation === "command_sync") return "wifi_deploy";
+  if (operation === "hub_write") return "hub_write";
   return null;
 }
 function localizeBackendOperationLabel(operationValue) {
@@ -3590,6 +3624,8 @@ function localizeBackendOperationLabel(operationValue) {
       return S5.operationEntitySync;
     case "wifi_deploy":
       return S5.operationWifiDeploy;
+    case "hub_write":
+      return S5.operationHubWrite;
     default:
       return TOOLS_CARD_STRINGS.availability.operationRunning;
   }
@@ -3703,6 +3739,10 @@ function persistentCacheEnabled(snapshot) {
 function sidebarPanelMode(snapshot) {
   const mode = snapshot.state?.sidebar_panel;
   return mode === "all" || mode === "admin" ? mode : "off";
+}
+function sidebarPanelTitle(snapshot) {
+  const title = String(snapshot.state?.sidebar_panel_title ?? "").trim();
+  return title || TOOLS_CARD_STRINGS.sidebarPanel.title;
 }
 function hubClickAction(snapshot) {
   const action = snapshot.state?.hub_click_action;
@@ -3887,7 +3927,7 @@ function resolveRuntimeState(snapshot) {
     };
   }
   if (hubRuntime?.kind === "operation_running") {
-    const operation = hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy";
+    const operation = hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : hubRuntime.operation === "hub_write" ? "hub_write" : "wifi_deploy";
     const total = Number(hubRuntime.total_steps || 0);
     const current = Number(hubRuntime.current_step || 0);
     const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
@@ -3976,29 +4016,19 @@ function resolveTabAvailability(snapshot, tabId) {
   }
   return { kind: "available" };
 }
-function cacheGenerationSnapshot(hass) {
-  const snapshot = {};
-  for (const id of remoteEntities(hass)) {
-    const attrs = hass?.states?.[id]?.attributes ?? {};
-    const entryId = String(attrs.entry_id ?? "").trim();
-    if (!entryId) continue;
-    snapshot[entryId] = Number(attrs.cache_generation ?? 0);
-  }
-  return snapshot;
+function cacheVersionOf(row) {
+  const generation = Number(row?.cache_generation);
+  if (!row || row.cache_generation == null || !Number.isFinite(generation)) return null;
+  const epoch = Number(row.cache_epoch);
+  return { epoch: Number.isFinite(epoch) ? epoch : 0, generation };
 }
-function didHubGenerationChange(previous, next) {
-  const prev = previous ?? {};
-  const curr = next ?? {};
-  return Object.keys(curr).some(
-    (entryId) => Object.prototype.hasOwnProperty.call(prev, entryId) && Number(curr[entryId] ?? 0) !== Number(prev[entryId] ?? 0)
-  );
+function compareCacheVersion(a3, b3) {
+  return a3.epoch !== b3.epoch ? a3.epoch - b3.epoch : a3.generation - b3.generation;
 }
-function hassFingerprint(hass) {
-  return remoteEntities(hass).sort().map((id) => {
-    const state = String(hass?.states?.[id]?.state ?? "");
-    const attrs = hass?.states?.[id]?.attributes ?? {};
-    return `${id};${attrs.entry_id ?? ""};${state};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation ?? 0)}`;
-  }).join("||");
+function loadedCacheVersionKey(snapshot, entryId) {
+  const row = (snapshot.contents?.hubs ?? []).find((hub) => hub.entry_id === entryId);
+  const version = cacheVersionOf(row);
+  return version ? `${version.epoch}:${version.generation}` : "";
 }
 function connectionFingerprint(hass) {
   return remoteEntities(hass).sort().map((id) => {
@@ -4088,6 +4118,9 @@ function buildHubClickNotification(entityId, item) {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var REFRESH_ALL_UNSEEN_MS = 3e4;
+var CONTENTS_RELOAD_DEBOUNCE_MS = 250;
+var CONTENTS_RELOAD_MAX_WAIT_MS = 1500;
+var RUNTIME_POLL_PUSHED_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "backup", "cache", "logs"]);
 var REFRESH_ALL_KEY = "__refresh_all__";
@@ -4156,7 +4189,6 @@ var INITIAL_SNAPSHOT = {
   selectedBackupSection: "make",
   selectedWifiSection: "wifi",
   openEntity: null,
-  staleData: false,
   refreshBusyByHub: {},
   externalHubCommandByHub: {},
   runtimeCompletionNoticeByHub: {},
@@ -4183,12 +4215,9 @@ var ControlPanelStore = class {
     this._loadingStatePromise = null;
     this._pendingLiveStateRefresh = null;
     this._isConnected = false;
-    this._refreshGraceUntil = 0;
     this._logsUnsub = null;
     this._logsLoadSeq = 0;
     this._logsSubscribeSeq = 0;
-    this._lastObservedGenerations = cacheGenerationSnapshot(null);
-    this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
     this._backendRetryTimer = null;
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
@@ -4205,6 +4234,14 @@ var ControlPanelStore = class {
     this._wifiPressSubscribeSeq = 0;
     this._hubEventsUnsub = null;
     this._hubEventsSubscribeSeq = 0;
+    this._hubStateUnsub = null;
+    this._hubStateEntryId = null;
+    this._hubStateSubscribeSeq = 0;
+    // The newest cache version the backend reported per hub (push or poll):
+    // only ever moves forward, so an older state response can't hide a change.
+    this._reportedVersions = /* @__PURE__ */ new Map();
+    // Pending per-hub contents reloads (see _scheduleContentsReload).
+    this._contentsReloads = /* @__PURE__ */ new Map();
     // Hub to pre-select when the card was created from a hub-specific entity (via
     // the card picker). Applied once when the hub becomes available; the user can
     // freely switch hubs afterwards.
@@ -4230,6 +4267,7 @@ var ControlPanelStore = class {
     void this._syncBackupOperationFeed();
     void this._syncWifiPressFeed();
     void this._syncHubEventsFeed();
+    void this._syncHubStateFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -4247,10 +4285,12 @@ var ControlPanelStore = class {
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimers();
+    this._clearContentsReloads();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
     void this._teardownHubEventsFeed();
+    void this._teardownHubStateFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -4281,7 +4321,8 @@ var ControlPanelStore = class {
     if (!this._isConnected) return;
     const hub = selectedHub(this._snapshot);
     const isRunning = hub?.runtime_state?.kind === "operation_running";
-    const interval = isRunning ? 1e3 : 5e3;
+    const pushed = !!this._hubStateUnsub && !!hub && this._hubStateEntryId === hub.entry_id;
+    const interval = pushed ? RUNTIME_POLL_PUSHED_MS : isRunning ? 1e3 : 5e3;
     this._runtimeStatePollTimer = setTimeout(() => {
       this._runtimeStatePollTimer = null;
       void this._refreshRuntimeState();
@@ -4324,35 +4365,31 @@ var ControlPanelStore = class {
     this._snapshot = { ...this._snapshot, backendUnavailable: false };
     this._clearBackendRetry();
   }
+  /** Cache freshness never comes from `hass`: the hub-state push (and the
+   *  poll behind it) report each hub's generation. A remote entity's state
+   *  or app-connection change still reloads the panel state, and renews the
+   *  push subscription (an HA restart drops it). */
   setHass(hass) {
     const previousHass = this._snapshot.hass;
     this._snapshot = { ...this._snapshot, hass };
-    const fingerprint = hassFingerprint(hass);
     const nextConnectionFingerprint = connectionFingerprint(hass);
-    const generationSnapshot = cacheGenerationSnapshot(hass);
     if (!previousHass) {
-      this._lastObservedGenerations = generationSnapshot;
-      this._lastHassFingerprint = fingerprint;
       this._lastConnectionFingerprint = nextConnectionFingerprint;
       this.emit();
       return;
     }
-    if (fingerprint !== this._lastHassFingerprint) {
-      const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._isAnyHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
-        this._snapshot = { ...this._snapshot, staleData: true };
-      }
-      this._lastObservedGenerations = generationSnapshot;
-      this._lastHassFingerprint = fingerprint;
-      this._lastConnectionFingerprint = nextConnectionFingerprint;
-      if (this._isConnected && connectionChanged && !this._snapshot.loading && !this._loadingStatePromise && !this._pendingLiveStateRefresh) {
-        this._pendingLiveStateRefresh = this.loadControlPanelState().catch(() => void 0).finally(() => {
-          this._pendingLiveStateRefresh = null;
-          if (this._isConnected) this.emit();
-        });
-      }
-      this.emit();
+    if (nextConnectionFingerprint === this._lastConnectionFingerprint) return;
+    this._lastConnectionFingerprint = nextConnectionFingerprint;
+    if (this._isConnected && !this._snapshot.loading && !this._loadingStatePromise && !this._pendingLiveStateRefresh) {
+      this._pendingLiveStateRefresh = this.loadControlPanelState().catch(() => void 0).finally(() => {
+        this._pendingLiveStateRefresh = null;
+        if (this._isConnected) this.emit();
+      });
     }
+    if (this._isConnected) {
+      void this._teardownHubStateFeed().then(() => this._syncHubStateFeed());
+    }
+    this.emit();
   }
   selectHub(entryId) {
     this._snapshot = {
@@ -4374,11 +4411,13 @@ var ControlPanelStore = class {
       await this._teardownBackupOperationFeed();
       await this._teardownWifiPressFeed();
       await this._teardownHubEventsFeed();
+      await this._teardownHubStateFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
       await this._syncHubEventsFeed();
+      await this._syncHubStateFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -4502,13 +4541,14 @@ var ControlPanelStore = class {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([api.loadState(), api.loadCacheContents()]);
+        this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
         this.applyControlPanelState(state);
-        this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
         await this._syncWifiPressFeed();
         await this._syncHubEventsFeed();
+        await this._syncHubStateFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -4518,8 +4558,7 @@ var ControlPanelStore = class {
         }
       } finally {
         this._loadingStatePromise = null;
-        this._snapshot = { ...this._snapshot, loading: false, staleData: false };
-        this._refreshGraceUntil = Date.now() + 1e4;
+        this._snapshot = { ...this._snapshot, loading: false };
         this.emit();
         if (this._snapshot.selectedTab === "logs") void this.syncLogsFeed();
       }
@@ -4533,12 +4572,13 @@ var ControlPanelStore = class {
       this.syncSelection();
       if (this._contentsMissingStateHubs()) {
         const contents = await this.api().loadCacheContents();
-        this._snapshot = { ...this._snapshot, contents };
+        this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
       }
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
       await this._syncWifiPressFeed();
       await this._syncHubEventsFeed();
+      await this._syncHubStateFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -4568,8 +4608,130 @@ var ControlPanelStore = class {
   }
   async loadCacheContents() {
     const contents = await this.api().loadCacheContents();
-    this._snapshot = { ...this._snapshot, contents };
+    this._snapshot = { ...this._snapshot, contents: this._mergeContents(contents) };
     this.emit();
+  }
+  /** Fold a contents response into the rows held, hub by hub: a hub's rows
+   *  are only replaced by rows read at the same or a newer cache version, so
+   *  a full load that raced a per-hub reload can't roll the hub back. */
+  _mergeContents(next) {
+    const current = this._snapshot.contents;
+    if (!next?.enabled || !current?.enabled) return next;
+    const held = new Map((current.hubs ?? []).map((hub) => [hub.entry_id, hub]));
+    return {
+      ...next,
+      hubs: (next.hubs ?? []).map((hub) => {
+        const mine = held.get(hub.entry_id);
+        return mine && this._rowsNewer(mine, hub) ? mine : hub;
+      })
+    };
+  }
+  _rowsNewer(a3, b3) {
+    const va = cacheVersionOf(a3);
+    const vb = cacheVersionOf(b3);
+    return !!va && !!vb && compareCacheVersion(va, vb) > 0;
+  }
+  /** Record what the backend reports for each hub's cache, then reload the
+   *  rows of every hub that fell behind. `force` also reloads that hub
+   *  (an operation on it just ended: its last writes land with the end). */
+  _noteReportedVersions(force = null) {
+    for (const hub of this._snapshot.state?.hubs ?? []) {
+      const reported = cacheVersionOf(hub);
+      if (!reported) continue;
+      const known = this._reportedVersions.get(hub.entry_id);
+      if (!known || compareCacheVersion(reported, known) > 0) this._reportedVersions.set(hub.entry_id, reported);
+    }
+    if (!this._snapshot.contents?.enabled) return;
+    for (const hub of this._snapshot.state?.hubs ?? []) {
+      if (hub.entry_id === force) this._scheduleContentsReload(hub.entry_id, true);
+      else if (this._contentsBehind(hub.entry_id)) this._scheduleContentsReload(hub.entry_id);
+    }
+  }
+  /** True when the rows held for the hub are older than the newest version
+   *  the backend reported. A hub with no rows at all is left to the full
+   *  load (_contentsMissingStateHubs). */
+  _contentsBehind(entryId) {
+    const reported = this._reportedVersions.get(entryId);
+    if (!reported) return false;
+    const row = (this._snapshot.contents?.hubs ?? []).find((hub) => hub.entry_id === entryId);
+    if (!row) return false;
+    const loaded = cacheVersionOf(row);
+    return !loaded || compareCacheVersion(loaded, reported) < 0;
+  }
+  /** Reload one hub's rows soon: waits for a quiet moment (debounce), but
+   *  never longer than the max wait while changes keep coming. */
+  _scheduleContentsReload(entryId, force = false) {
+    if (!this._isConnected) return;
+    let entry = this._contentsReloads.get(entryId);
+    if (!entry) {
+      entry = { timer: null, firstAt: Date.now(), inflight: false, again: false, force: false };
+      this._contentsReloads.set(entryId, entry);
+    }
+    entry.force = entry.force || force;
+    if (entry.inflight) {
+      entry.again = true;
+      return;
+    }
+    if (entry.timer) clearTimeout(entry.timer);
+    const waited = Date.now() - entry.firstAt;
+    const delay = Math.max(0, Math.min(CONTENTS_RELOAD_DEBOUNCE_MS, CONTENTS_RELOAD_MAX_WAIT_MS - waited));
+    entry.timer = setTimeout(() => void this._reloadHubContents(entryId), delay);
+  }
+  async _reloadHubContents(entryId) {
+    const entry = this._contentsReloads.get(entryId);
+    if (!entry) return;
+    entry.timer = null;
+    if (!entry.force && !this._contentsBehind(entryId)) {
+      this._contentsReloads.delete(entryId);
+      return;
+    }
+    entry.inflight = true;
+    entry.again = false;
+    entry.force = false;
+    let failed = false;
+    try {
+      const response = await this.api().loadCacheContents(entryId);
+      if (this._contentsReloads.get(entryId) === entry) this._applyHubContents(entryId, response);
+    } catch {
+      failed = true;
+    } finally {
+      entry.inflight = false;
+      if (this._contentsReloads.get(entryId) === entry) {
+        this._contentsReloads.delete(entryId);
+        if (!failed && (entry.again || this._contentsBehind(entryId))) {
+          this._scheduleContentsReload(entryId, entry.force);
+        }
+      }
+    }
+  }
+  _applyHubContents(entryId, response) {
+    if (!response?.enabled) {
+      this._snapshot = { ...this._snapshot, contents: response };
+      this.emit();
+      return;
+    }
+    const current = this._snapshot.contents;
+    if (!current?.enabled) return;
+    const incoming = (response.hubs ?? []).find((hub) => hub.entry_id === entryId) ?? null;
+    const hubs = [...current.hubs ?? []];
+    const index = hubs.findIndex((hub) => hub.entry_id === entryId);
+    if (!incoming) {
+      if (index < 0) return;
+      hubs.splice(index, 1);
+    } else if (index < 0) {
+      hubs.push(incoming);
+    } else {
+      if (this._rowsNewer(hubs[index], incoming)) return;
+      hubs[index] = incoming;
+    }
+    this._snapshot = { ...this._snapshot, contents: { ...current, hubs } };
+    this.emit();
+  }
+  _clearContentsReloads() {
+    for (const entry of this._contentsReloads.values()) {
+      if (entry.timer) clearTimeout(entry.timer);
+    }
+    this._contentsReloads.clear();
   }
   async setSetting(setting, enabled) {
     const hub = selectedHub(this._snapshot);
@@ -4649,6 +4811,37 @@ var ControlPanelStore = class {
       ...this._snapshot,
       state: { ...this._snapshot.state, sidebar_panel: value }
     };
+  }
+  /**
+   * Rename the sidebar panel (global; "" restores the product name). The
+   * backend re-registers a shown panel, so the sidebar follows at once.
+   * Resolves with `null` on success (state reloaded, so the Settings tab
+   * shows the new name) or a failure message for the rename dialog.
+   */
+  async renameSidebarPanel(title) {
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return TOOLS_CARD_STRINGS.errors.noHubSelected;
+    if (this._snapshot.pendingSettingKey || this._snapshot.pendingActionKey) {
+      return TOOLS_CARD_STRINGS.errors.anotherOperation;
+    }
+    this._snapshot = { ...this._snapshot, pendingSettingKey: "sidebar_panel" };
+    this.emit();
+    try {
+      const result = await this.api().setSidebarPanelTitle(hub.entry_id, title);
+      if (this._snapshot.state) {
+        this._snapshot = {
+          ...this._snapshot,
+          state: { ...this._snapshot.state, sidebar_panel_title: result?.title ?? title }
+        };
+      }
+      await this.loadControlPanelState();
+      return null;
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this._snapshot = { ...this._snapshot, pendingSettingKey: null };
+      this.emit();
+    }
   }
   _applyOptimisticHubClickAction(value) {
     if (!this._snapshot.state) return;
@@ -4744,11 +4937,6 @@ var ControlPanelStore = class {
       this.emit();
     }
   }
-  async refreshStale() {
-    this._snapshot = { ...this._snapshot, staleData: false };
-    this.emit();
-    await this.loadState();
-  }
   _setRefreshBusy(entryId, label) {
     this._snapshot = {
       ...this._snapshot,
@@ -4759,7 +4947,7 @@ var ControlPanelStore = class {
   _clearRefreshBusy(entryId) {
     const byHub = { ...this._snapshot.refreshBusyByHub };
     delete byHub[entryId];
-    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub };
     this.emit();
   }
   /**
@@ -5104,7 +5292,8 @@ var ControlPanelStore = class {
     };
     const nextHub = selectedHub(this._snapshot);
     const nextRuntime = nextHub?.runtime_state;
-    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
+    const announced = (runtime) => runtime?.kind === "operation_running" && runtime.operation !== "hub_write";
+    if (previousRuntime && previousHub?.entry_id === nextHub?.entry_id && announced(previousRuntime) && !announced(nextRuntime) && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
       const outcome = terminalOutcome(previousRuntime, nextRuntime);
       const entryId = nextHub?.entry_id ?? previousHub?.entry_id ?? null;
@@ -5117,8 +5306,67 @@ var ControlPanelStore = class {
         this.showRuntimeCompletion({ tone: "error", label: failureLabel }, entryId);
       }
     }
+    const ended = previousHub && nextHub && previousHub.entry_id === nextHub.entry_id && previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" ? nextHub.entry_id : null;
+    this._noteReportedVersions(ended);
     this._scheduleRuntimeStatePoll();
     this._checkRefreshAllWaits();
+  }
+  /** One `hub_state/subscribe` event: the hub's panel state replaces its
+   *  row (locks and progress follow at once), and its cache version may
+   *  start a contents reload. */
+  _applyHubStatePush(entryId, payload) {
+    const state = this._snapshot.state;
+    const hub = payload && typeof payload === "object" ? payload.hub : null;
+    if (!state || !hub || typeof hub !== "object") return;
+    if (!state.hubs.some((row) => row.entry_id === entryId)) return;
+    const revision = Number(payload.config_revision);
+    this.applyControlPanelState({
+      ...state,
+      ...Number.isFinite(revision) ? { config_revision: revision } : {},
+      hubs: state.hubs.map((row) => row.entry_id === entryId ? { ...hub, entry_id: entryId } : row)
+    });
+    void this._syncBackupOperationFeed();
+    this.emit();
+  }
+  async _syncHubStateFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownHubStateFeed();
+      return;
+    }
+    if (this._hubStateEntryId === entryId && this._hubStateUnsub) return;
+    await this._teardownHubStateFeed();
+    const subscribeSeq = ++this._hubStateSubscribeSeq;
+    this._hubStateEntryId = entryId;
+    try {
+      const unsubscribe = await this.api().subscribeHubState(entryId, (payload) => {
+        if (subscribeSeq !== this._hubStateSubscribeSeq || this._hubStateEntryId !== entryId) return;
+        this._applyHubStatePush(entryId, payload);
+      });
+      if (subscribeSeq !== this._hubStateSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._hubStateUnsub = unsubscribe;
+      this._scheduleRuntimeStatePoll();
+    } catch {
+      if (subscribeSeq === this._hubStateSubscribeSeq) this._hubStateEntryId = null;
+    }
+  }
+  async _teardownHubStateFeed() {
+    this._hubStateSubscribeSeq++;
+    const unsub = this._hubStateUnsub;
+    this._hubStateUnsub = null;
+    this._hubStateEntryId = null;
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
   }
   applyOptimisticSetting(setting, enabled) {
     if (!this._snapshot.state) return;
@@ -5201,16 +5449,6 @@ var ControlPanelStore = class {
     const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
       entryId && entryId in this._snapshot.refreshBusyByHub || entryId && entryId in this._snapshot.externalHubCommandByHub || this._snapshot.pendingActionKey || backupBusy
-    );
-  }
-  /** Busy on ANY hub — used to suppress the stale-data banner while one of
-   * our own operations is bumping cache generations in the background. */
-  _isAnyHubCommandBusy() {
-    const backupBusy = (this._snapshot.state?.hubs ?? []).some(
-      (hub) => !!hub.active_backup_operation && ["pending", "running"].includes(String(hub.active_backup_operation.status || ""))
-    );
-    return Boolean(
-      Object.keys(this._snapshot.refreshBusyByHub).length || Object.keys(this._snapshot.externalHubCommandByHub).length || this._snapshot.pendingActionKey || backupBusy
     );
   }
   async _syncBackupOperationFeed() {
@@ -5589,6 +5827,16 @@ function renderSettingTile(params) {
   `;
 }
 
+// custom_components/sofabaton_x1s/www/src/components/phrase-name.ts
+var NAME_SENTINEL = "\0";
+function phraseWithName(phrase, name, after = A) {
+  const [head, tail = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
+  return b2`${head}<span class="phrase-name">${name}</span>${after}${tail}`;
+}
+var phraseNameStyles = i`
+  .phrase-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+`;
+
 // custom_components/sofabaton_x1s/www/src/tabs/settings-tab.ts
 function renderSettingsTab(params) {
   if (params.loading) return b2`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
@@ -5606,6 +5854,21 @@ function renderSettingsTab(params) {
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key) => !!params.hub?.settings?.[key];
+  const sidebarPanelDescription = params.sidebarPanelMode === "off" ? TOOLS_CARD_STRINGS.settings.sidebarPanelDescription(params.sidebarPanelTitle) : phraseWithName(
+    TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+    params.sidebarPanelTitle,
+    b2`<button
+        class="icon-btn hub-rename-btn setting-inline-rename-btn"
+        ?disabled=${busy}
+        aria-label=${TOOLS_CARD_STRINGS.settings.renameSidebarPanel}
+        title=${TOOLS_CARD_STRINGS.settings.renameSidebarPanel}
+        @pointerdown=${(event) => event.stopPropagation()}
+        @click=${(event) => {
+      event.stopPropagation();
+      params.onRenameSidebarPanel();
+    }}
+      ><ha-icon icon="mdi:pencil"></ha-icon></button>`
+  );
   return b2`
     <div class="hub-tab-layout">
       <div class="settings-hub-header">
@@ -5698,7 +5961,7 @@ function renderSettingsTab(params) {
   })}
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.sidebarPanelTitle,
-    description: TOOLS_CARD_STRINGS.settings.sidebarPanelDescription,
+    description: sidebarPanelDescription,
     classes: busy ? "disabled" : "",
     footerLabel: TOOLS_CARD_STRINGS.settings.sidebarPanelFooter,
     control: b2`<select
@@ -5871,6 +6134,17 @@ function renderRenameDialog(params) {
       </div>
     </div>
   `;
+}
+
+// custom_components/sofabaton_x1s/www/src/shared/sidebar-panel-name.ts
+var SIDEBAR_PANEL_NAME_MAX = 30;
+var CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f]+/g;
+function sanitizeSidebarPanelName(value) {
+  const text = String(value ?? "").replace(/[\t\n\r]/g, " ").replace(CONTROL_CHARS, "");
+  return Array.from(text).slice(0, SIDEBAR_PANEL_NAME_MAX).join("");
+}
+function normalizeSidebarPanelName(value) {
+  return sanitizeSidebarPanelName(value).replace(/\s+/g, " ").trim();
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/cache-tab.ts
@@ -6249,7 +6523,6 @@ function renderCacheTab(params) {
       ` : null;
   return b2`
     <div class="tab-panel">
-      ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
       ${renderSecondaryTabShell({
     connected: true,
     shellClassName: "cache-panel secondary-view-shell--edge",
@@ -6874,6 +7147,9 @@ var backupTabStyles = i`
       justify-content: center;
     }
     .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+    /* Back arrows and drill-in chevrons point the reading way: Home Assistant
+       sets --scale-direction to -1 for an RTL language. */
+    .rtl-flip { transform: scaleX(var(--scale-direction, 1)); }
 
     /* ── Automatic-power dropdown (device Power section) ─────────────── */
     /* Genuine overlay popup: the menu is absolutely positioned so opening
@@ -8000,6 +8276,12 @@ function secondsToByte(value) {
   if (!Number.isFinite(seconds) || seconds <= 0) return 0;
   return Math.min(255, Math.max(0, Math.round(seconds * 2)));
 }
+function buttonTakeover(held, taking) {
+  const wanted = new Set(taking.map(String));
+  const shared = held.activities.filter((id) => wanted.has(String(id)));
+  if (!shared.length) return null;
+  return { shared, whole: held.favorite || shared.length === held.activities.length };
+}
 function hubSupportsPowerInput(hubVersion) {
   const version = String(hubVersion ?? "").toUpperCase();
   return !(version.includes("X1") && !version.includes("X1S"));
@@ -8007,6 +8289,9 @@ function hubSupportsPowerInput(hubVersion) {
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
+function isRtl(el) {
+  return getComputedStyle(el).direction === "rtl";
+}
 var viewportBox = () => ({
   left: 0,
   top: 0,
@@ -8045,20 +8330,20 @@ function overlayMenuPosition(anchor, align) {
   const spaceBelow = frame.bottom - rect.bottom;
   const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && rect.top - frame.top > spaceBelow;
   const vertical = openUp ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;` : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
-  const horizontal = align === "right" ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
+  const horizontal = align === "end" !== Boolean(anchor.rtl) ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 function menuAnchorRect(event) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
 }
 function anchoredListPosition(trigger, menu = null) {
   return anchoredListStyle(
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
@@ -8075,7 +8360,8 @@ function anchoredListStyle(anchor, bounds, inner, menu) {
   const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
-  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
+  const left = menu ? Math.min(Math.max(ideal, minX), maxX - width) : anchor.left;
   return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 function moveListFocus(event, optionSelector) {
@@ -8102,7 +8388,7 @@ function renderDrillInRow(params) {
           <span class="selection-label">${params.label}</span>
           ${params.meta ? b2`<span class="selection-sub">${params.meta}</span>` : A}
         </span>
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
       </button>
     </div>
   `;
@@ -8187,7 +8473,7 @@ function renderRoleRow(role, params) {
                 class="member-add-menu role-menu"
                 role="listbox"
                 aria-label=${label}
-                style=${overlayMenuPosition(params.menuAnchor, "right")}
+                style=${overlayMenuPosition(params.menuAnchor, "end")}
               >
                 <button
                   class="member-add-option"
@@ -8231,7 +8517,7 @@ var activityEditorStyles = i`
   .member-add-menu {
     position: absolute;
     top: calc(100% + 4px);
-    left: 0;
+    inset-inline-start: 0;
     z-index: 5;
     min-width: 180px;
     max-height: 240px;
@@ -8247,7 +8533,7 @@ var activityEditorStyles = i`
   .member-add-option {
     border: none;
     background: none;
-    text-align: left;
+    text-align: start;
     padding: 8px 10px;
     font-size: 0.9rem;
     color: var(--primary-text-color);
@@ -8327,8 +8613,8 @@ var activityEditorStyles = i`
     font-style: italic;
   }
   .role-menu {
-    right: 0;
-    left: auto;
+    inset-inline-end: 0;
+    inset-inline-start: auto;
     min-width: 200px;
   }
   .member-add-option:disabled {
@@ -10617,17 +10903,17 @@ function rewriteDeviceIdRefs(value, oldId, newId) {
 }
 function replayDeviceEntryEdits(fresh, baselineEntry, workingEntry, oldId, newId) {
   if (!workingEntry) return fresh;
-  const same = (a3, b3) => JSON.stringify(a3 ?? null) === JSON.stringify(b3 ?? null);
+  const same2 = (a3, b3) => JSON.stringify(a3 ?? null) === JSON.stringify(b3 ?? null);
   const base = baselineEntry ?? {};
   const work = workingEntry;
   const result = { ...fresh, device: { ...fresh.device } };
   for (const key of Object.keys(work)) {
-    if (key === "device" || same(work[key], base[key])) continue;
+    if (key === "device" || same2(work[key], base[key])) continue;
     result[key] = rewriteDeviceIdRefs(structuredClone(work[key]), oldId, newId);
   }
   const baseName = base.device?.name;
   const workName = workingEntry.device?.name;
-  if (typeof workName === "string" && !same(baseName, workName)) {
+  if (typeof workName === "string" && !same2(baseName, workName)) {
     result.device.name = workName;
   }
   return result;
@@ -11040,7 +11326,7 @@ var IrLearnController = class {
             <span class="learn-option-title">${S5.learnFromHub}</span>
             <span class="learn-option-desc">${S5.learnFromHubDescription}</span>
           </span>
-          <ha-icon icon="mdi:chevron-right"></ha-icon>
+          <ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon>
         </button>
         ${this.haOptionVisible() ? b2`
               <button class="learn-option" type="button" @click=${() => this.openInbox()}>
@@ -11049,7 +11335,7 @@ var IrLearnController = class {
                   <span class="learn-option-title">${S5.learnFromHa}</span>
                   <span class="learn-option-desc">${S5.learnFromHaDescription}</span>
                 </span>
-                <ha-icon icon="mdi:chevron-right"></ha-icon>
+                <ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon>
               </button>
             ` : this.haAvailable === null ? b2`<div class="learn-checking">${S5.learnHaChecking}</div>` : A}
       </div>
@@ -14021,7 +14307,7 @@ var MacroStepEditorController = class {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this.closeEditor}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this.host._renderDetailCrumbs([
@@ -14798,7 +15084,7 @@ var SofabatonEditDetailView = class extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
@@ -15004,7 +15290,7 @@ var SofabatonEditDetailView = class extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._closeBindingsView}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
@@ -16036,7 +16322,7 @@ var SofabatonEditDetailView = class extends i4 {
             <span class="selection-label">${label}</span>
             <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
           </span>
-          <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+          <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
         </button>
       </div>
     `;
@@ -16859,7 +17145,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
           <span class="selection-label">${option.label}</span>
         </span>
         ${option.meta ? b2`<span class="selection-meta">${option.meta}</span>` : A}
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        <span class="selection-chevron"><ha-icon class="rtl-flip" icon="mdi:chevron-right"></ha-icon></span>
       </button>
     `;
   }
@@ -17673,14 +17959,13 @@ function hubEventModalTitle(key) {
   };
   return titles[key];
 }
-var NAME_SENTINEL = "\0";
-function phraseWithName(phrase, name) {
-  const [before, after = ""] = phrase(NAME_SENTINEL).split(NAME_SENTINEL);
-  return b2`${before}<span class="hub-event-name">${name}</span>${after}`;
-}
 var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   constructor() {
     super(...arguments);
+    /** Moves when the command-config store is saved or the hub's cache rows
+     *  move ("revision|cache version"): the open lists reload. */
+    this.changeKey = "";
+    this._followTimer = null;
     this.hubCommandBusy = false;
     this.blockedTitle = null;
     this.blockedMessage = null;
@@ -17824,11 +18109,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       }
       const hardButton = String(next[idx].hard_button || "").trim();
       if (hardButton) {
+        const activities = next[idx].activities;
         next.forEach((slot, slotIdx) => {
-          if (slotIdx !== idx && String(slot.hard_button || "").trim() === hardButton)
-            next[slotIdx] = this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } });
+          if (slotIdx === idx) return;
+          const takeover = this._buttonTakeoverFrom(slot, hardButton, activities);
+          if (takeover) next[slotIdx] = this._slotAfterTakeover(slot, takeover);
         });
-        if (!await this._clearButtonFromOtherDevices(hardButton, String(this._selectedDeviceKey || ""))) {
+        if (!await this._takeButtonFromOtherDevices(hardButton, activities, String(this._selectedDeviceKey || ""))) {
           this._commandSaveError = TOOLS_CARD_STRINGS.wifiCommands.commandsSaveFailed;
           return;
         }
@@ -17934,6 +18221,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
+    if (this._followTimer) {
+      clearTimeout(this._followTimer);
+      this._followTimer = null;
+    }
     if (this._irFlashClearTimer) {
       clearTimeout(this._irFlashClearTimer);
       this._irFlashClearTimer = null;
@@ -17948,6 +18239,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   updated(changed) {
     if (changed.has("hub")) this._deviceSessionRestoreTried = false;
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
+    if (changed.has("changeKey") && changed.get("changeKey") !== void 0) this._scheduleFollow();
     if (changed.has("hub") || changed.has("_selectedDeviceKey")) this._persistSelectedDeviceSession();
     this._scheduleSyncPoll();
     this._notifyDirtyDock();
@@ -18058,7 +18350,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
-                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                  <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
                 ${this._renderTransportPill(selectedDevice)}
@@ -18727,12 +19019,12 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     `;
   }
   _renderActivityEventLine(activity, flash) {
-    const idKey = String(activity.id);
-    const entry = this._activityEventEntry(idKey);
+    const idKey2 = String(activity.id);
+    const entry = this._activityEventEntry(idKey2);
     const renderPhase = (phase) => {
       const action = entry[phase];
       const configured = this._commandHasCustomAction(action);
-      const target = { kind: "activity", id: idKey, phase };
+      const target = { kind: "activity", id: idKey2, phase };
       return b2`<span class="hub-event-action-wrap"><button class="hub-event-action-link" @click=${() => this._openHubEventEditor(target)}>
           ${this._hubEventActionText(action)}</button>${this._hubEventFlashOverlay(this._flashMatchesActivityPhase(flash, activity.id, phase), flash)}</span>${configured ? b2`<button
             class="hub-event-clear"
@@ -19135,7 +19427,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
-                ${this._hardButtonReplacementLabel() ? b2`<div class="button-conflict-hint">${this._hardButtonReplacementLabel()}</div>` : A}
+                ${this._hardButtonReplacementLabels().map((label) => b2`<div class="button-conflict-hint">${label}</div>`)}
                 <button class="checkbox-row nested-control ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
       this._toggleLongPressRow();
     }}>
@@ -19236,6 +19528,27 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         </div>
       </div>
     `;
+  }
+  /** The store or the cache moved (another tab, an automation, a deploy):
+   *  reload what this tab lists, shortly after the change settles. The
+   *  command editor's drafts are the user's and stay as they are. */
+  _scheduleFollow() {
+    if (this._followTimer) clearTimeout(this._followTimer);
+    this._followTimer = setTimeout(() => {
+      this._followTimer = null;
+      void this._followStore();
+    }, 300);
+  }
+  async _followStore() {
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!entryId || !this.hass || this._configLoadedForEntryId !== entryId || this._hubLoad) return;
+    await this._loadWifiDevices(true);
+    await this._loadHubEventActions(true);
+    await this._loadWifiEventsRows();
+    if (this._selectedDeviceKey) {
+      await this._loadCommandConfigFromBackend(true);
+      await this._loadCommandSyncProgress(true);
+    }
   }
   _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
@@ -19846,47 +20159,47 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const name = String(replacement.slot.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(replacement.index + 1);
     return TOOLS_CARD_STRINGS.wifiCommands.activityInputReplaces(name, this._activityName(activityId));
   }
-  _hardButtonConflictInfo(buttonId) {
-    if (!buttonId || !Number.isInteger(this._activeCommandSlot)) return null;
-    const activeIdx = Number(this._activeCommandSlot);
-    const currentDeviceKey = String(this._selectedDeviceKey || "");
-    const commands = this._commandsList();
-    for (let idx = 0; idx < commands.length; idx += 1) {
-      if (idx === activeIdx) continue;
-      if (String(commands[idx].hard_button || "").trim() === buttonId) {
-        const name = String(commands[idx].name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
-        return {
-          deviceName: this._selectedWifiDevice()?.device_name || TOOLS_CARD_STRINGS.wifiCommands.thisDevice,
-          slotName: name,
-          isSameDevice: true,
-          deviceKey: currentDeviceKey
-        };
-      }
-    }
-    for (const device of this._wifiDevices) {
-      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
-      for (let idx = 0; idx < device.commands.length; idx += 1) {
-        if (String(device.commands[idx]?.hard_button || "").trim() === buttonId) {
-          const name = String(device.commands[idx]?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
-          return { deviceName: device.device_name, slotName: name, isSameDevice: false, deviceKey: device.device_key };
-        }
-      }
-    }
-    return null;
+  /** What saving a slot that binds `button` in `activities` takes from `slot`
+   *  (buttonTakeover), with the activities it keeps the button in; null when
+   *  it takes nothing. Activities the hub no longer has are not counted. */
+  _buttonTakeoverFrom(slot, button, activities) {
+    if (!button || String(slot?.hard_button || "").trim() !== button) return null;
+    const valid = this._validActivityIdSet();
+    const held = (Array.isArray(slot?.activities) ? slot.activities : []).map((id) => String(id)).filter((id) => id !== "" && (!valid || valid.has(id)));
+    const takeover = buttonTakeover({ favorite: Boolean(slot?.add_as_favorite), activities: held }, activities);
+    return takeover ? { ...takeover, kept: held.filter((id) => !takeover.shared.includes(id)) } : null;
   }
-  _hardButtonReplacementLabel() {
+  _slotAfterTakeover(slot, takeover) {
+    return takeover.whole ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : this._cloneCommandSlot({ ...slot, activities: takeover.kept });
+  }
+  /** One line per command the open slot's button would be taken from, on
+   *  this device or another, naming the activities when it keeps the button
+   *  elsewhere (issue #306). */
+  _hardButtonReplacementLabels() {
     const draft = this._activeCommandDraft();
     const buttonId = String(draft?.hard_button || "").trim();
-    if (!buttonId) return "";
-    const conflict = this._hardButtonConflictInfo(buttonId);
-    if (!conflict) return "";
-    if (conflict.isSameDevice) {
-      return TOOLS_CARD_STRINGS.wifiCommands.replacesOnButton(conflict.slotName);
+    if (!draft || !buttonId || !Number.isInteger(this._activeCommandSlot)) return [];
+    const strings = TOOLS_CARD_STRINGS.wifiCommands;
+    const activeIdx = Number(this._activeCommandSlot);
+    const currentDeviceKey = String(this._selectedDeviceKey || "");
+    const slotName = (slot, idx) => String(slot?.name || "").trim() || TOOLS_CARD_STRINGS.common.commandFallback(idx + 1);
+    const activityNames = (ids) => ids.map((id) => this._activityName(id));
+    const labels = [];
+    this._commandsList().forEach((slot, idx) => {
+      if (idx === activeIdx) return;
+      const takeover = this._buttonTakeoverFrom(slot, buttonId, draft.activities);
+      if (!takeover) return;
+      labels.push(takeover.whole ? strings.replacesOnButton(slotName(slot, idx)) : strings.replacesOnButtonIn(slotName(slot, idx), activityNames(takeover.shared)));
+    });
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      device.commands.forEach((slot, idx) => {
+        const takeover = this._buttonTakeoverFrom(slot, buttonId, draft.activities);
+        if (!takeover) return;
+        labels.push(takeover.whole ? strings.replacesFromDevice(slotName(slot, idx), device.device_name) : strings.replacesFromDeviceIn(slotName(slot, idx), device.device_name, activityNames(takeover.shared)));
+      });
     }
-    return TOOLS_CARD_STRINGS.wifiCommands.replacesFromDevice(
-      conflict.slotName,
-      conflict.deviceName
-    );
+    return labels;
   }
   _toggleLongPressRow() {
     const draft = this._activeCommandDraft();
@@ -19972,9 +20285,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     event?.stopPropagation();
     if (!this._activitySelectionEnabled(this._activeCommandDraft())) return;
     const current = new Set((this._activeCommandDraft()?.activities || []).map((id) => String(id)));
-    const idKey = String(activityId);
-    if (current.has(idKey) && current.size > 1) current.delete(idKey);
-    else current.add(idKey);
+    const idKey2 = String(activityId);
+    if (current.has(idKey2) && current.size > 1) current.delete(idKey2);
+    else current.add(idKey2);
     this._updateActiveCommandDraft({ activities: Array.from(current) });
     this._commandSaveError = "";
   }
@@ -20010,23 +20323,27 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._confirmClearSlot = null;
     await this._setCommands(next);
   }
-  /** Free a hard button on the other devices. False when one of them could
-   *  not be stored: the caller must not assign the button then, or two
-   *  devices would claim it. */
-  async _clearButtonFromOtherDevices(buttonId, currentDeviceKey) {
+  /** Take a hard button from the other devices' commands in the activities
+   *  this save binds it in (buttonTakeover). False when one of them could not
+   *  be stored: the caller must not assign the button then, or two devices
+   *  would claim it in the same activity. */
+  async _takeButtonFromOtherDevices(buttonId, activities, currentDeviceKey) {
     if (!buttonId || !this.hass) return true;
     const hubEntryId = String(this.hub?.entry_id || "").trim();
     if (!hubEntryId) return true;
     for (const device of this._wifiDevices) {
       if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
-      const conflictIdx = device.commands.findIndex((cmd) => String(cmd?.hard_button || "").trim() === buttonId);
-      if (conflictIdx === -1) continue;
       const slots = this._normalizeCommandsForStorage(device.commands, device.power_on_command_id, device.power_off_command_id);
-      const cleared = slots.map(
-        (slot, i7) => i7 === conflictIdx ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : slot
-      );
-      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(cleared);
-      const normalized = this._normalizeCommandsForStorage(cleared, powerOnCommandId, powerOffCommandId);
+      let changed = false;
+      const taken = slots.map((slot) => {
+        const takeover = this._buttonTakeoverFrom(slot, buttonId, activities);
+        if (!takeover) return slot;
+        changed = true;
+        return this._slotAfterTakeover(slot, takeover);
+      });
+      if (!changed) continue;
+      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(taken);
+      const normalized = this._normalizeCommandsForStorage(taken, powerOnCommandId, powerOffCommandId);
       try {
         await this.api().setWifiCommandConfig(hubEntryId, device.device_key, normalized, powerOnCommandId, powerOffCommandId);
       } catch (_error) {
@@ -20274,6 +20591,7 @@ _SofabatonWifiCommandsTab.properties = {
   showCompletion: { attribute: false },
   refreshControlPanelState: { attribute: false },
   lastWifiPress: { attribute: false },
+  changeKey: { type: String },
   hubCommandBusy: { type: Boolean },
   loading: { type: Boolean },
   error: { type: String },
@@ -20331,7 +20649,7 @@ _SofabatonWifiCommandsTab.properties = {
   _commandsSaveError: { state: true },
   lastHubEvent: { attribute: false }
 };
-_SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, i`
+_SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -20359,6 +20677,8 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
+    /* Home Assistant sets --scale-direction to -1 for an RTL language. */
+    .rtl-flip { transform: scaleX(var(--scale-direction, 1)); }
     /* Wrapping flex rather than a two-column grid: a grid column would hold
        its place at any width and squeeze the subtitle into a ragged sliver
        (worst in German). The 240px basis drops the button onto its own row
@@ -20524,9 +20844,6 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .hub-event-action-wrap { position: relative; display: inline-block; }
     .hub-event-action-wrap .wifi-ir-flash { inset: -2px -5px; border-radius: 6px; }
     .hub-event-needs-sync { color: var(--warning-color, #b58a00); font-size: 12px; font-weight: 700; }
-    /* User-chosen label inside an event phrase: a subtle tinted chip marks
-       it as the user's own name rather than part of the sentence. */
-    .hub-event-name { background: color-mix(in srgb, var(--secondary-text-color) 14%, transparent); border-radius: 4px; padding: 0 4px; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
     .wifi-events-stale { color: var(--warning-color, #b58a00); }
     .wifi-events-stale .hub-event-action-link { display: inline; font-size: inherit; }
     .wifi-events-stale-actions { display: inline-flex; gap: 8px; margin-left: 8px; vertical-align: middle; }
@@ -20949,8 +21266,104 @@ if (!customElements.get("sofabaton-refresh-cache-button")) {
   customElements.define("sofabaton-refresh-cache-button", SofabatonRefreshCacheButton);
 }
 
+// custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase.ts
+function isPlainObject2(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function same(a3, b3) {
+  if (a3 === b3) return true;
+  if (a3 === void 0 || b3 === void 0) return false;
+  return JSON.stringify(a3) === JSON.stringify(b3);
+}
+function clone(value) {
+  return value === void 0 ? value : structuredClone(value);
+}
+function idKey(value) {
+  const id = Number(value);
+  return value != null && Number.isFinite(id) ? String(id) : null;
+}
+var LIST_ROW_KEYS = {
+  commands: (row) => idKey(row.command_id),
+  button_bindings: (row) => idKey(row.button_id),
+  macros: (row) => idKey(row.button_id),
+  favorite_slots: (row) => {
+    const device = idKey(row.device_id);
+    const command = idKey(row.command_id);
+    return device && command ? `${device}:${command}` : null;
+  }
+};
+var ENTITY_ROW_KEY = (row) => isPlainObject2(row.device) ? idKey(row.device.device_id) : null;
+function keyedRows(list, key) {
+  if (list === void 0 || list === null) return /* @__PURE__ */ new Map();
+  if (!Array.isArray(list)) return null;
+  const rows = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Map();
+  for (const row of list) {
+    if (!isPlainObject2(row)) return null;
+    const base = key(row);
+    if (base == null) return null;
+    const n4 = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n4);
+    rows.set(n4 === 1 ? base : `${base}#${n4}`, row);
+  }
+  return rows;
+}
+function mergeKeyedList(base, mine, theirs, key, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  const baseRows = keyedRows(base, key);
+  const mineRows = keyedRows(mine, key);
+  const theirRows = keyedRows(theirs, key);
+  if (!baseRows || !mineRows || !theirRows) return mergeWhole(base, mine, theirs, overlap);
+  const out = [];
+  for (const [rowKey, row] of mineRows) {
+    const merged = mergeValue(baseRows.get(rowKey), row, theirRows.get(rowKey), overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  for (const [rowKey, row] of theirRows) {
+    if (mineRows.has(rowKey)) continue;
+    const merged = mergeValue(baseRows.get(rowKey), void 0, row, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  return out;
+}
+function mergeWhole(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  overlap.hit = true;
+  return mine;
+}
+function mergeValue(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  if (isPlainObject2(base) && isPlainObject2(mine) && isPlainObject2(theirs)) {
+    const out = {};
+    for (const key of /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)])) {
+      const rowKey = LIST_ROW_KEYS[key];
+      const value = rowKey ? mergeKeyedList(base[key], mine[key], theirs[key], rowKey, overlap) : mergeValue(base[key], mine[key], theirs[key], overlap);
+      if (value !== void 0) out[key] = value;
+    }
+    return out;
+  }
+  overlap.hit = true;
+  return mine;
+}
+function rebaseBundle(base, mine, theirs) {
+  const overlap = { hit: false };
+  const out = {};
+  const b3 = base;
+  const m3 = mine;
+  const t4 = theirs;
+  for (const key of /* @__PURE__ */ new Set([...Object.keys(t4), ...Object.keys(m3)])) {
+    const value = key === "devices" || key === "activities" ? mergeKeyedList(b3[key], m3[key], t4[key], ENTITY_ROW_KEY, overlap) : mergeValue(b3[key], m3[key], t4[key], overlap);
+    if (value !== void 0) out[key] = value;
+  }
+  return { bundle: out, overlap: overlap.hit };
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/activities-tab.ts
 var S4 = TOOLS_CARD_STRINGS.activities;
+var FOLLOW_SETTLE_MS = 600;
 var WIFI_EVENTS_DEVICE_KEY = "haevents";
 var SofabatonActivitiesTab = class extends i4 {
   constructor() {
@@ -20967,6 +21380,9 @@ var SofabatonActivitiesTab = class extends i4 {
     this.selectedHubProxyConnected = false;
     /** MQTT delivery can be offered for this hub (control-panel state). */
     this.mqttAvailable = false;
+    /** The version of the hub's cache rows the card holds
+     *  (loadedCacheVersionKey): when it moves, an open editor follows. */
+    this.cacheVersion = "";
     this._stage = "list";
     this._entityId = null;
     this._baseline = null;
@@ -20989,6 +21405,14 @@ var SofabatonActivitiesTab = class extends i4 {
     this._pendingTransport = null;
     this._syncError = null;
     this._syncFailedAt = null;
+    /** The cacheVersion the baseline was captured at. */
+    this._capturedVersion = "";
+    this._rebasing = false;
+    /** Work on the hub held this editor back; it follows once it settles. */
+    this._heldForWork = false;
+    this._settleTimer = null;
+    /** An edit of the user's was also changed elsewhere; theirs was kept. */
+    this._changedElsewhere = false;
     this._progressUnsub = null;
     this._exitAfterSync = false;
     // Which requested activityId we already auto-opened, so returning to the
@@ -21079,8 +21503,10 @@ var SofabatonActivitiesTab = class extends i4 {
       this._entityId = entityId;
       this._wifiEventsPlaceholderId = null;
       this._captureError = null;
+      this._changedElsewhere = false;
       this._stage = "capturing";
       try {
+        this._capturedVersion = String(this.cacheVersion || "");
         const res = await this.api().getStructuralBundle(this.hub.entry_id);
         const bundle = res?.bundle ?? null;
         const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
@@ -21123,6 +21549,7 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncError = null;
       this._syncFailedAt = null;
       this._syncProgress = null;
+      this._changedElsewhere = false;
       this._stage = "syncing";
       try {
         if (this.kind === "activity" && !await this._syncWifiEventsPhase()) {
@@ -21158,6 +21585,7 @@ var SofabatonActivitiesTab = class extends i4 {
         this._syncProgress = null;
         this._exitAfterSync = false;
         this._stage = "sync_failed";
+        void this._rebaseAfterFailure();
       }
     };
     /** The editor's delivery select (edit-detail-view `transport-change`):
@@ -21171,6 +21599,12 @@ var SofabatonActivitiesTab = class extends i4 {
       this._notifyDirtyDock();
     };
     this._retrySync = () => {
+      if (!this._hasUnsynced()) {
+        this._stage = "editing";
+        this._syncError = null;
+        this._syncFailedAt = null;
+        return;
+      }
       void this._requestSync();
     };
     // ── Immediate delete (entity delete executes on the hub right away) ──
@@ -21223,6 +21657,7 @@ var SofabatonActivitiesTab = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._teardownProgressSubscription();
+    this._clearSettle();
   }
   updated(changed) {
     if (changed.has("hub")) {
@@ -21234,7 +21669,102 @@ var SofabatonActivitiesTab = class extends i4 {
       this._hubEntryId = nextEntryId;
     }
     this._maybeAutoOpen();
+    if (changed.has("cacheVersion") || changed.has("_stage") || changed.has("hub")) this._maybeFollowCache();
     this._notifyDirtyDock();
+  }
+  // ── Following the cache ─────────────────────────────────────────────
+  // The editor's baseline is the cache as captured. When the cache moves
+  // (another tab, a refresh, a write elsewhere) the editor follows it: a
+  // clean editor re-captures, a dirty one keeps the user's edits on top of
+  // the new capture (bundle-rebase.ts). Never mid sync, delete or capture:
+  // those end in their own re-capture. Nor while the hub works for someone
+  // else: the cache passes through partial states then (a command re-read
+  // clears the table before it refills), so the editor follows once, when
+  // the work has ended (the card reloads the hub's rows at that moment).
+  _maybeFollowCache() {
+    if (this._stage !== "editing" || this._rebasing) return;
+    if (this.hub?.runtime_state?.kind === "operation_running") {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => {
+        this._settleTimer = null;
+        this._heldForWork = false;
+        this._maybeFollowCache();
+      }, FOLLOW_SETTLE_MS);
+      return;
+    }
+    const version = String(this.cacheVersion || "");
+    if (!version || version === this._capturedVersion) return;
+    void this._followCache(version);
+  }
+  _clearSettle() {
+    if (this._settleTimer) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
+  }
+  async _followCache(version) {
+    if (!this.hub || this._entityId == null) return;
+    const entityId = this._entityId;
+    this._rebasing = true;
+    try {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const fresh = res?.bundle ?? null;
+      if (this._stage !== "editing" || this._entityId !== entityId) return;
+      this._capturedVersion = version;
+      if (!fresh) return;
+      if (!this._bundleHasEntity(fresh, entityId)) {
+        if (this._hasUnsynced()) this._stage = "needs_refresh";
+        else this._resetToList();
+        return;
+      }
+      await this._rebaseOnto(fresh);
+    } catch {
+    } finally {
+      this._rebasing = false;
+      this._maybeFollowCache();
+    }
+  }
+  _bundleHasEntity(bundle, entityId) {
+    const entries = (this.kind === "device" ? bundle.devices : bundle.activities) ?? [];
+    return entries.some((candidate) => Number(candidate.device?.device_id) === entityId);
+  }
+  /** Make `fresh` the baseline and carry the user's edits over to it. */
+  async _rebaseOnto(fresh) {
+    if (!this._baseline || !this._working) return;
+    const eventsGrafted = this._eventsGrafted();
+    if (!this._dirty) {
+      this._baseline = fresh;
+      this._working = structuredClone(fresh);
+    } else {
+      const { bundle, overlap } = rebaseBundle(this._baseline, this._working, fresh);
+      this._baseline = fresh;
+      this._working = bundle;
+      if (overlap) this._changedElsewhere = true;
+    }
+    if (eventsGrafted) await this._graftWifiEventsDevice({ forceRefresh: true });
+    this._recomputeDirty();
+  }
+  /** A sync that failed may still have landed part of its writes (the
+   *  backend reads the entity back into the cache before it reports the
+   *  failure). Rebase onto that, keeping the user's edits on top: a retry
+   *  then writes only what is still missing and passes its stale check,
+   *  and later edits see what landed. */
+  async _rebaseAfterFailure() {
+    if (!this.hub || this._entityId == null) return;
+    const entityId = this._entityId;
+    const version = String(this.cacheVersion || "");
+    try {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const fresh = res?.bundle ?? null;
+      if (!fresh || this._stage !== "sync_failed" || this._entityId !== entityId) return;
+      if (!this._bundleHasEntity(fresh, entityId)) return;
+      await this._rebaseOnto(fresh);
+      this._capturedVersion = version;
+    } catch {
+    }
   }
   /** The host dock's Sync button: the same sync the editor's header starts. */
   syncFromDock() {
@@ -21334,10 +21864,7 @@ var SofabatonActivitiesTab = class extends i4 {
    *  first-ever event, in the Sync flow's placeholder swap). */
   async _graftWifiEventsDevice(options = {}) {
     if (!this.hub) return this._working;
-    const present = (this._working?.devices ?? []).some(
-      (entry2) => isWifiEventsBrand(String(entry2?.device?.brand ?? "")) || Number(entry2?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId
-    );
-    if (present && !options.forceRefresh) return this._working;
+    if (this._eventsGrafted() && !options.forceRefresh) return this._working;
     const entityId = this._wifiEventsHubId();
     const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
     const blockId = state.device_id ?? this._placeholderDeviceId();
@@ -21345,6 +21872,13 @@ var SofabatonActivitiesTab = class extends i4 {
     this._baseline = graftDeviceIntoBundle(this._baseline, entry);
     this._working = graftDeviceIntoBundle(this._working, entry);
     return this._working;
+  }
+  /** The working bundle carries the staged events block (or the deployed
+   *  events device). */
+  _eventsGrafted() {
+    return (this._working?.devices ?? []).some(
+      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? "")) || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId
+    );
   }
   /** W7 phase 1 of the Sync press: deploy the events record when it is
    *  out-of-step, then resolve placeholder refs to the real device id and
@@ -21377,6 +21911,7 @@ var SofabatonActivitiesTab = class extends i4 {
       return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
     };
     if (!referencesEvents(this._working)) return true;
+    const capturedEventsId = (this._baseline?.devices ?? []).map((entry) => entry?.device).filter((device) => isWifiEventsBrand(String(device?.brand ?? ""))).map((device) => Number(device?.device_id ?? -1)).find((id) => id > 0 && id !== placeholderId) ?? null;
     let state = await this.api().listWifiEvents(entityId);
     const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
       (entry) => Number(entry?.device?.device_id ?? -1) === placeholderId
@@ -21395,6 +21930,9 @@ var SofabatonActivitiesTab = class extends i4 {
       }
     }
     const realId = state.device_id;
+    if (deployed && realId != null && capturedEventsId != null && realId !== capturedEventsId) {
+      await this._followWifiEventsDeviceReplace(capturedEventsId, realId);
+    }
     if (deployed && realId != null) this._retireWifiEventLongRecords(realId, state.slot_count);
     if (hasPlaceholder && placeholderId != null && realId != null) {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -21415,6 +21953,25 @@ var SofabatonActivitiesTab = class extends i4 {
       this._wifiEventsPlaceholderId = null;
     }
     return true;
+  }
+  /** Follow a replace deploy of the Wifi Events device (old id -> new id)
+   *  in the baseline and the working bundle: the device block is swapped for
+   *  the deployed one and every activity's references move to the new id,
+   *  as the hub-side retarget did. The user's own edits stay as they are. */
+  async _followWifiEventsDeviceReplace(oldId, newId) {
+    const res = await this.api().getStructuralBundle(this.hub.entry_id);
+    const entry = (res?.bundle?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === newId
+    );
+    for (const key of ["_baseline", "_working"]) {
+      let bundle = removeBundleDevice(this[key], oldId);
+      if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+      for (const activity of bundle?.activities ?? []) {
+        bundle = rewriteWifiEventPlaceholderRefs(bundle, Number(activity?.device?.device_id ?? -1), newId, oldId);
+      }
+      this[key] = bundle;
+    }
+    this._recomputeDirty();
   }
   /** Apply the hub-side long-record retirement to the baseline and the
    *  working bundle alike: the user's own edits (the diff) stay as they are. */
@@ -21600,6 +22157,7 @@ var SofabatonActivitiesTab = class extends i4 {
         this._syncProgress = null;
         this._exitAfterSync = false;
         this._stage = "sync_failed";
+        void this._rebaseAfterFailure();
         return;
       }
       this._syncProgress = payload;
@@ -21625,6 +22183,7 @@ var SofabatonActivitiesTab = class extends i4 {
       return;
     }
     let rebased = null;
+    this._capturedVersion = String(this.cacheVersion || "");
     try {
       const res = this.hub ? await this.api().getStructuralBundle(this.hub.entry_id) : null;
       const bundle = res?.bundle ?? null;
@@ -21660,6 +22219,10 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncError = null;
     this._syncFailedAt = null;
     this._exitAfterSync = false;
+    this._changedElsewhere = false;
+    this._capturedVersion = "";
+    this._heldForWork = false;
+    this._clearSettle();
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
     }
@@ -21789,6 +22352,7 @@ var SofabatonActivitiesTab = class extends i4 {
     return b2`
       <div class="editing-shell">
         ${this._deleteError ? this._renderDeleteErrorBanner() : A}
+        ${this._changedElsewhere ? b2`<div class="notice-banner changed-elsewhere-banner"><span class="notice-banner-text"><ha-icon icon="mdi:information-outline"></ha-icon> ${S4.changedElsewhere(this.kind)}</span></div>` : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
           .kind=${this.kind}
@@ -21906,7 +22470,9 @@ SofabatonActivitiesTab.properties = {
   blockedMessage: { type: String },
   selectedHubProxyConnected: { type: Boolean },
   mqttAvailable: { type: Boolean },
+  cacheVersion: { type: String },
   _stage: { state: true },
+  _changedElsewhere: { state: true },
   _entityId: { state: true },
   _baseline: { state: true },
   _working: { state: true },
@@ -22000,6 +22566,8 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
+    .changed-elsewhere-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; white-space: normal; }
+    .changed-elsewhere-banner ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
     /* Exit-confirm and delete dialogs (§4.4). */
@@ -22200,6 +22768,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._hubRenameDraft = "";
     this._hubRenameError = "";
     this._hubRenameBusy = false;
+    // Settings tab sidebar panel rename dialog (the pencil behind its name).
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this._sidebarRenameError = "";
+    this._sidebarRenameBusy = false;
     this._addDeviceBusy = false;
     this._addDeviceError = null;
     this._addDeviceClass = "";
@@ -22602,6 +23175,62 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onConfirm: () => void this.confirmHubRename()
     });
   }
+  openSidebarRename() {
+    this._sidebarRenameDraft = sidebarPanelTitle(this._snapshot);
+    this._sidebarRenameError = "";
+    this._sidebarRenameBusy = false;
+    this._sidebarRenameOpen = true;
+    this.requestUpdate();
+  }
+  closeSidebarRename() {
+    if (this._sidebarRenameBusy) return;
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+  }
+  handleSidebarRenameInput(value) {
+    this._sidebarRenameDraft = sanitizeSidebarPanelName(value);
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+  }
+  async confirmSidebarRename() {
+    if (this._sidebarRenameBusy) return;
+    const next = normalizeSidebarPanelName(this._sidebarRenameDraft);
+    if ((next || TOOLS_CARD_STRINGS.sidebarPanel.title) === sidebarPanelTitle(this._snapshot)) {
+      this.closeSidebarRename();
+      return;
+    }
+    this._sidebarRenameBusy = true;
+    this._sidebarRenameError = "";
+    this.requestUpdate();
+    const error = await this._store.renameSidebarPanel(next);
+    this._sidebarRenameBusy = false;
+    if (error) {
+      this._sidebarRenameError = error;
+      this.requestUpdate();
+      return;
+    }
+    this._sidebarRenameOpen = false;
+    this._sidebarRenameDraft = "";
+    this.requestUpdate();
+  }
+  renderSidebarRenameDialog() {
+    return renderRenameDialog({
+      open: this._sidebarRenameOpen,
+      title: TOOLS_CARD_STRINGS.settings.renameSidebarPanel,
+      label: TOOLS_CARD_STRINGS.settings.sidebarPanelNameLabel,
+      helper: TOOLS_CARD_STRINGS.settings.sidebarPanelNameHelper,
+      value: this._sidebarRenameDraft,
+      error: this._sidebarRenameError,
+      maxLength: SIDEBAR_PANEL_NAME_MAX,
+      busy: this._sidebarRenameBusy,
+      inputId: "sb-settings-sidebar-name",
+      onInput: (value) => this.handleSidebarRenameInput(value),
+      onCancel: () => this.closeSidebarRename(),
+      onConfirm: () => void this.confirmSidebarRename()
+    });
+  }
   handleSettingToggle(setting, enabled) {
     void this._store.setSetting(setting, enabled);
   }
@@ -22920,6 +23549,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       hass: this._snapshot.hass,
       persistentCacheEnabled: cacheEnabled,
       sidebarPanelMode: sidebarPanelMode(this._snapshot),
+      sidebarPanelTitle: sidebarPanelTitle(this._snapshot),
       hubClickAction: hubClickAction(this._snapshot),
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -22928,7 +23558,8 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onSelectHubClickAction: (value) => void this._store.setHubClickAction(value),
       onSelectSidebarPanelMode: (value) => void this._store.setSidebarPanelMode(value),
       onRunAction: (action) => this.handleAction(action),
-      onRenameHub: () => this.openHubRename()
+      onRenameHub: () => this.openHubRename(),
+      onRenameSidebarPanel: () => this.openSidebarRename()
     });
     if (this._snapshot.selectedTab === "logs") {
       activeTab = renderLogsTab({
@@ -22946,6 +23577,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .hass=${this._snapshot.hass}
+          .changeKey=${`${this._snapshot.state?.config_revision ?? ""}|${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}`}
           .hubCommandBusy=${sharedHubCommandBusy}
           .lastWifiPress=${this._snapshot.lastWifiPress}
           .lastHubEvent=${this._snapshot.lastHubEvent}
@@ -22989,6 +23621,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .mqttAvailable=${Boolean(hub?.mqtt_available)}
+            .cacheVersion=${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-dirty-changed=${this._handleEditorDirtyChanged}
@@ -23011,7 +23644,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           error: this._snapshot.loadError,
           hub: cacheHub,
           persistentCacheEnabled: cacheEnabled,
-          staleData: this._snapshot.staleData,
           refreshBusy: hubRefreshing,
           hubCommandBusy: sharedHubCommandBusy,
           activeRefreshLabel: hubActiveRefreshLabel(this._snapshot, hubEntryId),
@@ -23020,7 +23652,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
           enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
           onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
-          onRefreshStale: () => void this._store.refreshStale(),
           onSelectSection: (sectionId) => {
             this.resetActivityListInteractions();
             this._store.selectCacheSection(sectionId);
@@ -23070,6 +23701,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     return b2`
       <ha-card>
         ${this.renderHubRenameDialog()}
+        ${this.renderSidebarRenameDialog()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel() ? null : b2`<div class="card-topbar">
             ${this.renderBrandLabel()}
@@ -23108,7 +23740,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     `;
   }
 };
-_SofabatonControlPanelCard.styles = [cardStyles, previewStyles];
+_SofabatonControlPanelCard.styles = [cardStyles, previewStyles, phraseNameStyles];
 // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
 // drop the overlay nodes so they don't sit in the DOM forever and so
 // the next animation cleanly restarts via Lit's keyed remount.

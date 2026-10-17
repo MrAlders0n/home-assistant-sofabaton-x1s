@@ -17,6 +17,10 @@ dashboard setup needed. If you have several hubs, select one in the header.
   a long-press binding, holding it runs that binding instead.
 - Tap the handle at the bottom for **Favorites** and **Macros** in Activity
   mode, or a searchable **Commands** list in Device mode.
+- Tap the pin next to an item in those lists to put it on the dock beside
+  the handle, up to two per Activity or Device; tap a dock shortcut to send
+  it. Tap a pinned item's pin to change its icon, swap sides or unpin it.
+  Pins are saved in this browser.
 
 Controls pause while an Activity starts or the hub is busy. Close the official
 Sofabaton app if it is holding the hub connection.
@@ -43,6 +47,16 @@ Under **Control Panel → Settings → Sidebar Panel**, choose:
 This setting applies to all hubs and takes effect immediately. If the panel
 is off, use the [dashboard Control Panel card](../README.md#sofabaton-control-panel)
 to enable it again.
+
+## ◇ Rename the sidebar entry
+
+While the panel is on, the **Sidebar Panel** setting shows the entry's name
+with a pencil next to it. Select the pencil, enter a new name of up to 30
+characters, and select **Save**. The sidebar updates right away.
+
+The name is the same for everyone who sees the panel. Leave it empty to go
+back to **Sofabaton X**. Renaming doesn't change the
+[navigation paths](#-link-from-a-dashboard), so existing links keep working.
 
 ## ◇ Reorder or hide the sidebar entry
 

@@ -920,7 +920,6 @@
         state: "on",
         attributes: {
           entry_id:              "hub-1",
-          cache_generation:      1,
           proxy_client_connected: false,
           hub_version:           "X1S",
           hub_version_confident: true,
@@ -934,7 +933,6 @@
         state: "on",
         attributes: {
           entry_id:              "hub-1",
-          cache_generation:      1,
           proxy_client_connected: true,
           hub_version:           "X1S",
           hub_version_confident: true,
@@ -948,7 +946,6 @@
         state: "on",
         attributes: {
           entry_id:              "hub-1",
-          cache_generation:      1,
           proxy_client_connected: false,
           hub_version:           "",
           hub_version_confident: false,  // ← triggers version warning banner
@@ -1311,6 +1308,20 @@
       },
     ];
 
+    // A "Volume Up" on VOL+ in the given activities: two devices sharing the
+    // button per activity (issue #306).
+    const WIFI_VOLUP = (activities, entity) => ({
+      name: "Volume Up", add_as_favorite: false, hard_button: "volup",
+      long_press_enabled: false,
+      is_power_on: false, is_power_off: false, input_activity_id: "",
+      activities,
+      action: { action: "perform-action", perform_action: "media_player.volume_up",
+                target: { entity_id: [entity] } },
+      long_press_action: { action: "perform-action" },
+    });
+    const WIFI_COMMANDS_SOUNDBAR = [WIFI_VOLUP(["101"], "media_player.soundbar")];
+    const WIFI_COMMANDS_AMP = [WIFI_VOLUP(["102", "103"], "media_player.amp")];
+
     // Power-flagged and input-activity slots — exercises the new slot icons
     const WIFI_COMMANDS_POWER = [
       {
@@ -1554,6 +1565,28 @@
               }
               return null;
             }
+            if (type === "sofabaton_x1s/hub_state/subscribe") {
+              // The backend pushes the hub's panel state at once and on every
+              // change; the harness pushes whenever its mock state differs.
+              wsLog(type, "res");
+              let last = "";
+              const push = () => {
+                const hub = (mock.state.hubs ?? []).find((item) => item.entry_id === message.entry_id);
+                if (!hub) return;
+                const payload = {
+                  hub: { mqtt_available: scenario.mqttAvailable ?? false, ...clone(hub) },
+                  generation: Number(hub.cache_generation ?? 0),
+                  config_revision: Number(mock.state.config_revision ?? 0),
+                };
+                const key = JSON.stringify(payload);
+                if (key === last) return;
+                last = key;
+                callback(payload);
+              };
+              const first = setTimeout(push, 0);
+              const timer = setInterval(push, 1000);
+              return Promise.resolve(() => { clearTimeout(first); clearInterval(timer); });
+            }
             const known = [
               "sofabaton_x1s/backup/progress_subscribe",
               "sofabaton_x1s/logs/subscribe",
@@ -1614,6 +1647,9 @@
                 mock.state.hub_click_action = String(message.value ?? "none");
               } else if (message.setting === "sidebar_panel") {
                 mock.state.sidebar_panel = String(message.value ?? "off");
+              } else if (message.setting === "sidebar_panel_title") {
+                mock.state.sidebar_panel_title = String(message.title ?? "").trim() || "Sofabaton X";
+                return respond(type, { ok: true, title: mock.state.sidebar_panel_title });
               } else {
                 const hub = mock.state.hubs.find((item) => item.entry_id === message.entry_id);
                 if (hub?.settings) hub.settings[message.setting] = Boolean(message.enabled);
@@ -2330,22 +2366,18 @@
       },
       {
         id: 10, group: "Cache Tab",
-        label: "10. Stale data banner",
+        label: "10. Cache follows a change made elsewhere",
         states: STATES_CONNECTED,
         async postLoad(card) {
           await clickTab(card, "Hub");
-          card._store._refreshGraceUntil = 0;
-          card.hass = {
-            ...card.hass,
-            states: {
-              ...(card.hass?.states ?? {}),
-              "remote.living_room": {
-                state: "on",
-                attributes: { entry_id: "hub-1", cache_generation: 2,
-                              proxy_client_connected: false, activities: ACTIVITIES },
-              },
-            },
-          };
+          // Another tab renamed an activity: the backend's cache moved on.
+          // The hub-state push reports the newer generation and the card
+          // reloads the hub's rows by itself: no banner, no Refresh.
+          const mock = window._harnessHass.__mockBackend;
+          mock.contents.hubs[0].activities[0].name = "Watch TV (renamed elsewhere)";
+          mock.contents.hubs[0].cache_generation = 2;
+          mock.state.hubs[0].cache_generation = 2;
+          await new Promise((resolve) => setTimeout(resolve, 1600));
           await card.updateComplete;
         },
       },
@@ -2922,6 +2954,27 @@
         async postLoad(card) {
           await clickTab(card, "Automation");
           await clickWifiDevice(card, "Living Room Remote");
+          await clickFirstConfiguredSlot(card);
+        },
+      },
+      {
+        id: "wifi-shared-button", group: "WiFi Commands",
+        label: "Inside device — VOL+ on two devices, per activity (issue #306)",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
+        },
+        // The list rows carry each device's slots, as the backend's do.
+        wifiDevices: [
+          { ...WIFI_DEVICE_LR, device_key: "dev-sb", device_name: "Soundbar", configured_slot_count: 1, commands: WIFI_COMMANDS_SOUNDBAR },
+          { ...WIFI_DEVICE_LR, device_key: "dev-amp", device_name: "Amp", configured_slot_count: 1, deployed_device_id: 12346, commands: WIFI_COMMANDS_AMP },
+        ],
+        wifiCommandsByKey: { "dev-sb": WIFI_COMMANDS_SOUNDBAR, "dev-amp": WIFI_COMMANDS_AMP },
+        wifiSyncByKey:     { "dev-sb": WIFI_SYNC_IDLE, "dev-amp": WIFI_SYNC_IDLE },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Soundbar");
           await clickFirstConfiguredSlot(card);
         },
       },

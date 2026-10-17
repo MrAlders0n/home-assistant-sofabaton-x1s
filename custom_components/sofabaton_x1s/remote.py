@@ -43,6 +43,20 @@ async def async_setup_entry(
 class SofabatonRemote(RemoteEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "remote"
+    # The catalog the remote card renders from: every edit or refresh step
+    # would store a fresh copy, and the card reads live state anyway. The
+    # history keeps the current activity and the hub status.
+    _unrecorded_attributes = frozenset(
+        {
+            "activity_list",
+            "activities",
+            "devices",
+            "assigned_keys",
+            "macro_keys",
+            "favorite_keys",
+            "long_press_keys",
+        }
+    )
 
     def __init__(self, hub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -163,7 +177,6 @@ class SofabatonRemote(RemoteEntity):
         )
         attrs = {
             "proxy_client_connected": self._hub.client_connected,
-            "cache_generation": self._hub.cache_generation,
             "hub_version": get_hub_model(self._entry),
             "hub_version_confident": hub_version_confident,
             "hub_mac": hub_mac,

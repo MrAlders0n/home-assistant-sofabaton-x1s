@@ -652,44 +652,34 @@ test("a draft is kept on the record, mirrored to storage, and cleared on discard
   store.connect();
   await flush();
   assert.equal(rt(store).draft, null);
-  store.setDraft("a", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" } });
-  assert.deepEqual(rt(store).draft, { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" }, updatedAt: clock.now });
-  assert.equal(rt(store).draftCheck, "fresh");
-  assert.equal(JSON.parse(storage.getItem("sofabaton-panel-draft:a")!).scope, "hub/devices");
+  store.setDraft("a", { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" }, base: { renamed: "Telly" } });
+  assert.deepEqual(rt(store).draft, { scope: "hub/devices", snapshotId: "snap-1", data: { renamed: "TV" }, base: { renamed: "Telly" }, updatedAt: clock.now });
+  // The base rides along to storage: the editor carries the edit over to a newer snapshot with it.
+  assert.deepEqual(JSON.parse(storage.getItem("sofabaton-panel-draft:a")!).base, { renamed: "Telly" });
   store.discardDraft("a");
   assert.equal(rt(store).draft, null);
   assert.equal(storage.getItem("sofabaton-panel-draft:a"), null);
   store.disconnect();
 });
 
-test("a restored draft is checked against the hub's snapshot: fresh restores silently, stale asks, keep remembers", async () => {
+test("a restored draft comes back as it was stored, from whatever snapshot, without a question", async () => {
   const storage = new MemoryStorage();
-  storage.setItem("sofabaton-panel-draft:a", JSON.stringify({ scope: "hub/devices", snapshotId: "snap-1", data: 1, updatedAt: 5 }));
-  const fresh = rig({ storage });
-  fresh.store.connect();
+  // A draft stored before 2026-10-16 (no base, the old stale flag) still loads.
+  storage.setItem("sofabaton-panel-draft:a", JSON.stringify({ scope: "hub/devices/1", snapshotId: "snap-0", data: 1, updatedAt: 5, acceptedStale: true }));
+  const restored = rig({ storage });
+  restored.store.connect();
   await flush();
-  assert.equal(rt(fresh.store).draftCheck, "fresh");
-  assert.equal(fresh.api.count("snapshot:a"), 1);
-  fresh.store.disconnect();
+  assert.deepEqual(rt(restored.store).draft, { scope: "hub/devices/1", snapshotId: "snap-0", data: 1, updatedAt: 5 });
+  // No snapshot is read to judge it: the editor carries it over when it opens.
+  assert.equal(restored.api.count("snapshot:a"), 0);
+  restored.store.disconnect();
 
-  const moved = new FakeApi();
-  moved.snapshotId = "snap-2";
-  const stale = rig({ storage, api: moved });
-  stale.store.connect();
+  storage.setItem("sofabaton-panel-draft:a", JSON.stringify({ scope: "hub/devices/1", snapshotId: "snap-0", data: 2, base: 1, updatedAt: 6 }));
+  const withBase = rig({ storage });
+  withBase.store.connect();
   await flush();
-  assert.equal(rt(stale.store).draftCheck, "stale");
-  stale.store.keepStaleDraft("a");
-  assert.equal(rt(stale.store).draftCheck, "kept");
-  assert.equal(JSON.parse(storage.getItem("sofabaton-panel-draft:a")!).acceptedStale, true);
-  stale.store.disconnect();
-
-  // A reload after "keep" does not ask again, and reads no snapshot for it.
-  const again = rig({ storage, api: new FakeApi() });
-  again.store.connect();
-  await flush();
-  assert.equal(rt(again.store).draftCheck, "kept");
-  assert.equal(again.api.count("snapshot:a"), 0);
-  again.store.disconnect();
+  assert.equal(rt(withBase.store).draft?.base, 1);
+  withBase.store.disconnect();
 
   // Junk in storage is no draft.
   storage.setItem("sofabaton-panel-draft:a", "{not json");
@@ -738,5 +728,130 @@ test("an apply job's end re-reads the stopped applies, and a dropped frame resyn
   socket().push({ type: "dropped", count: 3 });
   await flush();
   assert.ok(api.count("server") > before, "a dropped frame reloads everything");
+  store.disconnect();
+});
+
+
+// -- hub updates (cache freshness, 2026-10-16) ------------------------------------------------------
+
+const version = (generation: number, snapshot_id = `s${generation}`, epoch = 1) => ({ epoch, generation, snapshot_id });
+
+test("the store asks the stream for hub updates", async () => {
+  const { store, socket } = rig();
+  store.connect();
+  await flush();
+  assert.match(socket().url, /[?&]hub_updates=true/);
+  store.disconnect();
+});
+
+test("a hub_update replaces the hub's record at once: locked and unlocked without a list call", async () => {
+  const { api, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  const lists = api.count("hubs");
+  socket().push({ type: "hub_update", hub_id: "a", seq: 1, hub: hub({ active_job: job({ job_id: "j9", kind: "sync_device" }), cache: version(4) }) });
+  assert.equal(rt(store).hub.active_job?.job_id, "j9");
+  assert.deepEqual(rt(store).hub.cache, version(4));
+  socket().push({ type: "hub_update", hub_id: "a", seq: 2, hub: hub({ last_job: job({ job_id: "j9", kind: "sync_device", status: "done", finished_at: "2026-09-17T10:00:05Z" }), cache: version(5) }) });
+  assert.equal(rt(store).hub.active_job, null);
+  assert.equal(rt(store).notice?.label, "Device synced.", "an end seen only through the view still leaves its notice");
+  assert.equal(api.count("hubs"), lists, "no REST round trip");
+  store.disconnect();
+});
+
+test("an older hub_update is dropped, and a new connection numbers afresh", async () => {
+  const { store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  socket().push({ type: "hub_update", hub_id: "a", seq: 7, hub: hub({ hub_name: "seven", cache: version(7) }) });
+  socket().push({ type: "hub_update", hub_id: "a", seq: 6, hub: hub({ hub_name: "six", cache: version(6) }) });
+  assert.equal(rt(store).hub.hub_name, "seven");
+  socket().drop();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  // The server restarted its count; the new connection is believed.
+  socket().open();
+  await flush();
+  socket().push({ type: "hub_update", hub_id: "a", seq: 1, hub: hub({ hub_name: "one", cache: version(1, "s1", 2) }) });
+  assert.equal(rt(store).hub.hub_name, "one");
+  store.disconnect();
+});
+
+test("a view built before a job event never takes it back (stream and list alike)", async () => {
+  const { api, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  socket().push({ type: "job_event", hub_id: "a", job: job({ job_id: "j2", status: "running", created_at: "2026-09-17T11:00:00Z" }) });
+  // A hub update built just before the job started.
+  socket().push({ type: "hub_update", hub_id: "a", seq: 1, hub: hub() });
+  assert.equal(rt(store).hub.active_job?.job_id, "j2");
+  // A list answer that was in flight when the job started.
+  api.hubs = [hub()];
+  await store.refreshHubs();
+  assert.equal(rt(store).hub.active_job?.job_id, "j2");
+  // The end, then a view that still shows it running.
+  socket().push({ type: "job_event", hub_id: "a", job: job({ job_id: "j2", status: "done", created_at: "2026-09-17T11:00:00Z", finished_at: "2026-09-17T11:00:09Z" }) });
+  socket().push({ type: "hub_update", hub_id: "a", seq: 2, hub: hub({ active_job: job({ job_id: "j2", status: "running", created_at: "2026-09-17T11:00:00Z" }) }) });
+  assert.equal(rt(store).hub.active_job, null);
+  assert.equal(rt(store).hub.last_job?.job_id, "j2");
+  store.disconnect();
+});
+
+test("the cache version only moves forward within a proxy, and a stopped hub clears it", async () => {
+  const { api, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  socket().push({ type: "hub_update", hub_id: "a", seq: 1, hub: hub({ cache: version(9) }) });
+  await store.refreshHubs();                     // the fake list carries no version: that is a stopped hub
+  assert.equal(rt(store).hub.cache ?? null, null);
+  socket().push({ type: "hub_update", hub_id: "a", seq: 2, hub: hub({ cache: version(9) }) });
+  api.hubs = [hub({ cache: version(8) })];
+  await store.refreshHubs();
+  assert.deepEqual(rt(store).hub.cache, version(9), "an older list answer keeps the newer version");
+  socket().push({ type: "hub_update", hub_id: "a", seq: 3, hub: hub({ cache: version(2, "x", 5) }) });
+  assert.deepEqual(rt(store).hub.cache, version(2, "x", 5), "a new proxy outranks any generation of the old one");
+  store.disconnect();
+});
+
+test("the poll slows to 10 s while hub updates arrive and speeds up again when the stream drops", async () => {
+  const { clock, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  assert.equal(store.pushLive, false);
+  assert.ok(clock.pending().includes(5000));
+  socket().push({ type: "hub_update", hub_id: "a", seq: 1, hub: hub() });
+  assert.equal(store.pushLive, true);
+  assert.ok(clock.pending().includes(10000) && !clock.pending().includes(5000));
+  await clock.advance(10000);
+  assert.ok(clock.pending().includes(10000), "the next tick keeps the slow pace");
+  socket().drop();
+  await flush();
+  assert.equal(store.pushLive, false);
+  await clock.advance(10000);
+  assert.ok(clock.pending().includes(5000), "without the push the tick is back at 5 s");
+  store.disconnect();
+});
+
+test("a hub_update for a hub the panel does not list reloads the list", async () => {
+  const { api, clock, store, socket } = rig();
+  store.connect();
+  await flush();
+  socket().open();
+  await flush();
+  const lists = api.count("hubs");
+  api.hubs = [hub(), hub({ hub_id: "b" })];
+  socket().push({ type: "hub_update", hub_id: "b", seq: 1, hub: hub({ hub_id: "b" }) });
+  await clock.advance(300);
+  assert.ok(api.count("hubs") > lists);
+  assert.ok(store.snapshot.hubs.some((r) => r.hub.hub_id === "b"));
   store.disconnect();
 });

@@ -254,3 +254,13 @@ def _get_hubs(domain_data: dict[str, Any]) -> list[SofabatonHub]:
         for hub in domain_data.values()
         if isinstance(hub, SofabatonHub)
     ]
+
+
+def _get_hub_by_entry_id(hass: HomeAssistant, entry_id: str) -> SofabatonHub | None:
+    """The loaded hub of ``entry_id`` (looked up each time: an entry reload
+    replaces the hub object)."""
+
+    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
+        if hub.entry_id == entry_id:
+            return hub
+    return None

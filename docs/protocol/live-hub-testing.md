@@ -793,6 +793,64 @@ read-back on both hubs):
   ties resolve by id, which matches the observed remote behavior.
 - **Guards** — same as activities: partial orders and unknown ids are
   refused before any write.
+- **A restore does not carry the order (issue #307, found 2026-10-13 in
+  the saved bench_323 run of 2026-10-11, X1, erasing restore through HA).**
+  The device create carries the backup's sort byte, yet the rebuilt X1
+  numbered every device by creation position (1..12, the restore's id
+  order): the backup's "Wifi Events" (id 12, sort 10) ahead of id 11
+  came back after it. Every bench check passed, because
+  `bench_compare.py` excluded `sort` and no restore bench compared the
+  order. The restore now writes the bundle's order with these frames
+  when the hub holds exactly what it restored, and `bench_288` /
+  `bench_compare.py` compare display order (bench_288 reverses both
+  lists first, so a hub already in id order cannot pass by accident).
+  Validated live on the X1 the same day (bench_288, 12 devices and 3
+  activities, fully reversed): the restore wrote both orders, the
+  compare found no problems, and the one remote-sync trigger went out
+  after the hub name (batch closed with 3 requests: both reorders and
+  the restore's own). Also through Home Assistant (`bench_331`, same
+  scramble, erasing restore from HA's Backup path): order kept for both
+  lists, progress `erase > device > activity > hub > cache_warm >
+  remote_sync`, the batch opened before the erase and the one
+  `REMOTE_SYNC` went out after the hub name and the cache warm.
+
+## ◇ Validated: display order on create, delete and shortcut add (X1 + X1S, 2026-10-14)
+
+Ordering audit after issue #307, `bench_332_order_probe.py` (creates
+throwaway devices, an activity and copies of one activity, deletes them
+after; the real entities are only read).
+
+What the hubs do, before the fixes:
+
+- **Device create.** The X1 appends the device (sort N+1) whatever sort
+  byte the create carries (asked for 1, got 14). The X1S stores the
+  create's byte verbatim and renumbers nothing: an empty create
+  (`create_device`, sort 0) stays unpositioned, a create carrying sort 1
+  ties with the device already at 1.
+- **Activity create.** Both append (sort N+1), also on the X1S.
+- **Device delete (X1S).** Every sort above the deleted device's drops by
+  one. Deleting an unpositioned (sort 0) device therefore shifted the whole
+  list, and the first two devices fell to 0 (seen live; the X1S order was
+  put back with a family-0x11 write the same day).
+- **Shortcut add (X1S).** The X1S/X2 favorite stage was the identity table
+  `(i, i)` for 1..new id: on an activity whose shortcuts were reordered it
+  reset the table to id order (12 shortcuts reversed, one add, read back
+  1..13). The X1 stage (the current table plus the new id) kept it.
+- **Shortcut restore (X1S).** The activity restore wrote no order on the
+  X1S/X2, so a reordered activity came back in id order.
+
+The fixes (one display-order rule for every create: what was there keeps
+its place, the new entity goes last): `create_device`, `create_activity`
+and the Wifi creates write the order after the create when the stored
+positions are not already 1..N (no write on the X1, one on the X1S); a
+merging restore puts the restored entities after the existing ones; the
+favorite stage lists the current table plus the new id on every hub; the
+activity restore writes the captured shortcut order on every hub. Live
+re-run on both hubs, all checks green: new devices and activities last
+with positions 1..N, a merged restore of one device last (the X1S tie
+renumbered in the same write), the deletes leave the order as it was, a
+reversed shortcut order survives one favorite add and a restore of the
+reordered activity, every shortcut listed. The X2 is not run yet.
 
 ## ◇ Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 
@@ -2251,7 +2309,10 @@ Findings:
   sends on connect, then the TXT record, then the proxy id
   (`tests/lib/test_aio_real_engine.py::test_action_id_prefers_the_banner_mac_over_the_proxy_id`).
   The Home Assistant path is unchanged (its TXT record carries the same
-  MAC).
+  MAC). Not for a hub added by IP: its TXT record holds the synthetic
+  `generate_static_mac` identity, so the banner MAC the library now
+  writes no longer matched the HA listener, and every press answered
+  404 (issue #308). The listener accepts both ids since.
 - **Projection, not the hub.** Right after a deploy the snapshot's device
   block has no `ip_address` on the X1: the create seeds the cache without
   the raw record. `GET /devices?refresh=true` reads the catalog and the

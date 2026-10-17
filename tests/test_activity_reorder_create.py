@@ -2,7 +2,9 @@
 reorder_devices / create_activity."""
 from typing import Any
 
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
+import pytest
+
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from custom_components.sofabaton_x1s.lib.device_create import (
     FAMILY_REMOTE_SYNC,
     DeviceCreateResult,
@@ -13,9 +15,16 @@ from custom_components.sofabaton_x1s.lib.hub_versions import (
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     FAMILY_ACTIVITY_SORT,
     FAMILY_DEVICE_SORT,
+    OP_REMOTE_SYNC,
+    OP_X2_REMOTE_SYNC_ALL,
 )
+from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 import custom_components.sofabaton_x1s.lib.proxy_restore as proxy_restore_module
+
+# The conftest stubs _settle_order for every test that is not about it; the
+# tests of it put this (captured at import) back.
+_REAL_SETTLE_ORDER = ActivityOpsMixin._settle_order
 
 
 def _make_proxy(hub_version: str = HUB_VERSION_X1S) -> X1Proxy:
@@ -255,6 +264,66 @@ def test_reorder_devices_refused_while_proxy_client_connected(monkeypatch) -> No
     assert proxy.reorder_devices([0x01]) is None
 
 
+# ── the remote sync after a reorder, per hub ────────────────────────────
+
+
+def _resync_remote_frame(hub_version: str, monkeypatch) -> tuple[int, bytes]:
+    """The frame the bench-validated ``resync_remote`` enqueues on this hub."""
+
+    proxy = _make_proxy(hub_version)
+    enqueued: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy, "enqueue_cmd", lambda opcode, payload=b"", **_kw: enqueued.append((opcode, payload)) or True
+    )
+    assert proxy.resync_remote() is True
+    assert len(enqueued) == 1
+    return enqueued[0]
+
+
+@pytest.mark.parametrize(
+    "hub_version, trigger",
+    [
+        (HUB_VERSION_X1, (OP_REMOTE_SYNC, b"")),
+        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
+        # A bare 0x0064 starts no sync on the X2; only the all-remotes
+        # broadcast does (bench 2026-08-27).
+        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+    ],
+)
+@pytest.mark.parametrize("kind", ["activity", "device"])
+def test_reorder_remote_sync_is_the_resync_remote_frame(monkeypatch, hub_version, trigger, kind) -> None:
+    proxy = _make_proxy(hub_version)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    if kind == "activity":
+        _seed_x1s_activity(proxy, 0x65, "Watch TV")
+        _seed_x1s_activity(proxy, 0x66, "Play Xbox")
+        monkeypatch.setattr(proxy, "_request_activities_and_wait", lambda timeout=15.0: True)
+        reorder, sort_family = proxy.reorder_activities, FAMILY_ACTIVITY_SORT
+    else:
+        _seed_device(proxy, 0x01, "TV")
+        _seed_device(proxy, 0x02, "Soundbar")
+        monkeypatch.setattr(proxy, "_request_devices_and_wait", lambda timeout=15.0: True)
+        reorder, sort_family = proxy.reorder_devices, FAMILY_DEVICE_SORT
+
+    wire: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: wire.append((opcode, payload)))
+    ack_waits: list[list[tuple[int, int | None]]] = []
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: ack_waits.append(candidates) or (0x0103, b"\x00"),
+    )
+
+    result = reorder([0x02, 0x01] if kind == "device" else [0x66, 0x65])
+
+    assert result is not None and result["status"] == "success"
+    assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family, FAMILY_REMOTE_SYNC]
+    assert wire[1] == trigger
+    assert wire[1] == _resync_remote_frame(hub_version, monkeypatch)
+    # The trigger's own STATUS_ACK is consumed as part of the step.
+    assert len(ack_waits) == 2 and ack_waits[1][0] == (0x0103, 0x00)
+
+
 # ── create_activity ─────────────────────────────────────────────────────
 
 
@@ -336,3 +405,123 @@ def test_create_activity_returns_none_on_restore_failure(monkeypatch) -> None:
     )
 
     assert proxy.create_activity("Movie Night") is None
+
+
+# ── the display order after a create (ordering audit, 2026-10-14) ────────
+
+
+def _seed_sorted(proxy: X1Proxy, kind: str, sorts: dict[int, int]) -> None:
+    table = proxy.state.devices if kind == "devices" else proxy.state.activities
+    for entity_id, sort in sorts.items():
+        body = bytearray(120)
+        body[4] = entity_id & 0xFF
+        body[6] = sort & 0xFF
+        table[entity_id] = {"name": f"Entity {entity_id}", "raw_body": bytes(body)}
+    setattr(proxy, f"_{kind}_catalog_ready", True)
+
+
+def _settling(monkeypatch, sorts: dict[int, int], *, kind: str = "devices", read_ok: bool = True):
+    proxy = _make_proxy()
+    monkeypatch.setattr(ActivityOpsMixin, "_settle_order", _REAL_SETTLE_ORDER)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    _seed_sorted(proxy, kind, sorts)
+    monkeypatch.setattr(proxy, f"_request_{kind}_and_wait", lambda timeout=15.0: read_ok)
+    writes: list[tuple[list[int], bool]] = []
+    monkeypatch.setattr(
+        proxy,
+        f"reorder_{kind}",
+        lambda ids, *, remote_sync=True: writes.append((list(ids), remote_sync)) or {"status": "success"},
+    )
+    return proxy, writes
+
+
+def test_settle_puts_a_new_device_last(monkeypatch) -> None:
+    # The X1S keeps a created device at the sort byte the create carried,
+    # 0 for an empty one (bench_332, 2026-10-14). The write sends no
+    # remote-sync trigger: the create owns that.
+    proxy, writes = _settling(monkeypatch, {1: 1, 6: 2, 4: 3, 3: 0})
+
+    assert proxy._settle_order("devices", [3]) == "written"
+    assert writes == [([1, 6, 4, 3], False)]
+
+
+def test_settle_leaves_a_device_the_hub_appended_alone(monkeypatch) -> None:
+    # The X1 appends a created device itself (sort N+1).
+    proxy, writes = _settling(monkeypatch, {1: 1, 2: 2, 3: 3})
+
+    assert proxy._settle_order("devices", [3]) == "kept"
+    assert writes == []
+
+
+def test_settle_puts_several_new_ones_last_in_the_given_order(monkeypatch) -> None:
+    # A merged restore on the X1S: the creates kept the backup's sort
+    # bytes and tie with what was there.
+    proxy, writes = _settling(monkeypatch, {1: 1, 2: 2, 8: 2, 9: 1})
+
+    assert proxy._settle_order("devices", [9, 8]) == "written"
+    assert writes == [([1, 2, 9, 8], False)]
+
+
+def test_settle_renumbers_ties_and_zeros_an_older_create_left(monkeypatch) -> None:
+    proxy, writes = _settling(monkeypatch, {1: 1, 5: 1, 6: 2, 7: 0})
+
+    assert proxy._settle_order("devices", []) == "written"
+    assert writes == [([1, 5, 6, 7], False)]
+
+
+def test_settle_orders_activities_too(monkeypatch) -> None:
+    proxy, writes = _settling(monkeypatch, {0x65: 2, 0x66: 1, 0x67: 0}, kind="activities")
+
+    assert proxy._settle_order("activities", [0x67]) == "written"
+    assert writes == [([0x66, 0x65, 0x67], False)]
+
+
+def test_settle_reports_a_failed_read_or_write(monkeypatch) -> None:
+    proxy, writes = _settling(monkeypatch, {1: 1, 2: 0}, read_ok=False)
+    assert proxy._settle_order("devices", [2]) == "failed"
+    assert writes == []
+
+    proxy, _writes = _settling(monkeypatch, {1: 1, 2: 0})
+    monkeypatch.setattr(proxy, "reorder_devices", lambda ids, *, remote_sync=True: None)
+    assert proxy._settle_order("devices", [2]) == "failed"
+
+
+@pytest.mark.parametrize("kind", ["activity", "device"])
+def test_reorder_without_remote_sync_sends_no_trigger(monkeypatch, kind) -> None:
+    proxy = _make_proxy(HUB_VERSION_X1S)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    if kind == "activity":
+        _seed_x1s_activity(proxy, 0x65, "Watch TV")
+        _seed_x1s_activity(proxy, 0x66, "Play Xbox")
+        monkeypatch.setattr(proxy, "_request_activities_and_wait", lambda timeout=15.0: True)
+        reorder, sort_family, order = proxy.reorder_activities, FAMILY_ACTIVITY_SORT, [0x66, 0x65]
+    else:
+        _seed_device(proxy, 0x01, "TV")
+        _seed_device(proxy, 0x02, "Soundbar")
+        monkeypatch.setattr(proxy, "_request_devices_and_wait", lambda timeout=15.0: True)
+        reorder, sort_family, order = proxy.reorder_devices, FAMILY_DEVICE_SORT, [0x02, 0x01]
+    wire: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: wire.append((opcode, payload)))
+    monkeypatch.setattr(
+        proxy, "wait_for_ack_any", lambda candidates, timeout=5.0, not_before=None: (0x0103, b"\x00")
+    )
+
+    assert reorder(order, remote_sync=False)["status"] == "success"
+    assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family]
+
+
+def test_create_activity_settles_the_order_before_its_one_remote_sync(monkeypatch) -> None:
+    proxy = _make_proxy()
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    events: list[Any] = []
+
+    def _restore_activity(payload, *, device_id_map, send_remote_sync=True, **kwargs):
+        events.append(("restore", send_remote_sync))
+        return {"status": "success", "activity_id": 0x69}
+
+    monkeypatch.setattr(proxy, "restore_activity", _restore_activity)
+    monkeypatch.setattr(proxy, "_settle_order", lambda kind, ids: events.append(("settle", kind, list(ids))) or "kept")
+    monkeypatch.setattr(proxy, "resync_remote", lambda hub_version=None: events.append("resync") or True)
+
+    assert proxy.create_activity("Movie Night") == {"status": "success", "activity_id": 0x69}
+    assert events == [("restore", False), ("settle", "activities", [0x69]), "resync"]

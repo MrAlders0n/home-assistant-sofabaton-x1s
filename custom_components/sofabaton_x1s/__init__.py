@@ -134,6 +134,7 @@ from .ws_panel import (  # noqa: F401
     _ws_refresh_persistent_cache_entry,
     _ws_get_persistent_cache_contents,
     _ws_refresh_catalog,
+    _ws_subscribe_hub_state,
 )
 
 from .ws_editor import (  # noqa: F401
@@ -252,6 +253,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_subscribe_hub_events)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache_contents)
+    websocket_api.async_register_command(hass, _ws_subscribe_hub_state)
     websocket_api.async_register_command(hass, _ws_refresh_catalog)
     domain_data["ws_registered"] = True
 

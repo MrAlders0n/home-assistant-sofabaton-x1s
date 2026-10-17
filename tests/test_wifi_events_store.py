@@ -112,6 +112,31 @@ def test_allocate_and_list_events() -> None:
         assert key not in events[0]
 
 
+def test_deployed_means_the_snapshot_holds_the_slot_by_name() -> None:
+    """Journey bench W-2: the deployed snapshot lists every slot, configured
+    or not, so a slot index under its length said nothing; a staged event
+    on a record deployed before read as deployed."""
+
+    store = _store()
+    _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))
+    _run(store.async_allocate_wifi_event("hub-1", "Lights Off"))
+    record = store._wifi_events_record("hub-1")
+    snapshot, _slot_count = store._wifi_events_slots(record)
+    _run(store.async_save_deployed_wifi_commands(
+        "hub-1", WIFI_EVENTS_DEVICE_KEY, snapshot, deployed_device_id=12, commands_hash="h",
+    ))
+
+    _run(store.async_allocate_wifi_event("hub-1", "Dim"))
+    deployed = {e["name"]: e["deployed"] for e in store.list_wifi_events("hub-1")}
+    assert deployed == {"Movie Night": True, "Lights Off": True, "Dim": False}
+
+    # A slot freed and taken again under another name is not deployed either.
+    _run(store.async_reset_wifi_event_slot("hub-1", 1))
+    _run(store.async_allocate_wifi_event("hub-1", "Party"))
+    deployed = {e["name"]: e["deployed"] for e in store.list_wifi_events("hub-1")}
+    assert deployed["Party"] is False and deployed["Movie Night"] is True
+
+
 def test_allocate_rejects_duplicate_and_empty_names() -> None:
     store = _store()
     _run(store.async_allocate_wifi_event("hub-1", "Movie Night"))

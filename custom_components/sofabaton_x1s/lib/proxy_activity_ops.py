@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Sequence
 from typing import Any, TYPE_CHECKING
 
 from .hub_versions import (
@@ -24,12 +24,11 @@ from .hub_versions import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
 )
-from .ack import AckOutcome
+from .ack import AckOutcome, SendStepResult
 from .hub_logging import LogTag
 from .macros import MacroRecord
 from .wire_schema import encode_label_slot
 from .device_create import (
-    FAMILY_REMOTE_SYNC,
     build_button_binding_step,
     synthesize_command_code,
 )
@@ -341,9 +340,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         body[-1] = sum(body[:-1]) & 0xFF
         return bytes([0x01, 0x00, 0x01]) + bytes(body)
 
-    def reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+    def reorder_activities(self, ordered_ids: list[int], *, remote_sync: bool = True) -> dict[str, Any] | None:
         """Write *ordered_ids* as the hub's stored activity display order
-        (first element = sort position 1).
+        (first element = sort position 1). ``remote_sync=False`` leaves the
+        remote-sync trigger to a caller that sends its own after more writes.
 
         Uses the app's own SET_ACTIVITY_ORDER write (family ``0x51``): a
         single frame carrying the full new order, acked via STATUS_ACK,
@@ -402,15 +402,8 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # The app follows the order write with REMOTE_SYNC so the remote
-        # refreshes its local view.
-        _step = self._send_step(
-            step_name="activity-sort-remote-sync",
-            family=FAMILY_REMOTE_SYNC,
-            payload=b"",
-            ack_opcode=0x0103,
-            ack_first_byte=0x00,
-        )
-        if not _step.ok:
+        # refreshes its local view (on the X2, the all-remotes broadcast).
+        if remote_sync and not self._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00):
             self._log.warning("[ACT_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_activities_and_wait():
@@ -439,9 +432,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
 
         return self._request_catalog_and_wait("devices", timeout=timeout)
 
-    def reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+    def reorder_devices(self, ordered_ids: list[int], *, remote_sync: bool = True) -> dict[str, Any] | None:
         """Write *ordered_ids* as the hub's stored device display order
-        (first element = sort position 1).
+        (first element = sort position 1). ``remote_sync=False`` as for
+        :meth:`reorder_activities`.
 
         Device analog of :meth:`reorder_activities`: a single family-``0x11``
         frame carrying the full new order, acked via STATUS_ACK, followed by
@@ -502,20 +496,64 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning("[DEV_REORDER] hub did not accept the new order")
             return None
 
-        _step = self._send_step(
-            step_name="device-sort-remote-sync",
-            family=FAMILY_REMOTE_SYNC,
-            payload=b"",
-            ack_opcode=0x0103,
-            ack_first_byte=0x00,
-        )
-        if not _step.ok:
+        if remote_sync and not self._send_remote_sync_step("device-sort-remote-sync", ack_first_byte=0x00):
             self._log.warning("[DEV_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_devices_and_wait():
             self._log.warning("[DEV_REORDER] catalog refresh after reorder did not finish")
 
         return {"status": "success", "ordered_ids": list(ordered)}
+
+    def _settle_order(self, kind: str, last_ids: Sequence[int]) -> str:
+        """Put freshly created devices or activities (*kind*) at the end of
+        the hub's display order, every other entity keeping its place.
+
+        What a create does to the order differs per hub (bench_332,
+        2026-10-14): the X1 appends whatever sort byte the create carried;
+        the X1S keeps that byte verbatim, so an empty device sits at 0 and a
+        restored one can tie with an existing one, while it appends a new
+        activity. An X1S delete then lowers every sort above the deleted
+        one's, so one unpositioned device shifts the whole list when it
+        goes. The app follows its creates with the order; so does this.
+
+        Reads the catalog back and writes the order once, only when the
+        stored positions are not already ``1..N`` in that order (which also
+        renumbers ties and zeros an older create left). The write sends no
+        remote-sync trigger: the create it follows owns that. Returns
+        ``"kept"``, ``"written"`` or ``"failed"`` (the entities exist; only
+        their order is off, so callers only warn).
+        """
+
+        if kind == "devices":
+            refreshed = self._request_devices_and_wait()
+            entities = self.state.entities("device")
+        else:
+            refreshed = self._request_activities_and_wait()
+            entities = self.state.entities("activity")
+        if not refreshed:
+            self._log.warning("[ORDER] %s catalog not read back; display order not checked", kind)
+            return "failed"
+        live: dict[int, int] = {}
+        for entity_id, row in entities.items():
+            if not isinstance(row, dict):
+                continue
+            raw_body = row.get("raw_body")
+            sort = int(raw_body[6]) & 0xFF if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6 else 0
+            live[int(entity_id) & 0xFF] = sort
+        last = [int(i) & 0xFF for i in last_ids if int(i) & 0xFF in live]
+        others = sorted(
+            (entity_id for entity_id in live if entity_id not in last),
+            key=lambda entity_id: (0, live[entity_id], entity_id) if live[entity_id] else (1, 0, entity_id),
+        )
+        desired = [*others, *dict.fromkeys(last)]
+        if [live[entity_id] for entity_id in desired] == list(range(1, len(desired) + 1)):
+            return "kept"
+        reorder = self.reorder_devices if kind == "devices" else self.reorder_activities
+        if not reorder(desired, remote_sync=False):
+            self._log.warning("[ORDER] %s display order could not be written: %s", kind, desired)
+            return "failed"
+        self._log.info("[ORDER] %s display order settled: %s", kind, desired)
+        return "written"
 
     def create_activity(self, name: str) -> dict[str, Any] | None:
         """Create a fresh, empty activity named *name* on the hub.
@@ -562,16 +600,20 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             "macros": [],
             "favorite_slots": [],
         }
-        result = self.restore_activity(payload, device_id_map={})
+        result = self.restore_activity(payload, device_id_map={}, send_remote_sync=False)
         if not isinstance(result, dict) or result.get("status") != "success":
             return None
+        activity_id = int(result.get("activity_id") or 0) & 0xFF
 
-        if not self._request_activities_and_wait():
-            self._log.warning("[ACT_CREATE] catalog refresh after create did not finish")
+        # The new activity last (the hubs append it themselves; the read-back
+        # this does is the catalog refresh), then the one remote sync.
+        self._settle_order("activities", [activity_id])
+        if not self.resync_remote():
+            self._log.warning("[ACT_CREATE] REMOTE_SYNC after create was not acked")
 
         return {
             "status": "success",
-            "activity_id": int(result.get("activity_id") or 0) & 0xFF,
+            "activity_id": activity_id,
         }
 
     def create_device(self, name: str, *, device_class: str) -> dict[str, Any] | None:
@@ -582,9 +624,9 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         record only, no commands / bindings / macros). The device-create
         pipelines end without a terminal remote sync or a catalog
         refresh (the bundle restore batches its own), so both happen here
-        after a successful create: the remote learns the new device and
-        the hub-side device catalog knows the id before the frontend
-        refreshes it. Returns ``{"status": "success", "device_id": <id>}``
+        after a successful create, with the device put last in the display
+        order: the remote learns the new device and the hub-side device
+        catalog knows the id before the frontend refreshes it. Returns ``{"status": "success", "device_id": <id>}``
         with the hub-assigned id, or ``None`` on refusal / failure.
         """
 
@@ -612,10 +654,18 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning("[DEV_CREATE] hub did not report the assigned device id")
             return None
 
+        # The new device last (the X1S keeps it at sort 0 otherwise; the
+        # read-back this does is the catalog refresh), then the remote sync.
+        self._settle_order("devices", [device_id])
+        # The empty payload has no idle behavior and the create never reads
+        # it, so the cache would lack it until the next device read. One
+        # request; it records "absent" when the hub has none.
+        try:
+            self.fetch_idle_behavior(device_id, timeout=2.0)
+        except Exception:  # noqa: BLE001 - the device exists either way
+            self._log.debug("[DEV_CREATE] idle behavior read failed", exc_info=True)
         if not self.resync_remote():
             self._log.warning("[DEV_CREATE] REMOTE_SYNC after create was not acked")
-        if not self._request_devices_and_wait():
-            self._log.warning("[DEV_CREATE] catalog refresh after create did not finish")
 
         self._log.info(
             "[DEV_CREATE] created %s device %r as dev=0x%02X",
@@ -879,32 +929,6 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         payload.append((sum(payload) - 2) & 0xFF)
         return bytes(payload)
 
-    def _build_favorite_stage_payload(self, activity_id: int, fav_count: int = 4) -> bytes:
-        """Build the 0x61 stage payload for favorite writes.
-
-        *fav_count* is the total number of favorites on the activity **after**
-        the new entry has been registered by the hub (i.e. the fav_id returned
-        in the 0x013E map ACK).  The payload encodes one ``(fav_id, slot)``
-        pair per favorite in sequential order:
-
-            01 01  02 02  03 03  …  [fav_count] [fav_count]
-
-        The official app builds this list dynamically — it grows by one entry
-        each time a favorite is added.  The previous hard-coded version stopped
-        at exactly 4 pairs, which left any 5th-or-later favorite without a
-        display slot, making it invisible on the physical remote's touch screen.
-        """
-
-        # X1S/X2 only: the X1 stage lists the current order instead
-        # (command_to_favorite builds it with _build_favorites_reorder_payload).
-        act_lo = activity_id & 0xFF
-        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo])
-        for i in range(1, max(1, fav_count) + 1):
-            payload.append(i & 0xFF)  # fav_id
-            payload.append(i & 0xFF)  # slot = fav_id (sequential 1-based)
-        payload.append((sum(payload) - 2) & 0xFF)
-        return bytes(payload)
-
     def _build_favorites_reorder_payload(
         self,
         act_lo: int,
@@ -915,8 +939,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         Frame structure (app→hub):
             [01 00 01 01 00 01] [act_lo] [fav_id slot] × N [token]
 
-        The token is computed with the same formula used by
-        _build_favorite_stage_payload: ``(sum(payload_so_far) - 2) & 0xFF``.
+        The token is ``(sum(payload_so_far) - 2) & 0xFF``.
 
         Verified against 5 captured reorder frames (N=5..9).
         """
@@ -1018,6 +1041,23 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             result.insert(min(max(fav_id - 1, 0), len(result)), fav_id)
         return result
 
+    @staticmethod
+    def _without_x1_dead_records(order_ids: list[int], live_ids: set[int] | None) -> list[int]:
+        """*order_ids* without the ids no live record holds; unchanged when
+        there is no live read.
+
+        The X1 keeps the order slot of a record deleted without an order
+        rewrite (a macro's key delete, a cascade) and refuses a family-0x61
+        write that lists that id again, STATUS_ACK 0x06. Journey bench J2 on
+        the X1, 2026-10-16: an activity sync deleted a macro, then a
+        favorite; the favorite delete wrote the order it had read back,
+        still holding the macro's id, and the hub refused it, every time.
+        """
+
+        if live_ids is None:
+            return list(order_ids)
+        return [fav_id for fav_id in order_ids if fav_id in live_ids]
+
     def repair_x1_quick_access_order(self, activity_id: int) -> bool | None:
         """X1: rewrite the activity's order table when it leaves out a live
         favorite or macro shortcut (the repair syncs run for activities a
@@ -1038,14 +1078,15 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if order is None:
             return None
         order_ids = [fav_id for fav_id, _slot in sorted(order, key=lambda pair: pair[1])]
-        repaired = self._with_x1_unlisted_records(order_ids, live)
+        repaired = self._with_x1_unlisted_records(self._without_x1_dead_records(order_ids, live), live)
         if repaired == order_ids:
             return False
         self._log.info(
-            "[FAV_ORDER] act=0x%02X order %s leaves out live records %s; writing %s",
+            "[FAV_ORDER] act=0x%02X order %s leaves out live records %s, lists dead ids %s; writing %s",
             act_lo,
             order_ids,
             sorted(live - set(order_ids)),
+            sorted(set(order_ids) - live),
             repaired,
         )
         self.reset_ack_queues()
@@ -1071,9 +1112,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         return True
 
     def _x1_repaired_order(self, act_lo: int, order_ids: list[int], *, exclude: Collection[int] = ()) -> list[int]:
-        """*order_ids* completed with the X1's unlisted records (see
-        :meth:`_with_x1_unlisted_records`); unchanged on other hubs or when the
-        live read fails. *exclude* names ids this write is removing."""
+        """*order_ids* as the X1 accepts it: ids no live record holds left
+        out (:meth:`_without_x1_dead_records`), unlisted live records put
+        back (:meth:`_with_x1_unlisted_records`). Unchanged on other hubs or
+        when the live read fails. *exclude* names ids this write is removing."""
 
         if self.hub_version != HUB_VERSION_X1:
             return list(order_ids)
@@ -1085,15 +1127,61 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 act_lo,
             )
             return list(order_ids)
-        repaired = self._with_x1_unlisted_records(order_ids, live - set(exclude))
+        live_now = live - set(exclude)
+        repaired = self._with_x1_unlisted_records(
+            self._without_x1_dead_records(order_ids, live_now), live_now
+        )
         if repaired != list(order_ids):
             self._log.info(
-                "[FAV_ORDER] act=0x%02X order %s leaves out live records; writing %s",
+                "[FAV_ORDER] act=0x%02X order %s leaves out live records %s, lists dead ids %s; writing %s",
                 act_lo,
                 list(order_ids),
+                sorted(live_now - set(order_ids)),
+                sorted(set(order_ids) - live_now),
                 repaired,
             )
         return repaired
+
+    def _send_order_step(
+        self,
+        act_lo: int,
+        step_name: str,
+        order_ids: list[int],
+        rebuild: Callable[[], list[int]],
+    ) -> tuple[SendStepResult, list[int]]:
+        """Write the family-0x61 order; on the X1, once more when the hub
+        refuses it or does not answer.
+
+        Every caller writes the order right after a write that has already
+        landed (a key delete, a favorite map), so a refused order is a list
+        the hub no longer agrees with, not a failed edit. *rebuild* returns
+        the order again from a fresh live read. Returns the step result and
+        the order it was for.
+        """
+
+        step = self._send_step(
+            step_name=step_name,
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, order_ids),
+            ack_opcode=0x0103,
+        )
+        if step.ok or self.hub_version != HUB_VERSION_X1:
+            return step, order_ids
+        retry_ids = rebuild()
+        self._log.warning(
+            "[FAV_ORDER] act=0x%02X the hub %s the order %s; writing it once more as %s",
+            act_lo,
+            "refused" if step.rejected else "did not answer",
+            list(order_ids),
+            retry_ids,
+        )
+        step = self._send_step(
+            step_name=f"{step_name}-retry",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, retry_ids),
+            ack_opcode=0x0103,
+        )
+        return step, retry_ids
 
     def _validate_favorite_fav_id(
         self,
@@ -1180,16 +1268,18 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # X1: the table is rewritten whole, so it lists every live record,
-        # also one an earlier write left out (the repair for affected hubs).
-        ordered_fav_ids_checked = self._x1_repaired_order(act_lo, ordered_fav_ids_checked)
+        # also one an earlier write left out (the repair for affected hubs),
+        # and no id a deleted record left behind.
+        requested_ids = list(ordered_fav_ids_checked)
+        ordered_fav_ids_checked = self._x1_repaired_order(act_lo, requested_ids)
 
         self.reset_ack_queues()
 
-        _step = self._send_step(
-            step_name=f"fav-reorder-61[act=0x{act_lo:02X}]",
-            family=0x61,
-            payload=self._build_favorites_reorder_payload(act_lo, ordered_fav_ids_checked),
-            ack_opcode=0x0103,
+        _step, ordered_fav_ids_checked = self._send_order_step(
+            act_lo,
+            f"fav-reorder-61[act=0x{act_lo:02X}]",
+            ordered_fav_ids_checked,
+            lambda: self._x1_repaired_order(act_lo, requested_ids),
         )
         if not _step.ok:
             return None
@@ -1285,12 +1375,14 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        # Step 2: send the new (shorter) ordering
-        _step = self._send_step(
-            step_name=f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
-            family=0x61,
-            payload=self._build_favorites_reorder_payload(act_lo, remaining_fav_ids),
-            ack_opcode=0x0103,
+        # Step 2: send the new (shorter) ordering. The delete has landed by
+        # now, so a refused order is retried once from a fresh read.
+        read_remaining = [fid for fid, _slot in current_order if fid != validated_fav_id]
+        _step, remaining_fav_ids = self._send_order_step(
+            act_lo,
+            f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
+            remaining_fav_ids,
+            lambda: self._x1_repaired_order(act_lo, read_remaining, exclude={validated_fav_id}),
         )
         if not _step.ok:
             return None
@@ -1332,11 +1424,14 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
     ) -> dict[str, Any] | None:
         """Add a command favorite to an arbitrary activity.
 
-        X1 only: the stage rewrites the whole order table, from the order read
-        back (``query_existing_order``) or, when given, *existing_order_ids*
-        (a caller that knows the table, e.g. a restore building it up), with
-        live records the table leaves out put back (``repair_order``; a
-        caller that rewrites the order afterwards may skip the extra read).
+        The stage rewrites the activity's whole quick-access order table
+        (favorites and macro shortcuts share one id space and one table on
+        every hub): it lists the table as it stands, from the order read back
+        (``query_existing_order``) or, when given, *existing_order_ids* (a
+        caller that knows the table, e.g. a restore building it up), with the
+        new favorite last. On the X1, live records the table leaves out are
+        put back too (``repair_order``; a caller that rewrites the order
+        afterwards may skip the extra read).
         """
 
         if not self.can_issue_commands():
@@ -1350,14 +1445,17 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
 
         self.reset_ack_queues()
 
-        # X1 only: query the current favorites order BEFORE the map step so we
-        # know which (fav_id, slot) pairs to preserve in the stage payload.
-        # On X1, macros share the same fav_id/slot namespace as command favorites
-        # and must be included in the stage payload with their actual slot numbers.
-        x1_existing_fav_ids: list[int] = []
-        if self.hub_version == HUB_VERSION_X1 and existing_order_ids is not None:
-            x1_existing_fav_ids = [int(fav_id) & 0xFF for fav_id in existing_order_ids]
-        elif self.hub_version == HUB_VERSION_X1 and query_existing_order:
+        # Read the current order BEFORE the map step: the stage below rewrites
+        # the whole table, so it lists every entry in its current place, the
+        # new favorite last. The X1S/X2 stage used to be the identity table
+        # 1..new id, from an app capture on a fresh activity where the two
+        # look alike: on a reordered activity it reset the table to id order
+        # (bench_332, X1S, 2026-10-14) and it left out entries with a higher
+        # id (bench_312, X2, 2026-10-06).
+        existing_fav_ids: list[int] = []
+        if existing_order_ids is not None:
+            existing_fav_ids = [int(fav_id) & 0xFF for fav_id in existing_order_ids]
+        elif query_existing_order:
             existing_order = self.request_favorites_order(act_lo)
             if existing_order is None:
                 # The stage below rewrites the whole order table: without
@@ -1370,18 +1468,18 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                     act_lo,
                 )
                 return None
-            x1_existing_fav_ids = [
+            existing_fav_ids = [
                 fav_id
                 for fav_id, _slot in sorted(existing_order, key=lambda x: x[1])
             ]
             self._log.info(
-                "%s[STEP] favorite-map[act=0x%02X] x1 pre-existing order: %s",
+                "%s[STEP] favorite-map[act=0x%02X] pre-existing order: %s",
                 LogTag.ACTIVITY,
                 act_lo,
-                x1_existing_fav_ids,
+                existing_fav_ids,
             )
             if repair_order:
-                x1_existing_fav_ids = self._x1_repaired_order(act_lo, x1_existing_fav_ids)
+                existing_fav_ids = self._x1_repaired_order(act_lo, existing_fav_ids)
 
         # Step 1: Map — inlined so we can read the assigned fav_id from the
         # 0x013E ACK payload.  That fav_id is used to build the stage payload.
@@ -1436,40 +1534,37 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if map_ack_opcode == 0x013E and map_ack_payload:
             new_fav_id = map_ack_payload[0] or None
 
-        # Build the stage payload (Step 2) differently per hub version.
+        # Step 2, the stage: every current entry (macros AND favorites) in its
+        # current slot order, the new fav_id last, as the official X1 app
+        # builds it (captured traffic, log 04_x1_add_6_favorites). The X1S
+        # app capture (log 02_x1s_add_6_favorites) added six favorites to a
+        # fresh activity, where this and the identity table are the same.
         #
-        # X1: the stage payload must list ALL current entries (macros AND regular
-        #     favorites) in their current slot order, followed by the new fav_id
-        #     at the next slot.  The official app builds this by reading the
-        #     current order before the map step and appending the new entry.
-        #     Verified against captured traffic (log 04_x1_add_6_favorites).
-        #
-        # X1S/X2: sequential (i, i) pairs for i in 1..new_fav_id.  On these hubs
-        #     macros are in a separate namespace and are not included here.
-        #     Verified against captured traffic (log 02_x1s_add_6_favorites).
-        if self.hub_version == HUB_VERSION_X1:
-            # The hub hands out the id it just assigned only when no live
-            # entry holds it, so that id in the order it read back is the slot
-            # of an entry a cascade removed (the X1 keeps those). Listing it
-            # again would give one id two slots, and one more on every reuse.
-            ordered_ids = [fav_id for fav_id in x1_existing_fav_ids if fav_id != new_fav_id]
-            ordered_ids += [new_fav_id] if new_fav_id is not None else []
-            if not ordered_ids:
-                ordered_ids = [1]  # last-resort fallback
-            stage_payload = self._build_favorites_reorder_payload(act_lo, ordered_ids)
-            stage_n = len(ordered_ids)
-        else:
-            fav_count: int = 4  # safe fallback matching previous hardcoded behaviour
-            if new_fav_id is not None:
-                fav_count = new_fav_id
-            stage_payload = self._build_favorite_stage_payload(act_lo, fav_count)
-            stage_n = fav_count
+        # The hub hands out the id it just assigned only when no live entry
+        # holds it, so that id in the order it read back is the slot of an
+        # entry a cascade removed (the X1 keeps those). Listing it again would
+        # give one id two slots, and one more on every reuse.
+        ordered_ids = [fav_id for fav_id in existing_fav_ids if fav_id != new_fav_id]
+        ordered_ids += [new_fav_id] if new_fav_id is not None else []
+        if not ordered_ids:
+            ordered_ids = [1]  # last-resort fallback
+        stage_n = len(ordered_ids)
+        staged = list(ordered_ids)
 
-        _step = self._send_step(
-            step_name=f"favorite-stage-61[act=0x{act_lo:02X} n={stage_n}]",
-            family=0x61,
-            payload=stage_payload,
-            ack_opcode=0x0103,
+        def _restage() -> list[int]:
+            # The map has landed: the new favorite is live now, so it stays
+            # out of the repair (which would place it at its own id) and goes
+            # last, as above.
+            others = [fav_id for fav_id in staged if fav_id != new_fav_id]
+            exclude = {new_fav_id} if new_fav_id is not None else set()
+            restaged = self._x1_repaired_order(act_lo, others, exclude=exclude)
+            return restaged + ([new_fav_id] if new_fav_id is not None else []) or [1]
+
+        _step, ordered_ids = self._send_order_step(
+            act_lo,
+            f"favorite-stage-61[act=0x{act_lo:02X} n={stage_n}]",
+            ordered_ids,
+            _restage,
         )
         if not _step.ok:
             return None

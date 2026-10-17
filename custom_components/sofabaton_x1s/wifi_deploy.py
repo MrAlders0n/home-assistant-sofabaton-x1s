@@ -23,7 +23,6 @@ from .const import (
     signal_command_sync,
 )
 from .lib.wifi_inplace_plan import (
-    COMMAND_RECORD_STEP_KINDS,
     REFERENCED_RECORD_STEP_KINDS,
     baseline_snapshot_from_bundle,
     build_wifi_inplace_plan,
@@ -433,11 +432,16 @@ class WifiDeployMixin:
     ) -> list[int]:
         """Re-read what an in-place plan wrote; returns the touched activities."""
 
+        # A device-page binding step carries the device itself as its
+        # "activity" (the keymap entity is the device); re-reading that as
+        # an activity wiped the device's command table (journey bench W-3).
+        dev_lo = int(dev_id) & 0xFF
         touched_acts = sorted(
             {
                 int(step.payload.get("activity_id"))
                 for step in plan.steps
                 if step.payload.get("activity_id") is not None
+                and int(step.payload.get("activity_id")) & 0xFF != dev_lo
             }
         )
         favorite_acts = {
@@ -446,7 +450,9 @@ class WifiDeployMixin:
             if step.kind in ("favorite_add", "favorite_delete")
         }
         refresh_acts: set[int] = set(touched_acts)
-        if any(step.kind in COMMAND_RECORD_STEP_KINDS for step in plan.steps):
+        if plan.steps:
+            # The device's whole record (commands, keymap, key sort): any
+            # step may have touched one of them.
             await self.async_fetch_device_commands(dev_id)
         if any(step.kind in REFERENCED_RECORD_STEP_KINDS for step in plan.steps):
             # Record rewrites change labels that other activities' cached
@@ -457,6 +463,8 @@ class WifiDeployMixin:
             # cache refresh would do for them.
             refresh_acts.update(referencing_before)
             refresh_acts.update(self._proxy.activities_referencing_device(dev_id))
+        refresh_acts.discard(dev_lo)
+        refresh_acts.discard(int(dev_id))
         for act_id in sorted(refresh_acts):
             await self._async_fetch_activity_commands(act_id)
             if act_id in favorite_acts:

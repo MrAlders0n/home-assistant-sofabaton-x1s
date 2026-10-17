@@ -255,15 +255,36 @@ def test_x1_restore_skips_the_closing_write_when_the_staged_order_is_right(monke
     assert [family for _name, family, _payload in steps if family in (0x61, 0x65)] == []
 
 
-def test_x1s_restore_is_unchanged(monkeypatch) -> None:
+def test_x1s_restore_stages_the_table_and_writes_the_captured_order(monkeypatch) -> None:
+    """The X1S (and X2) take the same path since 2026-10-14: the copy of a
+    reordered activity came back in id order (bench_332, X1S)."""
+
     proxy, favorite_calls, steps = _restoring_proxy(monkeypatch, HUB_VERSION_X1S)
 
     proxy.restore_activity(
-        _restore_backup([1, 2, 3, 4]), device_id_map={11: 0x21, 12: 0x22}, send_remote_sync=False
+        _restore_backup([4, 2, 1, 3]), device_id_map={11: 0x21, 12: 0x22}, send_remote_sync=False
     )
 
-    assert all(call["existing_order_ids"] is None for call in favorite_calls)
-    assert [family for _name, family, _payload in steps if family in (0x61, 0x65)] == []
+    assert [call["existing_order_ids"] for call in favorite_calls] == [[2], [2, 1], [2, 1, 3]]
+    assert [(family, _order_ids(payload)) for _name, family, payload in steps if family == 0x61] == [
+        (0x61, [4, 2, 1, 3])
+    ]
+    assert [family for _name, family, _payload in steps][-2:] == [0x61, 0x65]
+
+
+def test_restore_writes_the_table_of_an_activity_with_macro_shortcuts_only(monkeypatch) -> None:
+    """No favorite write staged the table, so the captured order is written
+    even when it equals the macros' own order (the app follows every macro
+    create with the table)."""
+
+    proxy, favorite_calls, steps = _restoring_proxy(monkeypatch, HUB_VERSION_X1S)
+    backup = _restore_backup([2])
+    backup["favorite_slots"] = []
+
+    proxy.restore_activity(backup, device_id_map={11: 0x21, 12: 0x22}, send_remote_sync=False)
+
+    assert favorite_calls == []
+    assert [(family, _order_ids(payload)) for _name, family, payload in steps if family == 0x61] == [(0x61, [2])]
 
 
 # -- the sync-time repair ------------------------------------------------------------------------
@@ -294,3 +315,135 @@ def test_repair_stays_out_of_other_hubs_and_failed_reads(monkeypatch, hub_versio
 
     assert proxy.repair_x1_quick_access_order(0x65) is None
     assert steps == []
+
+
+# -- dead ids (journey bench J2 on the X1, 2026-10-16) -------------------------------------------
+#
+# The X1 keeps the order slot of a record deleted without an order rewrite
+# (a macro's key delete) and refuses a 0x61 write listing that id again with
+# STATUS_ACK 0x06. An activity sync that deleted macro 17, then favorite 16,
+# wrote the order it had read back (16 entries ending in 17) minus 16: refused.
+
+
+@pytest.mark.parametrize(
+    ("order", "live", "expected"),
+    [
+        ([16, 6, 1, 2, 17], {16, 6, 1, 2}, [16, 6, 1, 2]),
+        ([3, 1, 2], {1, 2, 3}, [3, 1, 2]),
+        ([1, 7], set(), []),
+        # No live read: the order stays as given.
+        ([1, 7], None, [1, 7]),
+    ],
+)
+def test_dead_ids_leave_the_order(order, live, expected) -> None:
+    assert ActivityOpsMixin._without_x1_dead_records(order, live) == expected
+
+
+def test_x1_delete_drops_the_slot_a_deleted_macro_left(monkeypatch) -> None:
+    proxy, steps, _live = _proxy(
+        monkeypatch,
+        HUB_VERSION_X1,
+        order=[(16, 1), (6, 2), (1, 3), (2, 4), (17, 5)],
+        live={16, 6, 1, 2},
+    )
+
+    result = proxy.delete_favorite(0x65, 16, refresh_after_write=False)
+
+    assert result is not None and result["remaining"] == 3
+    assert _written_order(steps) == [6, 1, 2]
+
+
+def test_x1_add_drops_a_dead_id_from_the_stage(monkeypatch) -> None:
+    proxy, steps, _live = _proxy(monkeypatch, HUB_VERSION_X1, order=[(2, 1), (9, 2)], live={1, 2})
+    monkeypatch.setattr(proxy, "wait_for_ack_any", lambda candidates, *, timeout=5.0, not_before=None: (0x013E, b"\x03"))
+
+    proxy.command_to_favorite(0x67, 0x0A, 0x01, refresh_after_write=False)
+
+    assert _written_order(steps) == [1, 2, 3]
+
+
+def test_x1_reorder_drops_a_dead_id(monkeypatch) -> None:
+    proxy, steps, _live = _proxy(monkeypatch, HUB_VERSION_X1, order=[(1, 1), (7, 2), (2, 3)], live={1, 2})
+    monkeypatch.setattr(proxy, "_validate_favorite_fav_id", lambda act_lo, fav_id, order: fav_id)
+
+    result = proxy.reorder_favorites(0x65, [2, 7, 1], refresh_after_write=False)
+
+    assert result is not None and result["fav_ids"] == [2, 1]
+    assert _written_order(steps) == [2, 1]
+
+
+def test_repair_rewrites_an_order_that_lists_a_dead_id(monkeypatch) -> None:
+    proxy, steps, _live = _proxy(monkeypatch, HUB_VERSION_X1, order=[(1, 1), (17, 2)], live={1})
+
+    assert proxy.repair_x1_quick_access_order(0x65) is True
+    assert _written_order(steps) == [1]
+
+
+# -- the retry once ------------------------------------------------------------------------------
+
+
+def _scripted(monkeypatch, proxy, outcomes: list[AckOutcome]) -> list[tuple[str, int, bytes]]:
+    """``_send_step`` answering 0x61 writes with *outcomes* in turn; every
+    other step is acked."""
+
+    steps: list[tuple[str, int, bytes]] = []
+    pending = list(outcomes)
+
+    def _send_step(*, step_name, family, payload, ack_opcode, timeout=5.0):
+        steps.append((step_name, family, payload))
+        if family == 0x61 and pending:
+            return SendStepResult(outcome=pending.pop(0))
+        return SendStepResult(outcome=AckOutcome.acked)
+
+    monkeypatch.setattr(proxy, "_send_step", _send_step)
+    return steps
+
+
+def _order_writes(steps) -> list[list[int]]:
+    return [_order_ids(payload) for _name, family, payload in steps if family == 0x61]
+
+
+def test_x1_delete_writes_a_refused_order_once_more_from_a_fresh_read(monkeypatch) -> None:
+    # The first live read fails (no filter); the hub refuses the order with
+    # the dead 17; the retry reads again and writes it without.
+    proxy, _steps, _live = _proxy(
+        monkeypatch, HUB_VERSION_X1, order=[(16, 1), (6, 2), (17, 3)], live=None
+    )
+    reads = iter([None, {16, 6}])
+    monkeypatch.setattr(proxy, "_x1_live_quick_access_ids", lambda act_lo: next(reads))
+    steps = _scripted(monkeypatch, proxy, [AckOutcome.rejected, AckOutcome.acked])
+
+    result = proxy.delete_favorite(0x65, 16, refresh_after_write=False)
+
+    assert result is not None and result["remaining"] == 1
+    assert [family for _name, family, _payload in steps] == [0x10, 0x61, 0x61, 0x65]
+    assert _order_writes(steps) == [[6, 17], [6]]
+
+
+def test_x1_add_restages_once_with_the_new_favorite_last(monkeypatch) -> None:
+    proxy, _steps, _live = _proxy(monkeypatch, HUB_VERSION_X1, order=[(2, 1), (9, 2)], live=None)
+    reads = iter([None, {2, 3}])
+    monkeypatch.setattr(proxy, "_x1_live_quick_access_ids", lambda act_lo: next(reads))
+    monkeypatch.setattr(proxy, "wait_for_ack_any", lambda candidates, *, timeout=5.0, not_before=None: (0x013E, b"\x03"))
+    steps = _scripted(monkeypatch, proxy, [AckOutcome.rejected, AckOutcome.acked])
+
+    result = proxy.command_to_favorite(0x67, 0x0A, 0x01, refresh_after_write=False)
+
+    assert result is not None and result["fav_id"] == 3
+    assert _order_writes(steps) == [[2, 9, 3], [2, 3]]
+
+
+def test_x1_order_retries_only_once(monkeypatch) -> None:
+    proxy, _steps, _live = _proxy(monkeypatch, HUB_VERSION_X1, order=[(1, 1), (2, 2)], live={1, 2})
+    steps = _scripted(monkeypatch, proxy, [AckOutcome.rejected, AckOutcome.rejected])
+
+    assert proxy.delete_favorite(0x65, 2, refresh_after_write=False) is None
+    assert [family for _name, family, _payload in steps] == [0x10, 0x61, 0x61]
+
+
+def test_x1s_order_is_not_retried(monkeypatch) -> None:
+    proxy, _steps, _live = _proxy(monkeypatch, HUB_VERSION_X1S, order=[(1, 1), (2, 2)], live={1, 2})
+    steps = _scripted(monkeypatch, proxy, [AckOutcome.rejected])
+
+    assert proxy.delete_favorite(0x65, 2, refresh_after_write=False) is None
+    assert [family for _name, family, _payload in steps] == [0x10, 0x61]

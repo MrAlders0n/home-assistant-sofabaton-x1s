@@ -39,6 +39,7 @@ class _UiSettingsStore:
         self.hub_click_action = hub_click_action
         self.set_hub_click_action_to = None
         self.sidebar_panel_mode = sidebar_panel_mode
+        self.sidebar_panel_title = "Sofabaton X"
 
     async def async_set_sidebar_panel_mode(self, mode):
         self.sidebar_panel_mode = mode
@@ -310,7 +311,11 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
             # Global Hub-tab click behavior from the UI settings store.
             "hub_click_action": "send",
             "sidebar_panel": "off",
+            "sidebar_panel_title": "Sofabaton X",
             "tools_frontend_version": "2026.5.1",
+            # The command-config store's revision: open lists reload when
+            # it moves.
+            "config_revision": 0,
             "hubs": [
                 {
                     "entry_id": "entry-1",
@@ -356,6 +361,10 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "last_wifi_deploys": {},
                         "last_wifi_deploy_errors": {},
                     },
+                    # Where the hub's cache stands: an open card reloads the
+                    # hub's rows when this moves past what it holds.
+                    "cache_generation": 7,
+                    "cache_epoch": 0,
                 }
             ],
         },

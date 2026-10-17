@@ -104,7 +104,8 @@ def test_a_rejected_favorite_map_is_a_failure_not_a_stage(monkeypatch) -> None:
     sent = _reject_with(proxy, 0x04)
 
     assert proxy.command_to_favorite(0x65, 5, 1) is None
-    assert len(sent) == 1  # the map only; no stage rewrote the order table
+    # The order read, then the map; no stage rewrote the order table.
+    assert [frame[0] & 0xFF for frame in sent] == [0x62, 0x3E]
 
 
 def test_a_catalog_wait_needs_the_list_committed_not_a_quiet_wire() -> None:

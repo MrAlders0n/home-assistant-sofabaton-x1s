@@ -8,6 +8,7 @@ import type {
   BackupBundleDevicePayload,
   BackupBundlePayload,
 } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { rebaseBundle, type RebaseResult } from "../../../custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase";
 import type { Draft } from "../panel-store";
 
 export type EntityKind = "device" | "activity";
@@ -71,6 +72,43 @@ export function withDraftData(bundle: BackupBundlePayload, kind: EntityKind, ent
   let next = withEntityElement(bundle, kind, entityId, data.element);
   for (const device of data.devices ?? []) next = withEntityElement(next, "device", idOf(device), device);
   return next;
+}
+
+/** What the draft's data was before the edit (the `base` slot), in the data's own shape; null when the draft has none. */
+export function entityDraftBase(draft: Draft | null | undefined, kind: EntityKind, entityId: number): EntityDraftData | null {
+  if (!draft || draft.base === undefined) return null;
+  return entityDraftData({ ...draft, data: draft.base }, kind, entityId);
+}
+
+/** The draft slot for a working copy: the entity's element (and the devices an activity edit touched), and the same rows as the baseline had them. */
+export function draftSlot(working: BackupBundlePayload, baseline: BackupBundlePayload | null, kind: EntityKind, entityId: number): { data: EntityDraftData; base: EntityDraftData } | null {
+  const element = entityElement(working, kind, entityId);
+  const before = entityElement(baseline, kind, entityId);
+  if (!element || !before) return null;
+  const devices = kind === "activity" ? touchedDevices(working, baseline) : [];
+  const baseDevices = devices.map((device) => entityElement(baseline, "device", idOf(device))).filter((row): row is EntityElement => row !== null) as BackupBundleDevicePayload[];
+  return {
+    data: devices.length ? { element, devices } : { element },
+    base: baseDevices.length ? { element: before, devices: baseDevices } : { element: before },
+  };
+}
+
+/**
+ * A stored draft carried over to the hub's current snapshot (`fresh`):
+ * the three-way merge of bundle-rebase.ts with the draft's base, so a
+ * change made elsewhere meanwhile is kept unless the user changed the same
+ * thing (`overlap`). A draft stored without a base (before 2026-10-16)
+ * keeps the user's rows whole; `overlap` then says whether they differ
+ * from the hub's.
+ */
+export function rebaseDraftOnto(fresh: BackupBundlePayload, kind: EntityKind, entityId: number, data: EntityDraftData, base: EntityDraftData | null): RebaseResult {
+  const mine = withDraftData(fresh, kind, entityId, data);
+  if (!base) {
+    const changed = JSON.stringify(entityElement(mine, kind, entityId)) !== JSON.stringify(entityElement(fresh, kind, entityId))
+      || (data.devices ?? []).some((device) => JSON.stringify(device) !== JSON.stringify(entityElement(fresh, "device", idOf(device))));
+    return { bundle: mine, overlap: changed };
+  }
+  return rebaseBundle(withDraftData(fresh, kind, entityId, base), mine, fresh);
 }
 
 // -- macro time bytes (0.5 s units; a byte of 4 = 2.0 s; 0 = a click / no wait) -----------------

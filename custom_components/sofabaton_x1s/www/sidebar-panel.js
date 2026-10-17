@@ -648,6 +648,15 @@ var REMOTE_CARD_STRINGS_EN = {
     pullHandle: "Open favorites and macros",
     pullHandleCommands: "Open commands",
     close: "Close",
+    pinToDock: (name) => `Pin ${name} to the dock`,
+    pinnedToDock: (name) => `${name}, pinned to the dock`,
+    dockShortcut: "Dock shortcut",
+    dockSwap: "Swap sides",
+    dockOnLeft: "On the left",
+    dockOnRight: "On the right",
+    unpin: "Unpin",
+    dockFull: "The dock is full",
+    dockIcon: "Icon",
     starting: "Starting",
     poweringOff: "Powering off",
     working: "Working",
@@ -655,9 +664,9 @@ var REMOTE_CARD_STRINGS_EN = {
     operations: {
       backup_restore: "Restoring backup",
       cache_refresh: "Refreshing hub cache",
-      entity_sync: "Syncing to hub",
+      entity_sync: "Syncing with hub",
       backup_export: "Creating backup",
-      wifi_deploy: "Deploying Wifi commands"
+      wifi_deploy: "Syncing Wifi Commands"
     }
   },
   assist: {
@@ -2959,6 +2968,146 @@ function isOffLabel(label, offLabel) {
   return s4 === offLabel.trim().toLowerCase() || s4 === "powered off" || s4 === "off";
 }
 
+// remote-card/src/sidebar/sidebar-dock.ts
+var DOCK_SLOTS = ["left", "right"];
+var DOCK_STORAGE_PREFIX = "sofabaton_x1s:sidebar:dock:";
+var DOCK_MONOGRAM = "monogram";
+var ICON_GUESSES = [
+  [/netflix/i, "mdi:netflix"],
+  [/youtube/i, "mdi:youtube"],
+  [/spotify/i, "mdi:spotify"],
+  [/\bplex\b/i, "mdi:plex"],
+  [/\bkodi\b/i, "mdi:kodi"],
+  [/twitch/i, "mdi:twitch"],
+  [/\bmute\b/i, "mdi:volume-mute"],
+  [/\bvol(ume)?\s*(\+|up\b)/i, "mdi:volume-plus"],
+  [/\bvol(ume)?\s*(-|−|down\b)/i, "mdi:volume-minus"],
+  [/\bpower\b|\bon\s*\/\s*off\b/i, "mdi:power"],
+  [/hdmi|\binput\b|\bsource\b/i, "mdi:video-input-hdmi"],
+  [/play\s*\/?\s*pause/i, "mdi:play-pause"],
+  [/subtitle/i, "mdi:subtitles-outline"],
+  [/\bguide\b|\bepg\b/i, "mdi:television-guide"],
+  [/\binfo\b/i, "mdi:information-outline"],
+  [/\bsettings?\b|\bsetup\b/i, "mdi:cog-outline"],
+  [/\bscene\b/i, "mdi:palette-outline"],
+  [/\blights?\b|\blamps?\b|\bdim\b/i, "mdi:lightbulb-outline"],
+  [/\bmovie|\bcinema\b|\bfilm\b/i, "mdi:movie-open-outline"],
+  [/\bsleep\b/i, "mdi:sleep"],
+  [/\bnight\b/i, "mdi:weather-night"],
+  [/\bbass\b|\bsurround\b|\bsound\b|\baudio\b/i, "mdi:surround-sound"],
+  [/\bmusic\b|\bradio\b/i, "mdi:music"],
+  [/\bgam(e|es|ing)\b/i, "mdi:gamepad-variant-outline"],
+  [/\bfan\b/i, "mdi:fan"],
+  [/\bblinds?\b|\bcurtains?\b|\bshades?\b/i, "mdi:blinds"],
+  [/\bpicture\b|\baspect\b|\bzoom\b/i, "mdi:aspect-ratio"]
+];
+function guessDockIcon(label) {
+  for (const [pattern, icon] of ICON_GUESSES) if (pattern.test(label)) return icon;
+  return null;
+}
+function dockMonogram(label) {
+  const words = label.split(/[\s\-_:/.,+()]+/u).filter(Boolean);
+  const first = (word) => Array.from(word)[0] ?? "";
+  const letters = words.length >= 2 ? first(words[0]) + first(words[1]) : first(words[0] ?? "");
+  return letters.toLocaleUpperCase();
+}
+function dockIconFor(pin, label, ownIcon) {
+  return pin.icon ?? ownIcon ?? guessDockIcon(label) ?? DOCK_MONOGRAM;
+}
+function dockScope(mode, activityId, deviceId) {
+  const id = mode === "device" ? deviceId : activityId;
+  if (id == null || id === "") return null;
+  const n4 = Number(id);
+  return Number.isFinite(n4) ? `${mode === "device" ? "device" : "activity"}:${n4}` : null;
+}
+function sameDockRef(a3, b3) {
+  return a3.kind === b3.kind && a3.commandId === b3.commandId && a3.deviceId === b3.deviceId;
+}
+function dockIsFull(slots) {
+  return DOCK_SLOTS.every((slot) => slots[slot] != null);
+}
+function dockSlotOf(slots, ref) {
+  return DOCK_SLOTS.find((slot) => slots[slot] && sameDockRef(slots[slot], ref)) ?? null;
+}
+function pinToFreeSlot(slots, ref) {
+  const slot = DOCK_SLOTS.find((s4) => !slots[s4]);
+  if (!slot) return null;
+  return { slots: { ...slots, [slot]: pinOf(ref) }, slot };
+}
+function unpinDockSlot(slots, slot) {
+  const next = { ...slots };
+  delete next[slot];
+  return next;
+}
+function moveDockSlot(slots, from, to) {
+  if (from === to || !slots[from]) return slots;
+  const next = { ...slots, [to]: slots[from] };
+  if (slots[to]) next[from] = slots[to];
+  else delete next[from];
+  return next;
+}
+function setDockIcon(slots, slot, icon) {
+  const pin = slots[slot];
+  return pin ? { ...slots, [slot]: { ...pin, icon } } : slots;
+}
+function pinOf(ref) {
+  return { kind: ref.kind, commandId: ref.commandId, deviceId: ref.deviceId, icon: null };
+}
+function cleanPin(value) {
+  if (!value || typeof value !== "object") return null;
+  const v2 = value;
+  const kind = v2.kind;
+  if (kind !== "favorites" && kind !== "macros" && kind !== "commands") return null;
+  const commandId = Number(v2.commandId);
+  const deviceId = Number(v2.deviceId);
+  if (!Number.isFinite(commandId) || !Number.isFinite(deviceId)) return null;
+  const icon = typeof v2.icon === "string" && v2.icon ? v2.icon : null;
+  return { kind, commandId, deviceId, icon };
+}
+function parseDockTable(raw) {
+  if (!raw) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  const table = {};
+  for (const [scope, slots] of Object.entries(parsed)) {
+    if (!slots || typeof slots !== "object") continue;
+    const clean = {};
+    for (const slot of DOCK_SLOTS) {
+      const pin = cleanPin(slots[slot]);
+      if (pin) clean[slot] = pin;
+    }
+    if (clean.left || clean.right) table[scope] = clean;
+  }
+  return table;
+}
+function withDockSlots(table, scope, slots) {
+  const next = { ...table };
+  if (slots.left || slots.right) next[scope] = slots;
+  else delete next[scope];
+  return next;
+}
+function readDockTable(entity) {
+  try {
+    return typeof window === "undefined" ? {} : parseDockTable(window.localStorage.getItem(`${DOCK_STORAGE_PREFIX}${entity}`));
+  } catch {
+    return {};
+  }
+}
+function writeDockTable(entity, table) {
+  try {
+    if (typeof window === "undefined") return;
+    const key = `${DOCK_STORAGE_PREFIX}${entity}`;
+    if (Object.keys(table).length) window.localStorage.setItem(key, JSON.stringify(table));
+    else window.localStorage.removeItem(key);
+  } catch {
+  }
+}
+
 // remote-card/src/remote-card-gestures.ts
 var HOLD_REPEAT_DELAY_MS = 400;
 var HOLD_REPEAT_INTERVAL_MS = 250;
@@ -3524,6 +3673,11 @@ var sidebarRemoteStyles = i`
   .rockers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sb-gap); }
   .rockers .pill { grid-template-columns: 1fr 1fr 1fr; }
   .colors { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sb-gap); }
+  /* The UI follows the locale direction, but these rows are the physical remote's:
+     an RTL language must never swap them (the remote card does the same). It also
+     keeps the pill tilt, picked by segment index, on the side that was pressed. */
+  :host([dir="rtl"]) .numpad, :host([dir="rtl"]) .nav, :host([dir="rtl"]) .media,
+  :host([dir="rtl"]) .rockers, :host([dir="rtl"]) .colors { direction: ltr; }
   .colors button { height: calc(var(--sb-row-h) * 0.45); border-radius: 999px; transition: transform 90ms ease, filter 90ms ease; }
   .colors .red { background: color-mix(in srgb, #c0504d 85%, var(--sb-pill)); }
   .colors .green { background: color-mix(in srgb, #5f8f64 85%, var(--sb-pill)); }
@@ -3556,6 +3710,11 @@ var sidebarRemoteStyles = i`
     .ok:not(.off):not(.pressed):hover { background: color-mix(in srgb, #000 8%, var(--primary-color)); }
     .bare > .seg:not(.off):not(.pressed):hover::before { opacity: 0.55; }
     .segs .s:not(.active):hover { color: var(--primary-text-color); background: var(--sb-hover); }
+    .pin:not(.on):not(.blocked):not(.pressed):hover { background: var(--sb-hover); }
+    .pin.on:not(.pressed):hover { background: color-mix(in srgb, var(--primary-color) 26%, transparent); }
+    .dock .sc:not(.pressed):hover::before, .swap:not(.pressed):hover, .unpin:not(.pressed):hover {
+      background: color-mix(in srgb, var(--primary-text-color) 10%, var(--sb-pill));
+    }
   }
 
   /* ---------- feedback ---------- */
@@ -3578,6 +3737,35 @@ var sidebarRemoteStyles = i`
   .pull .knob ha-icon { --mdc-icon-size: 22px; opacity: 0.75; }
   .pull .knob.pressed { transform: scale(0.9); }
 
+  /* ---------- dock shortcuts (sidebar-dock.ts) ----------
+     Over the pull strip, which keeps its full width and height (the layout
+     measures it): on the remote column's edges, level with the knob. Left and
+     right are the user's own picks, so they stay physical in every language.
+     The button is the 44px touch target; the circle painted inside it is 36px
+     (near the knob's 34px), centred level with the knob, so it clears the
+     bottom edge. The target reaches 4px past the column edge so the circle
+     itself lines up with it. */
+  .dock { position: relative; flex: 0 0 auto; }
+  .dock .sc {
+    position: absolute; top: 11px; width: 44px; height: 44px; border-radius: 50%; isolation: isolate;
+    display: grid; place-items: center; color: var(--primary-text-color); transition: transform 90ms ease, opacity 0.25s ease;
+  }
+  .dock .sc::before {
+    content: ""; position: absolute; inset: 4px; z-index: -1; border-radius: 50%; background: var(--sb-pill); transition: background 90ms ease;
+  }
+  .dock .sc.left { left: calc(max(var(--sb-pad), calc(50% - 280px + var(--sb-pad))) - 4px); }
+  .dock .sc.right { right: calc(max(var(--sb-pad), calc(50% - 280px + var(--sb-pad))) - 4px); }
+  .dock .sc ha-icon { --mdc-icon-size: 20px; opacity: 0.85; }
+  .dock .sc .mono { font-size: 14px; }
+  .dock .sc:focus-visible { outline-offset: -2px; }
+  .dock .sc.pressed { transform: scale(0.9); }
+  .dock .sc.pressed::before { background: color-mix(in srgb, var(--primary-text-color) 18%, var(--sb-pill)); }
+  .dock .sc.new { animation: dock-pop 420ms cubic-bezier(0.2, 0.7, 0.3, 1.3); }
+  @keyframes dock-pop { from { transform: scale(0.3); opacity: 0; } to { transform: none; opacity: 1; } }
+  .app.inert .dock .sc { opacity: 0.4; pointer-events: none; }
+  /* initials: a shortcut without an icon */
+  .mono { font-size: 15px; font-weight: 500; letter-spacing: 0.02em; line-height: 1; }
+
   /* ---------- the sheet ---------- */
   .scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 6; }
   .sheet {
@@ -3590,8 +3778,8 @@ var sidebarRemoteStyles = i`
     background: linear-gradient(var(--sb-card), var(--sb-card)), linear-gradient(var(--sb-card), var(--sb-card));
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
   }
-  .app.open .scrim { opacity: 1; pointer-events: auto; }
-  .app.open .sheet { transform: none; }
+  .app.open .scrim:not(.dscrim), .app.dock-open .dscrim { opacity: 1; pointer-events: auto; }
+  .app.open .sheet:not(.dsheet), .app.dock-open .dsheet { transform: none; }
   .sheet .grip { width: 36px; height: 4px; border-radius: 2px; background: var(--divider-color); margin: 10px auto 0; flex: 0 0 auto; }
   .segs { display: flex; align-items: center; gap: 10px; padding: 10px 16px 8px; flex: 0 0 auto; }
   .segs .ctl { flex: 1; display: grid; grid-template-columns: repeat(2, 1fr); background: var(--sb-pill); border-radius: 999px; padding: 3px; }
@@ -3611,7 +3799,23 @@ var sidebarRemoteStyles = i`
   .filter input::placeholder { color: var(--sb-muted); }
   .body { flex: 1; overflow-y: auto; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling: touch; }
   .empty { padding: 24px 8px; text-align: center; color: var(--sb-muted); font-size: 14px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  /* Favorites keep the hub's order, as the physical remote shows them: two per
+     row only when each tile still gets 240px (room for the name beside the
+     icon and the pin), one per row below that, never three. */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(max(240px, calc((100% - 10px) / 2)), 1fr)); gap: 10px; }
+  /* A sheet item: the item's own button with the pin beside it, never inside
+     it (a missed pin must not send the command). */
+  .item { position: relative; min-width: 0; display: grid; }
+  .item > .tile, .item > .lrow { padding-inline-end: 54px; }
+  .pin {
+    position: absolute; inset-inline-end: 6px; top: 50%; translate: 0 -50%; width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--sb-muted); transition: transform 90ms ease, background 90ms ease;
+  }
+  .pin ha-icon { --mdc-icon-size: 20px; opacity: 0.75; }
+  .pin.on { color: var(--sb-accent-text); background: color-mix(in srgb, var(--primary-color) 16%, transparent); }
+  .pin.on ha-icon { opacity: 1; }
+  /* both sides taken: nothing more pins until one is unpinned */
+  .pin.blocked { opacity: 0.35; cursor: default; }
   .tile {
     display: grid; grid-template-columns: 40px 1fr; align-items: center; gap: 12px; height: 64px; padding: 0 12px; text-align: start;
     border-radius: 14px; background: var(--sb-pill); color: var(--primary-text-color); min-width: 0; transition: transform 90ms ease, filter 90ms ease;
@@ -3623,11 +3827,10 @@ var sidebarRemoteStyles = i`
   .t small { font-size: 12px; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .list { display: grid; gap: 8px; }
   .lrow {
-    display: grid; grid-template-columns: 24px 1fr 24px; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 14px; text-align: start;
+    display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 14px; text-align: start;
     border-radius: 14px; background: var(--sb-pill); color: var(--primary-text-color); transition: transform 90ms ease, filter 90ms ease;
   }
   .lrow .li { justify-self: center; }
-  .lrow .chev { --mdc-icon-size: 22px; opacity: 0.6; }
   .rows { display: grid; gap: 6px; }
   .row {
     display: grid; grid-template-columns: 36px 1fr auto; align-items: center; gap: 12px; height: 52px; padding: 0 12px 0 10px; text-align: start;
@@ -3643,6 +3846,31 @@ var sidebarRemoteStyles = i`
   .row.current .ic ha-icon { opacity: 1; }
   .row.current .st { background: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 25%, transparent); }
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- the dock drawer: a dock shortcut's options ----------
+     The same sheet (look, slide, scrim), sized to its content. A pinned
+     item's pin opens it, so it stacks on the sheet with a scrim of its own
+     between them (both above the rings, 8: nothing on them rings). */
+  .scrim.dscrim { z-index: 9; }
+  .sheet.dsheet { height: auto; max-height: 68%; z-index: 10; }
+  .dsheet .phead { gap: 12px; }
+  .dsheet .prev { width: 44px; height: 44px; border-radius: 50%; background: var(--sb-pill); display: grid; place-items: center; flex: 0 0 auto; }
+  .dsheet .prev ha-icon { --mdc-icon-size: 22px; opacity: 0.85; }
+  .dsheet .titles .name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dsheet .titles .owner { display: block; margin-top: 1px; font-size: 12px; color: var(--sb-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dbody { display: grid; gap: 16px; padding: 4px 16px calc(16px + env(safe-area-inset-bottom)); overflow-y: auto; }
+  .dbody ha-form { display: block; }
+  .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .swap, .unpin {
+    height: 40px; padding: 0 14px; border-radius: 999px; background: var(--sb-pill); display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; transition: transform 90ms ease;
+  }
+  .unpin { color: color-mix(in srgb, var(--sb-err) 70%, var(--primary-text-color)); }
+  .unpin ha-icon { --mdc-icon-size: 18px; }
+  /* the drawer covers the dock, so the swap button shows the side: the filled dot. Physical sides, like the dock. */
+  .swap { gap: 10px; direction: ltr; }
+  .swap .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--sb-muted); transition: background 0.2s, box-shadow 0.2s; }
+  .swap .dot.on { background: var(--primary-color); box-shadow: none; }
 
   /* ---------- notices ---------- */
   .notice { margin: 0 var(--sb-pad); padding: 10px 14px; border-radius: 12px; background: var(--sb-pill); color: var(--sb-muted); font-size: 13px; text-align: center; }
@@ -3701,9 +3929,11 @@ var sidebarRemoteStyles = i`
   .app.landscape .wheel-wrap { width: min(100cqh, calc((100cqw - var(--sb-wheel-box-off)) / var(--sb-wheel-box))); }
   /* with the keys beside the wheel there is no half-height to speak of: the sheet takes the full view */
   .app.landscape .sheet { height: 100%; border-radius: 0; }
+  .app.landscape .sheet.dsheet { height: auto; max-height: 100%; border-radius: 22px 22px 0 0; }
 
   @media (prefers-reduced-motion: reduce) {
-    .wheel, .pill, .face, .face-pad button, .sheet, .scrim, .remote > *, .pull, .orbit, .numtoggle { transition: none; }
+    .wheel, .pill, .face, .face-pad button, .sheet, .scrim, .remote > *, .pull, .orbit, .numtoggle, .pin, .dock .sc, .swap, .unpin { transition: none; }
+    .dock .sc.new { animation: none; }
     .ring { animation-duration: 1ms; }
     .wheel[data-tilt], .pill[data-tilt] { transform: none; }
   }
@@ -3854,6 +4084,10 @@ function applySidebarTheme(host, root) {
 
 // remote-card/src/sidebar/sidebar-remote-element.ts
 var SIDEBAR_REMOTE_TAG = "sofabaton-sidebar-remote";
+var DOCK_KEY_IDS = { left: -101, right: -102 };
+function dockSlotForKey(id) {
+  return id === DOCK_KEY_IDS.left ? "left" : id === DOCK_KEY_IDS.right ? "right" : null;
+}
 var KEY_BY_ID = {
   [ID.UP]: "up",
   [ID.DOWN]: "down",
@@ -3970,9 +4204,22 @@ var SofabatonSidebarRemote = class extends i4 {
     this._numpadOpen = false;
     this._numpadPageKey = "";
     this._outsideTap = null;
+    /** The dock shortcuts of `_dockEntity`, read once per entity (sidebar-dock.ts). */
+    this._dockEntity = "";
+    this._dockTable = {};
+    /** The dock drawer: open or not, and the side it shows (kept while it slides out). */
+    this._dockSheetOpen = false;
+    this._dockSheetSlot = null;
+    /** The pin that opened the dock drawer: focus goes back to it on close. */
+    this._dockSheetOpener = null;
+    /** The side just pinned: its shortcut pops in once the sheet closes. */
+    this._justPinned = null;
     this._onKeydown = (ev) => {
       if (ev.key !== "Escape") return;
-      if (this._sheet) {
+      if (this._dockSheetOpen) {
+        this._closeDockSheet();
+        ev.preventDefault();
+      } else if (this._sheet) {
         this._openSheet(null);
         ev.preventDefault();
       } else if (this._numpadOpen) {
@@ -4018,6 +4265,10 @@ var SofabatonSidebarRemote = class extends i4 {
     if (next === this._entityId) return;
     this._entityId = next;
     this._sheet = null;
+    this._dockSheetOpen = false;
+    this._dockSheetSlot = null;
+    this._dockSheetOpener = null;
+    this._justPinned = null;
     this._numpadOpen = false;
     if (next) {
       this._store.setConfig(sidebarConfig(next));
@@ -4080,7 +4331,7 @@ var SofabatonSidebarRemote = class extends i4 {
         if (!Number.isFinite(id)) return null;
         return { id, key: KEY_BY_ID[id] ?? String(id) };
       },
-      hasLongPress: (id) => this._store.longPressAvailableForButton(id, this._scopeFor(id)),
+      hasLongPress: (id) => dockSlotForKey(id) == null && this._store.longPressAvailableForButton(id, this._scopeFor(id)),
       isEnabled: (id) => this._keyEnabled(id),
       onTap: (id, el, at) => this._send(id, el, at),
       onRepeat: (id, _index, el, at) => this._send(id, el, at),
@@ -4133,6 +4384,8 @@ var SofabatonSidebarRemote = class extends i4 {
   }
   _keyEnabled(id) {
     if (this._busy().inert) return false;
+    const dock = dockSlotForKey(id);
+    if (dock) return this._dockShortcut(dock) != null;
     return this._store.isEnabled(id);
   }
   _control(request, el) {
@@ -4142,6 +4395,8 @@ var SofabatonSidebarRemote = class extends i4 {
     });
   }
   _send(id, el, at) {
+    const dock = dockSlotForKey(id);
+    if (dock) return this._fireDockShortcut(dock, el, at);
     this._store.triggerCommandPulse();
     this._ring(el, false, at);
     this._control(this._store.sendCommand(id, this._scopeFor(id)), el);
@@ -4236,9 +4491,10 @@ var SofabatonSidebarRemote = class extends i4 {
     if (pane === "favorites" || pane === "macros") this._lastDrawer = pane;
     const opening = pane != null && this._sheet == null;
     this._sheet = pane;
+    this._dockSheetOpen = false;
     this.requestUpdate();
     if (opening) {
-      void this.updateComplete.then(() => this.renderRoot.querySelector(".sheet .close")?.focus({ preventScroll: true }));
+      void this.updateComplete.then(() => this.renderRoot.querySelector(".sheet:not(.dsheet) .close")?.focus({ preventScroll: true }));
     }
   }
   _togglePull() {
@@ -4272,6 +4528,7 @@ var SofabatonSidebarRemote = class extends i4 {
     this._store.toggleMode();
     this._rememberView();
     this._sheet = null;
+    this._dockSheetOpen = false;
     this._numpadOpen = false;
     this.requestUpdate();
   }
@@ -4279,6 +4536,217 @@ var SofabatonSidebarRemote = class extends i4 {
     const el = this.renderRoot.querySelector(".power");
     const store = this._store;
     this._control(store.mode() === "device" ? store.toggleDevicePower() : store.setActivity(str().card.poweredOff), el);
+  }
+  // ---------- dock shortcuts (sidebar-dock.ts) ----------
+  _dockScopeNow() {
+    const store = this._store;
+    return dockScope(store.mode(), store.currentActivityId(), store.currentDeviceId());
+  }
+  _dockSlots(scope) {
+    if (this._dockEntity !== this._entityId) {
+      this._dockEntity = this._entityId;
+      this._dockTable = readDockTable(this._entityId);
+    }
+    return this._dockTable[scope] ?? {};
+  }
+  _saveDock(scope, slots) {
+    this._dockSlots(scope);
+    this._dockTable = withDockSlots(this._dockTable, scope, slots);
+    writeDockTable(this._entityId, this._dockTable);
+    this.requestUpdate();
+  }
+  /** Everything pinnable in the current scope, or null while a device's command list is still unknown. */
+  _dockItems(derived) {
+    const store = this._store;
+    if (derived.mode === "device") {
+      const deviceId = Number(derived.deviceId);
+      if (derived.deviceId == null || !Number.isFinite(deviceId)) return [];
+      if (derived.keymapEntry?.status !== "ready") return null;
+      return derived.keymapEntry.commands.map((command) => ({
+        ref: { kind: "commands", commandId: Number(command.command_id), deviceId },
+        label: command.name,
+        owner: null,
+        ownIcon: null,
+        send: () => store.sendCommand(command.command_id, store.currentDeviceId())
+      }));
+    }
+    const fallbackDevice = store.currentActivityId();
+    const items = (kind, list) => (Array.isArray(list) ? list : []).map((raw) => {
+      const model = drawerButtonModel(raw, kind, fallbackDevice);
+      return {
+        ref: { kind, commandId: model.commandId, deviceId: model.deviceId },
+        label: model.label,
+        owner: kind === "favorites" ? store.deviceNameForId(model.deviceId) : null,
+        ownIcon: model.icon,
+        send: () => store.sendDrawerItem(kind, model.commandId, model.deviceId, raw)
+      };
+    });
+    return [...items("favorites", derived.favorites), ...items("macros", derived.macros)];
+  }
+  /** The scope's slots without pins whose item is gone from the hub; as stored while the lists are unknown. */
+  _liveDockSlots(scope, items) {
+    let slots = this._dockSlots(scope);
+    if (!items) return slots;
+    for (const slot of DOCK_SLOTS) {
+      const pin = slots[slot];
+      if (pin && !items.some((it) => sameDockRef(it.ref, pin))) slots = unpinDockSlot(slots, slot);
+    }
+    return slots;
+  }
+  /** A pinned side with its live item, or null. */
+  _dockShortcut(slot, derived = this._store.deriveRuntimeState()) {
+    const scope = this._dockScopeNow();
+    if (!scope) return null;
+    const pin = this._dockSlots(scope)[slot];
+    const item = pin ? (this._dockItems(derived) ?? []).find((it) => sameDockRef(it.ref, pin)) : void 0;
+    return pin && item ? { pin, item, icon: dockIconFor(pin, item.label, item.ownIcon) } : null;
+  }
+  /** A list's pin: an unpinned item pins into a free side (a full dock pins
+   *  nothing more); a pinned one opens its options, Unpin among them. */
+  _pinTapped(ref, el) {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    const slots = this._liveDockSlots(scope, this._dockItems(this._store.deriveRuntimeState()));
+    const pinned = dockSlotOf(slots, ref);
+    if (pinned) return this._openDockSheet(pinned, el);
+    const free = pinToFreeSlot(slots, ref);
+    if (!free) return;
+    this._haptic();
+    this._justPinned = free.slot;
+    this._saveDock(scope, free.slots);
+  }
+  /** A tap on a dock shortcut sends its item, like the sheet does. */
+  _fireDockShortcut(slot, el, at) {
+    const shortcut = this._dockShortcut(slot);
+    if (!shortcut) return;
+    this._store.triggerCommandPulse();
+    this._ring(el, false, at);
+    this._control(shortcut.item.send(), el);
+  }
+  /** A pinned item's pin opens the shortcut's options in a drawer stacked on the sheet. */
+  _openDockSheet(slot, opener) {
+    if (!this._dockShortcut(slot) || this._busy().inert) return;
+    this._dockSheetSlot = slot;
+    this._dockSheetOpener = opener;
+    this._dockSheetOpen = true;
+    this.requestUpdate();
+    void this.updateComplete.then(() => this.renderRoot.querySelector(".dsheet .close")?.focus({ preventScroll: true }));
+  }
+  /** Back to the sheet underneath, focus on the pin that opened the drawer. */
+  _closeDockSheet() {
+    if (!this._dockSheetOpen) return;
+    this._dockSheetOpen = false;
+    this.requestUpdate();
+    const opener = this._dockSheetOpener;
+    this._dockSheetOpener = null;
+    void this.updateComplete.then(() => {
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    });
+  }
+  _moveSlot(from, to) {
+    const scope = this._dockScopeNow();
+    if (!scope || from === to) return;
+    this._dockSheetSlot = to;
+    if (this._justPinned) this._justPinned = this._justPinned === from ? to : from;
+    this._saveDock(scope, moveDockSlot(this._dockSlots(scope), from, to));
+  }
+  _unpin(slot) {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    if (this._justPinned === slot) this._justPinned = null;
+    this._haptic();
+    this._saveDock(scope, unpinDockSlot(this._dockSlots(scope), slot));
+    this._closeDockSheet();
+  }
+  _setDockIcon(slot, icon) {
+    const scope = this._dockScopeNow();
+    if (!scope) return;
+    this._saveDock(scope, setDockIcon(this._dockSlots(scope), slot, icon));
+  }
+  /** A shortcut's face: its icon, or the label's initials. */
+  _dockGlyph(icon, label) {
+    return icon === DOCK_MONOGRAM ? b2`<span class="mono">${dockMonogram(label)}</span>` : b2`<ha-icon .icon=${icon}></ha-icon>`;
+  }
+  /** The pin at the end of a sheet item: pins it, or, once pinned, opens the
+   *  shortcut's options. Dimmed while the dock is full. */
+  _pinButton(ref, label, slots) {
+    if (!Number.isFinite(ref.commandId) || !Number.isFinite(ref.deviceId)) return A;
+    const s4 = str();
+    const pinned = dockSlotOf(slots, ref) != null;
+    const blocked = !pinned && dockIsFull(slots);
+    return b2`<button class=${e5({ pin: true, on: pinned, blocked })} type="button" data-press
+      aria-label=${pinned ? s4.sidebar.pinnedToDock(label) : s4.sidebar.pinToDock(label)} aria-haspopup=${pinned ? "dialog" : A}
+      aria-disabled=${blocked ? "true" : A} title=${blocked ? s4.sidebar.dockFull : A}
+      @click=${(ev) => this._pinTapped(ref, ev.currentTarget)}><ha-icon .icon=${pinned ? "mdi:pin" : "mdi:pin-outline"}></ha-icon></button>`;
+  }
+  _renderDock(derived, deviceMode, inert) {
+    const s4 = str();
+    const popSlot = this._sheet == null && !this._dockSheetOpen ? this._justPinned : null;
+    return b2`
+      <div class="dock">
+        <button class="pull" type="button" aria-label=${deviceMode ? s4.sidebar.pullHandleCommands : s4.sidebar.pullHandle} @click=${this._togglePull}>
+          <span class="grip"></span>
+          <span class="knob"><ha-icon .icon=${"mdi:chevron-up"}></ha-icon></span>
+        </button>
+        ${DOCK_SLOTS.map((slot) => {
+      const shortcut = this._dockShortcut(slot, derived);
+      if (!shortcut) return A;
+      const { item, icon } = shortcut;
+      return b2`<button class=${e5({ sc: true, [slot]: true, new: popSlot === slot })} type="button" data-key=${DOCK_KEY_IDS[slot]}
+            aria-label=${item.label} title=${item.label} aria-disabled=${inert ? "true" : A}
+            @animationend=${() => {
+        this._justPinned = null;
+        this.requestUpdate();
+      }}>${this._dockGlyph(icon, item.label)}</button>`;
+    })}
+      </div>
+    `;
+  }
+  /** The dock shortcut's options: a second drawer, stacked on the sheet whose
+   *  pin opened it. It always shows that pin's shortcut: Swap sides is an action
+   *  that moves it (trading places with the other one), never a picker between the two. */
+  _renderDockSheet(derived) {
+    const s4 = str();
+    const open = this._dockSheetOpen;
+    const slot = this._dockSheetSlot;
+    const shortcut = slot ? this._dockShortcut(slot, derived) : null;
+    const label = shortcut?.item.label ?? "";
+    const automatic = shortcut ? dockIconFor({ ...shortcut.pin, icon: null }, label, shortcut.item.ownIcon) : DOCK_MONOGRAM;
+    return b2`
+      <div class="sheet dsheet" role="dialog" aria-modal="true" aria-hidden=${open ? "false" : "true"} ?inert=${!open} aria-label=${label}>
+        <div class="grip"></div>
+        ${shortcut && slot ? b2`
+            <div class="phead">
+              <span class="prev">${this._dockGlyph(shortcut.icon, label)}</span>
+              <div class="titles">
+                <span class="eyebrow">${s4.sidebar.dockShortcut}</span>
+                <span class="name">${label}</span>
+                ${shortcut.item.owner ? b2`<span class="owner">${shortcut.item.owner}</span>` : A}
+              </div>
+              <button class="close" type="button" aria-label=${s4.sidebar.close} @click=${() => this._closeDockSheet()}><ha-icon .icon=${"mdi:close"}></ha-icon></button>
+            </div>
+            <div class="dbody">
+              <ha-form
+                .hass=${this._hass}
+                .schema=${[{ name: "icon", selector: { icon: automatic === DOCK_MONOGRAM ? {} : { placeholder: automatic } } }]}
+                .data=${{ icon: shortcut.pin.icon ?? "" }}
+                .computeLabel=${() => s4.sidebar.dockIcon}
+                @value-changed=${(ev) => {
+      ev.stopPropagation();
+      const icon = String(ev.detail?.value?.icon ?? "").trim();
+      this._setDockIcon(slot, icon || null);
+    }}
+              ></ha-form>
+              <div class="pfoot">
+                <button class="swap" type="button" data-press aria-description=${slot === "left" ? s4.sidebar.dockOnLeft : s4.sidebar.dockOnRight}
+                  @click=${() => this._moveSlot(slot, slot === "left" ? "right" : "left")}>
+                  <span class=${e5({ dot: true, on: slot === "left" })}></span>${s4.sidebar.dockSwap}<span class=${e5({ dot: true, on: slot === "right" })}></span>
+                </button>
+                <button class="unpin" type="button" data-press @click=${() => this._unpin(slot)}><ha-icon .icon=${"mdi:pin-off-outline"}></ha-icon>${s4.sidebar.unpin}</button>
+              </div>
+            </div>` : A}
+      </div>
+    `;
   }
   // ---------- render ----------
   render() {
@@ -4321,7 +4789,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const allOff = (...ids) => ids.every(off);
     const playPause = isX2 ? b2`<div class=${e5({ pill: true, off: allOff(ID.PLAY, ID.PAUSE) })}>${key(ID.PLAY, { seg: true }, icon("mdi:play-outline"))}${key(ID.PAUSE, { seg: true }, icon("mdi:pause"))}</div>` : b2`<div class=${e5({ pill: true, single: true, off: allOff(ID.PAUSE) })}>${key(ID.PAUSE, { seg: true }, icon("mdi:play-pause"))}</div>`;
     return b2`
-      <div class=${e5({ app: true, landscape: this._landscape, inert: busy.inert, busy: busy.busy, pick: busy.reason === "no-device" || busy.reason === "off", "powered-off": busy.reason === "off", open: this._sheet != null })} data-mode=${derived.mode}>
+      <div class=${e5({ app: true, landscape: this._landscape, inert: busy.inert, busy: busy.busy, pick: busy.reason === "no-device" || busy.reason === "off", "powered-off": busy.reason === "off", open: this._sheet != null, "dock-open": this._dockSheetOpen })} data-mode=${derived.mode}>
         <main class="remote" aria-busy=${busy.busy ? "true" : "false"}>
           <div class="activity">
             ${modeAvailable ? b2`<button class="round mode" type="button" title=${s4.sidebar.modeToggle} aria-label=${s4.sidebar.modeToggle} @click=${this._toggleMode}>
@@ -4400,13 +4868,12 @@ var SofabatonSidebarRemote = class extends i4 {
           <div class="sp"></div>
         </main>
 
-        <button class="pull" type="button" aria-label=${deviceMode ? s4.sidebar.pullHandleCommands : s4.sidebar.pullHandle} @click=${this._togglePull}>
-          <span class="grip"></span>
-          <span class="knob">${icon("mdi:chevron-up")}</span>
-        </button>
+        ${this._renderDock(derived, deviceMode, busy.inert)}
 
         <div class="scrim" @click=${() => this._openSheet(null)}></div>
         ${this._renderSheet(derived, deviceMode)}
+        <div class="scrim dscrim" @click=${() => this._closeDockSheet()}></div>
+        ${this._renderDockSheet(derived)}
       </div>
     `;
   }
@@ -4421,7 +4888,7 @@ var SofabatonSidebarRemote = class extends i4 {
     const title = pane === "devices" ? s4.sidebar.devices : pane === "commands" ? s4.card.commandsTab : pane === "favorites" ? s4.card.favoritesTab : pane === "macros" ? s4.card.macrosTab : s4.sidebar.activities;
     const eyebrow = pane === "commands" ? this._store.deviceNameForId(derived.deviceId) ?? "" : "";
     return b2`
-      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} aria-label=${title}>
+      <div class="sheet" role="dialog" aria-modal="true" aria-hidden=${pane ? "false" : "true"} ?inert=${this._dockSheetOpen} aria-label=${title}>
         <div class="grip"></div>
         ${headed ? b2`<div class="phead"><div class="titles">${eyebrow ? b2`<span class="eyebrow">${eyebrow}</span>` : A}<span>${title}</span></div>${close}</div>` : b2`<div class="segs"><div class="ctl" role="tablist">
               ${tabs.map((tab) => b2`<button class=${e5({ s: true, active: pane === tab.pane })} role="tab" aria-selected=${pane === tab.pane ? "true" : "false"} type="button" @click=${() => this._openSheet(tab.pane)}>${icon(tab.icon)}${tab.label}</button>`)}
@@ -4438,16 +4905,21 @@ var SofabatonSidebarRemote = class extends i4 {
     const devices = store.devices();
     const classOf = (deviceId) => deviceClassIcon(devices.find((d3) => d3.id === deviceId)?.device_class);
     const fallbackDevice = store.currentActivityId();
+    const scope = this._dockScopeNow();
+    const slots = scope ? this._liveDockSlots(scope, this._dockItems(derived)) : {};
+    const pin = (ref, label) => scope ? this._pinButton(ref, label, slots) : A;
     if (pane === "favorites") {
       const favorites = derived.favorites.map((raw) => ({ raw, model: drawerButtonModel(raw, "favorites", fallbackDevice) }));
       const custom = derived.customFavorites.map((raw) => ({ raw, model: customFavoriteButtonModel(raw, fallbackDevice) }));
       if (!favorites.length && !custom.length) return b2`<div class="empty">${s4.card.noFavorites}</div>`;
       return b2`<div class="grid">
-        ${favorites.map(({ raw, model }) => b2`
+        ${favorites.map(({ raw, model }) => b2`<div class="item">
           <button class="tile" type="button" data-press @click=${(ev) => this._drawerItem("favorites", model, raw, ev.currentTarget, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
             <span class="t"><b>${model.label}</b><small>${store.deviceNameForId(model.deviceId) ?? ""}</small></span>
-          </button>`)}
+          </button>
+          ${pin({ kind: "favorites", commandId: model.commandId, deviceId: model.deviceId }, model.label)}
+        </div>`)}
         ${custom.map(({ model }) => b2`
           <button class="tile" type="button" data-press @click=${(ev) => this._customFavorite(model, ev.currentTarget, clickPoint(ev))}>
             <span class="ic">${icon(model.icon ?? classOf(model.deviceId))}</span>
@@ -4459,25 +4931,28 @@ var SofabatonSidebarRemote = class extends i4 {
       const macros = derived.macros.map((raw) => ({ raw, model: drawerButtonModel(raw, "macros", fallbackDevice) }));
       if (!macros.length) return b2`<div class="empty">${s4.card.noMacros}</div>`;
       return b2`<div class="list">
-        ${macros.map(({ raw, model }) => b2`
+        ${macros.map(({ raw, model }) => b2`<div class="item">
           <button class="lrow" type="button" data-press @click=${(ev) => this._drawerItem("macros", model, raw, ev.currentTarget, clickPoint(ev))}>
             <ha-icon class="li" .icon=${model.icon ?? "mdi:playlist-play"}></ha-icon>
             <span class="t"><b>${model.label}</b></span>
-            <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
-          </button>`)}
+          </button>
+          ${pin({ kind: "macros", commandId: model.commandId, deviceId: model.deviceId }, model.label)}
+        </div>`)}
       </div>`;
     }
     if (pane === "commands") {
       const commands = derived.commands;
       const deviceIcon = classOf(derived.deviceId ?? -1);
       if (!commands.length) return b2`<div class="empty">${derived.keymapLoading ? s4.sidebar.working : s4.card.noCommands}</div>`;
+      const deviceId = Number(derived.deviceId);
       return b2`<div class="list">
-        ${commands.map((command) => b2`
+        ${commands.map((command) => b2`<div class="item">
           <button class="lrow" type="button" data-press @click=${(ev) => this._command(command.command_id, ev.currentTarget, clickPoint(ev))}>
             <ha-icon class="li" .icon=${deviceIcon}></ha-icon>
             <span class="t"><b>${command.name}</b></span>
-            <ha-icon class="chev" .icon=${"mdi:chevron-right"}></ha-icon>
-          </button>`)}
+          </button>
+          ${pin({ kind: "commands", commandId: Number(command.command_id), deviceId }, command.name)}
+        </div>`)}
       </div>`;
     }
     if (pane === "devices") {
@@ -4985,9 +5460,10 @@ SofabatonXPanel.styles = i`
     /* the subview's back arrow sits where the menu button sits (ha-icon-button metrics) */
     .back { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 auto; }
     .back ha-icon { --mdc-icon-size: 24px; }
+    :host([dir="rtl"]) .back ha-icon { transform: scaleX(-1); }
     .back:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
     .hub {
-      display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 8px 0 12px; border-radius: 17px; flex: 0 0 auto;
+      display: flex; align-items: center; gap: 6px; height: 34px; padding-block: 0; padding-inline: 12px 8px; border-radius: 17px; flex: 0 0 auto;
       font-size: 13px; letter-spacing: 0.04em; text-transform: uppercase; max-width: 45vw;
       background: color-mix(in srgb, currentColor 12%, transparent);
     }
@@ -5000,13 +5476,13 @@ SofabatonXPanel.styles = i`
     .dot.busy { background: var(--primary-color); animation: pulse 1.2s ease-in-out infinite; }
     @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary-color) 35%, transparent); } 50% { box-shadow: 0 0 0 5px transparent; } }
     .menu {
-      position: absolute; right: 8px; top: calc(100% - 4px); z-index: 8; min-width: 232px; padding: 6px 0; border-radius: 12px;
+      position: absolute; inset-inline-end: 8px; top: calc(100% - 4px); z-index: 8; min-width: 232px; padding: 6px 0; border-radius: 12px;
       background: var(--card-background-color, var(--primary-background-color)); color: var(--primary-text-color);
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.12); font-size: 14px;
     }
     .mi { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 14px; height: 48px; padding: 0 16px; width: 100%; text-align: start; }
     .mi ha-icon { --mdc-icon-size: 22px; opacity: 0.7; }
-    .mi small { font-size: 11px; letter-spacing: 0.06em; color: var(--secondary-text-color); margin-left: 6px; }
+    .mi small { font-size: 11px; letter-spacing: 0.06em; color: var(--secondary-text-color); margin-inline-start: 6px; unicode-bidi: isolate; }
     .mi.current { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
     .mi.current ha-icon { opacity: 1; }
     .mi:hover { background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
@@ -5064,13 +5540,13 @@ var REMOTE_CARD_STRINGS_AR = {
   sidebar: {
     title: "\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0627\u0641\u062A\u0631\u0627\u0636\u064A",
     controlPanel: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
-    hubMenu: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0645\u062D\u0648\u0631",
+    hubMenu: `\u0627\u062E\u062A\u064A\u0627\u0631 ${isolate("Hub")}`,
     back: "\u0631\u062C\u0648\u0639",
     hubReachable: "\u0645\u062A\u0635\u0644",
     hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
-    noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
-    hubUnavailable: "\u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D",
-    remoteUnavailable: "\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 \u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.",
+    noHubs: `\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A ${isolate("Hub")} \u0645\u0646 ${SOFABATON} \u0628\u0639\u062F.`,
+    hubUnavailable: `${isolate("Hub")} \u063A\u064A\u0631 \u0645\u062A\u0627\u062D`,
+    remoteUnavailable: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 ${isolate("Hub")} \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.`,
     controlPanelLoadFailed: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645. \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0635\u0641\u062D\u0629 \u0644\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u064B\u0627.",
     activities: "\u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     devices: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
@@ -5078,19 +5554,28 @@ var REMOTE_CARD_STRINGS_AR = {
     off: "\u0645\u0637\u0641\u0623",
     modeToggle: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0628\u064A\u0646 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     numberPad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
-    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     close: "\u0625\u063A\u0644\u0627\u0642",
+    pinToDock: (name) => `\u062A\u062B\u0628\u064A\u062A ${isolate(name)} \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    pinnedToDock: (name) => `${isolate(name)}\u060C \u0645\u062B\u0628\u0651\u062A \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    dockShortcut: "\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A",
+    dockSwap: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062C\u0627\u0646\u0628",
+    dockOnLeft: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0633\u0627\u0631",
+    dockOnRight: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0645\u064A\u0646",
+    unpin: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A",
+    dockFull: "\u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A \u0645\u0645\u062A\u0644\u0626",
+    dockIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
     starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
     poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
     appConnected: "\u062A\u0637\u0628\u064A\u0642 \u2068Sofabaton\u2069 \u0645\u062A\u0635\u0644",
     operations: {
       backup_restore: "\u062C\u0627\u0631\u064D \u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
-      cache_refresh: "\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 \u0627\u0644\u0645\u062D\u0648\u0631 \u0627\u0644\u0645\u0624\u0642\u062A\u0629",
-      entity_sync: "\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 \u0627\u0644\u0645\u062D\u0648\u0631",
+      cache_refresh: `\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 ${isolate("Hub")} \u0627\u0644\u0645\u0624\u0642\u062A\u0629`,
+      entity_sync: `\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 ${isolate("Hub")}`,
       backup_export: "\u062C\u0627\u0631\u064D \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
-      wifi_deploy: "\u062C\u0627\u0631\u064D \u0646\u0634\u0631 \u2068Wifi Commands\u2069"
+      wifi_deploy: `\u062C\u0627\u0631\u064D \u0645\u0632\u0627\u0645\u0646\u0629 ${isolate("Wifi Commands")}`
     }
   },
   assist: {
@@ -5271,6 +5756,9 @@ registerRemoteCardTranslation("en-gb", {
     favoritesTab: "Favourites",
     noFavorites: "No favourites available"
   },
+  sidebar: {
+    pullHandle: "Open favourites and macros"
+  },
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
@@ -5334,10 +5822,19 @@ var REMOTE_CARD_STRINGS_DE = {
     allOff: "Alles aus",
     off: "Aus",
     modeToggle: "Zwischen Aktivit\xE4ten und Ger\xE4ten wechseln",
-    numberPad: "Zifferntasten",
+    numberPad: "Ziffernblock",
     pullHandle: "Favoriten und Makros \xF6ffnen",
     pullHandleCommands: "Befehle \xF6ffnen",
     close: "Schlie\xDFen",
+    pinToDock: (name) => `${name} an das Dock anheften`,
+    pinnedToDock: (name) => `${name}, an das Dock angeheftet`,
+    dockShortcut: "Dock-Verkn\xFCpfung",
+    dockSwap: "Seite wechseln",
+    dockOnLeft: "Auf der linken Seite",
+    dockOnRight: "Auf der rechten Seite",
+    unpin: "L\xF6sen",
+    dockFull: "Das Dock ist voll",
+    dockIcon: "Symbol",
     starting: "Wird gestartet",
     poweringOff: "Wird ausgeschaltet",
     working: "Wird ausgef\xFChrt",
@@ -5347,7 +5844,7 @@ var REMOTE_CARD_STRINGS_DE = {
       cache_refresh: "Hub-Cache wird aktualisiert",
       entity_sync: "Wird mit dem Hub synchronisiert",
       backup_export: "Backup wird erstellt",
-      wifi_deploy: "Wifi Commands werden \xFCbertragen"
+      wifi_deploy: "Wifi Commands werden synchronisiert"
     }
   },
   assist: {
@@ -5575,16 +6072,25 @@ var REMOTE_CARD_STRINGS_ES = {
     pullHandle: "Abrir favoritos y macros",
     pullHandleCommands: "Abrir comandos",
     close: "Cerrar",
+    pinToDock: (name) => `Fijar ${name} en el dock`,
+    pinnedToDock: (name) => `${name}, fijado en el dock`,
+    dockShortcut: "Acceso directo del dock",
+    dockSwap: "Cambiar de lado",
+    dockOnLeft: "A la izquierda",
+    dockOnRight: "A la derecha",
+    unpin: "Dejar de fijar",
+    dockFull: "El dock est\xE1 lleno",
+    dockIcon: "Icono",
     starting: "Iniciando",
     poweringOff: "Apagando",
-    working: "Trabajando",
-    appConnected: "La app de Sofabaton est\xE1 conectada",
+    working: "Procesando",
+    appConnected: "La aplicaci\xF3n Sofabaton est\xE1 conectada",
     operations: {
-      backup_restore: "Restaurando la copia de seguridad",
+      backup_restore: "Restaurando copia de seguridad",
       cache_refresh: "Actualizando la cach\xE9 del hub",
       entity_sync: "Sincronizando con el hub",
-      backup_export: "Creando la copia de seguridad",
-      wifi_deploy: "Desplegando Wifi Commands"
+      backup_export: "Creando copia de seguridad",
+      wifi_deploy: "Sincronizando Wifi Commands"
     }
   },
   assist: {
@@ -5799,7 +6305,7 @@ var REMOTE_CARD_STRINGS_FR = {
     back: "Retour",
     hubReachable: "Joignable",
     hubUnreachable: "Injoignable",
-    noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
+    noHubs: "Aucun hub Sofabaton n\u2019est encore configur\xE9.",
     hubUnavailable: "Hub indisponible",
     remoteUnavailable: "La t\xE9l\xE9commande de ce hub est indisponible.",
     controlPanelLoadFailed: "Impossible de charger le panneau de contr\xF4le. Rechargez la page pour r\xE9essayer.",
@@ -5812,16 +6318,25 @@ var REMOTE_CARD_STRINGS_FR = {
     pullHandle: "Ouvrir les favoris et les macros",
     pullHandleCommands: "Ouvrir les commandes",
     close: "Fermer",
+    pinToDock: (name) => `\xC9pingler ${name} au dock`,
+    pinnedToDock: (name) => `${name}, \xE9pingl\xE9 au dock`,
+    dockShortcut: "Raccourci du dock",
+    dockSwap: "Changer de c\xF4t\xE9",
+    dockOnLeft: "\xC0 gauche",
+    dockOnRight: "\xC0 droite",
+    unpin: "D\xE9s\xE9pingler",
+    dockFull: "Le dock est plein",
+    dockIcon: "Ic\xF4ne",
     starting: "D\xE9marrage",
     poweringOff: "Extinction",
-    working: "En cours",
-    appConnected: "L'application Sofabaton est connect\xE9e",
+    working: "Traitement en cours",
+    appConnected: "L\u2019application Sofabaton est connect\xE9e",
     operations: {
       backup_restore: "Restauration de la sauvegarde",
       cache_refresh: "Actualisation du cache du hub",
       entity_sync: "Synchronisation avec le hub",
       backup_export: "Cr\xE9ation de la sauvegarde",
-      wifi_deploy: "D\xE9ploiement des Wifi Commands"
+      wifi_deploy: "Synchronisation de Wifi Commands"
     }
   },
   assist: {
@@ -6048,16 +6563,25 @@ var REMOTE_CARD_STRINGS_NL = {
     pullHandle: "Favorieten en macro's openen",
     pullHandleCommands: "Commando's openen",
     close: "Sluiten",
+    pinToDock: (name) => `${name} vastzetten in het dock`,
+    pinnedToDock: (name) => `${name}, vastgezet in het dock`,
+    dockShortcut: "Dock-snelkoppeling",
+    dockSwap: "Van kant wisselen",
+    dockOnLeft: "Aan de linkerkant",
+    dockOnRight: "Aan de rechterkant",
+    unpin: "Losmaken",
+    dockFull: "Het dock is vol",
+    dockIcon: "Pictogram",
     starting: "Wordt gestart",
     poweringOff: "Wordt uitgeschakeld",
     working: "Bezig",
     appConnected: "De Sofabaton-app is verbonden",
     operations: {
-      backup_restore: "Back-up wordt teruggezet",
-      cache_refresh: "Hub-cache wordt vernieuwd",
-      entity_sync: "Wordt gesynchroniseerd met de hub",
+      backup_restore: "Back-up wordt hersteld",
+      cache_refresh: "Hubcache wordt vernieuwd",
+      entity_sync: "Synchronisatie met hub wordt uitgevoerd",
       backup_export: "Back-up wordt gemaakt",
-      wifi_deploy: "Wifi Commands worden uitgerold"
+      wifi_deploy: "Wifi Commands worden gesynchroniseerd"
     }
   },
   assist: {
@@ -6284,16 +6808,25 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
     pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
     close: "\u5173\u95ED",
+    pinToDock: (name) => `\u5C06 ${name} \u56FA\u5B9A\u5230\u5E95\u680F`,
+    pinnedToDock: (name) => `${name}\uFF0C\u5DF2\u56FA\u5B9A\u5230\u5E95\u680F`,
+    dockShortcut: "\u5E95\u680F\u5FEB\u6377\u6309\u952E",
+    dockSwap: "\u5DE6\u53F3\u4E92\u6362",
+    dockOnLeft: "\u5728\u5DE6\u4FA7",
+    dockOnRight: "\u5728\u53F3\u4FA7",
+    unpin: "\u53D6\u6D88\u56FA\u5B9A",
+    dockFull: "\u5E95\u680F\u5DF2\u6EE1",
+    dockIcon: "\u56FE\u6807",
     starting: "\u6B63\u5728\u542F\u52A8",
     poweringOff: "\u6B63\u5728\u5173\u95ED",
-    working: "\u5904\u7406\u4E2D",
+    working: "\u6B63\u5728\u5904\u7406",
     appConnected: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
     operations: {
       backup_restore: "\u6B63\u5728\u6062\u590D\u5907\u4EFD",
       cache_refresh: "\u6B63\u5728\u5237\u65B0 Hub \u7F13\u5B58",
-      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230 Hub",
+      entity_sync: "\u6B63\u5728\u4E0E Hub \u540C\u6B65",
       backup_export: "\u6B63\u5728\u521B\u5EFA\u5907\u4EFD",
-      wifi_deploy: "\u6B63\u5728\u90E8\u7F72 Wifi Commands"
+      wifi_deploy: "\u6B63\u5728\u540C\u6B65 Wifi Commands"
     }
   },
   assist: {

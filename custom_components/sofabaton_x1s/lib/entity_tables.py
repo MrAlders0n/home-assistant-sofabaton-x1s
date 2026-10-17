@@ -6,7 +6,10 @@ clear paths derive from it instead of listing tables by hand:
 
 * :meth:`CacheBackupMixin.clear_cached_entity_detail` forgets one id in
   every table of its kind (the prune of ids a catalog read no longer
-  returns, which must leave nothing behind for a reused id);
+  returns, which must leave nothing behind for a reused id; every
+  committed catalog runs it);
+* :func:`forget_entity_detail` forgets one id everywhere but its catalog
+  row (a create that was just handed a reused id);
 * :meth:`CacheBackupMixin.wipe_all_cached_state` clears every table (an
   erase);
 * :meth:`CatalogMixin.clear_entity_cache` forgets one id in the groups a
@@ -162,6 +165,18 @@ def forget_entity(
         table.forget(proxy, ent_lo)
 
 
+def forget_entity_detail(proxy: Any, ent_id: int, *, kind: str) -> None:
+    """Forget what the cache holds about one id beyond its catalog row.
+
+    For an id the hub has just handed out: the hub reuses freed ids, and
+    nothing the old entity left may describe the new one (journey bench
+    W-8, 2026-10-16: a new activity showed the quick-access order of the
+    one that had its id before)."""
+
+    groups = {table.group for table in ENTITY_TABLES if table.group != "catalog"}
+    forget_entity(proxy, ent_id, kind=kind, groups=groups)
+
+
 def clear_entity_tables(proxy: Any) -> None:
     """Empty every registered table."""
 
@@ -186,4 +201,5 @@ __all__ = [
     "cached_detail_ids",
     "clear_entity_tables",
     "forget_entity",
+    "forget_entity_detail",
 ]

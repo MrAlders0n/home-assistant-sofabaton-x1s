@@ -1,6 +1,6 @@
 # Integrating an automation platform with sofabaton-x-server
 
-> Written for sofabaton-x-server 0.2.5 (`api 1`).
+> Written for sofabaton-x-server 0.2.6 (`api 1`).
 > Read the [upgrade notes](../CHANGELOG.md#022-2026-09-25), particularly
 > the catalog ordering and firmware status changes, and regenerate
 > clients from this release's OpenAPI document.
@@ -268,6 +268,13 @@ Messages are JSON with a `type`:
   `seq`, `hub_id`, `device_key`, `device_id`, `command_id`,
   `slot`, `label`, `press_type` (`short` / `long`), `resolution`,
   `transport`, `source`, `received_at`.
+- `hub_update` (only with `?hub_updates=true`): `hub_id`, `seq` and the
+  hub's whole view as `GET /hubs/{id}` returns it, right after `hello`
+  and then whenever the hub, its jobs or its cache changed (coalesced, at
+  most 0.5 s late). Its `cache.snapshot_id` moving past the snapshot you
+  hold means re-read it, even when no `snapshot_changed` came (another
+  client's first look at a device, a vendor-app session). Drop one whose
+  `seq` is lower than the last seen for its hub.
 - `dropped`: `count` older messages were discarded because your client
   fell behind; re-read hub records, status, relevant snapshots and jobs.
 

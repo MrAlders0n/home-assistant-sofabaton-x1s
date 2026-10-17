@@ -34,12 +34,26 @@ from .hub_identity import real_hub_mac
 class WifiIngressMixin:
     """Wifi Commands ingress for SofabatonHub (R6, CR-H1-13)."""
 
-    def get_roku_action_id(self) -> str:
-        raw_mac = str(self.mac or "").strip()
-        normalized_mac = "".join(ch for ch in raw_mac if ch.lower() in "0123456789abcdef").lower()
-        if normalized_mac:
-            return normalized_mac
-        return str(self.entry_id).strip()
+    def get_roku_action_ids(self) -> tuple[str, ...]:
+        """The ``launch/<action id>/...`` ids this hub's records may carry.
+
+        The library writes the hub's self-reported banner MAC, the same
+        MAC the MQTT topics use. Records written before the library
+        preferred the banner (0.6.9), or before the banner was read,
+        carry the entry MAC. For a discovered hub the two are one value;
+        a manually-added hub's entry MAC is the synthetic
+        ``generate_static_mac`` identity, and the hub can hold records of
+        both ages, so both stay accepted (issue #308).
+        """
+
+        action_ids: list[str] = []
+        for raw_mac in (self._wifi_mqtt_mac(), self.mac):
+            normalized_mac = "".join(
+                ch for ch in str(raw_mac or "") if ch.lower() in "0123456789abcdef"
+            ).lower()
+            if normalized_mac and normalized_mac not in action_ids:
+                action_ids.append(normalized_mac)
+        return tuple(action_ids) or (str(self.entry_id).strip(),)
 
     async def async_handle_roku_http_post(
         self,
@@ -163,6 +177,15 @@ class WifiIngressMixin:
                 command_label=command_label,
                 press_type=press_type,
             )
+        elif command_index is not None:
+            # An indexed press carries no name, so the by-name lookup below
+            # has nothing to match; it used to raise KeyError (issue #307).
+            self._log.warning(
+                "[WIFI_ACTION] press for hub device %s command %s matches no synced Wifi "
+                "Device; no action runs. Syncing it in Wifi Commands repairs this",
+                device_id,
+                command_index,
+            )
         else:
             await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
@@ -234,7 +257,14 @@ class WifiIngressMixin:
         press_type: str = "short",
     ) -> None:
         store = await async_get_command_config_store(self.hass)
-        payload = await store.async_get_hub_config(self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY)
+        try:
+            payload = await store.async_get_hub_config(
+                self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY
+            )
+        except KeyError:
+            # Named callbacks predate multiple Wifi Devices; a store whose
+            # devices all have their own keys holds no record they target.
+            return
         command_key = normalize_command_name(command_label)
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:

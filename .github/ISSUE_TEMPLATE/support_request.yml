@@ -13,7 +13,8 @@ body:
       options:
         - Home Assistant integration
         - Standalone sofabaton-x package / CLI
-        - Both
+        - sofabaton-x-server (control panel, web remote, API)
+        - More than one
         - Not sure yet
     validations:
       required: true

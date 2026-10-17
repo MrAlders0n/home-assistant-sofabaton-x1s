@@ -957,14 +957,12 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
     expect(calls.filter((c) => c.key === `GET /hubs/${LIVING.hub_id}/snapshot`).length).toBeGreaterThanOrEqual(0);
 
-    // The hub moved on: the next load asks; Keep editing turns it into the dirty banner and is remembered.
+    // The hub moved on: nothing asks (the editor carries a draft over when it
+    // opens); the dock keeps the dirty banner.
     snapshotId = "snap-2";
     await page.reload();
-    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes from an older snapshot: the hub moved on");
-    await page.click("#dock-keep-draft");
     await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
-    await page.reload();
-    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes");
+    await expect(page.locator("#dock-keep-draft")).toHaveCount(0);
 
     // Picking another hub from the draft's screen asks too; Discard asks and then clears storage.
     await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
@@ -1956,7 +1954,7 @@ test.describe("control panel, views", () => {
     expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).toBeNull();
   });
 
-  test("the device editor's lifecycle: a failed read comes back, a stale draft waits for Keep editing, leaving waits for a running sync", async ({ page }) => {
+  test("the device editor's lifecycle: a failed read comes back, a draft from an older snapshot is carried over, leaving waits for a running sync", async ({ page }) => {
     const state = { hubs: [LIVING], seen: [] };
     const { sockets } = await mockServer(page, state);
     const snapshot = {
@@ -1994,19 +1992,19 @@ test.describe("control panel, views", () => {
     press(1);
     await expect(editor.locator("#editor-title")).toHaveText("TV");
 
-    // A draft from an older snapshot is not thrown away by the editor: the dock
-    // asks, and Keep editing brings it into the working copy (CR-F5b-4).
+    // A draft from an older snapshot is not thrown away (CR-F5b-4) and nothing
+    // asks: the editor carries it over to the current snapshot when it opens.
     await editor.locator("#editor-rename").click();
     await editor.locator("#rename-input").fill("Draft TV");
     await editor.locator("#rename-save").click();
     await expect(editor.locator("#editor-title")).toHaveText("Draft TV");
     snapshot.snapshot_id = "snap-2";
+    snapshot.devices[0] = { ...snapshot.devices[0], device: { ...snapshot.devices[0].device, brand: "Sony Bravia" } };
     await page.reload();
-    await expect(page.locator("#dock-status")).toHaveText("Unsaved changes from an older snapshot: the hub moved on");
-    await expect(editor.locator("#editor-title")).toHaveText("TV");
-    expect(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).not.toBeNull();
-    await page.click("#dock-keep-draft");
     await expect(editor.locator("#editor-title")).toHaveText("Draft TV");
+    await expect(page.locator("#dock-keep-draft")).toHaveCount(0);
+    await expect(editor.locator("#editor-changed-elsewhere")).toHaveCount(0);
+    expect(JSON.parse(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45"))).snapshotId).toBe("snap-2");
     await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
 
     // Leaving while the sync runs says why and stays; the dialog does not pop
@@ -2034,6 +2032,65 @@ test.describe("control panel, views", () => {
     await page.goto(`${PAGE}#/e26a44861b45/hub/devices/3`);
     await expect(editor.locator("#editor-title")).toHaveText("Blinds");
     await expect(editor.locator("#editor-callback-note")).toContainText("This Wifi Device is edited in the Wifi Commands tab.");
+  });
+
+  test("an open editor follows the cache: a pushed hub_update locks it at once and carries a change made elsewhere in, with no banner", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    const { sockets } = await mockServer(page, state);
+    const snapshot = {
+      snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural",
+      hub: { name: "Living room", version: "X1S" },
+      devices: [{
+        kind: "device_backup", complete: true, editable: true, fetched_at: "t",
+        device: { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", idle_behavior: 1 },
+        commands: [{ command_id: 1, name: "Power" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+      }],
+      activities: [],
+    };
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    let seq = 0;
+    const push = (hub) => sockets[0].send(JSON.stringify({ type: "hub_update", hub_id: LIVING.hub_id, seq: ++seq, hub: { ...LIVING, ...hub } }));
+    const moveTo = (generation, device) => {
+      snapshot.snapshot_id = `snap-${generation}`;
+      snapshot.engine_generation = generation;
+      snapshot.devices[0] = { ...snapshot.devices[0], device: { ...snapshot.devices[0].device, ...device } };
+      push({ cache: { epoch: 1, generation, snapshot_id: snapshot.snapshot_id } });
+    };
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/1`);
+    const editor = page.locator("sb-panel-device-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+    await expect.poll(() => sockets.length).toBeGreaterThan(0);
+    expect(sockets[0].url()).toContain("hub_updates=true");
+
+    // Another client renames the device: the clean editor shows it, nothing asks.
+    moveTo(2, { name: "Telly" });
+    await expect(editor.locator("#editor-title")).toHaveText("Telly");
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+
+    // A job someone else started locks Sync and Delete as soon as its view arrives.
+    await editor.locator("#editor-rename").click();
+    await editor.locator("#rename-input").fill("Mine");
+    await editor.locator("#rename-save").click();
+    await expect(editor.locator("#editor-sync")).toBeEnabled();
+    const busy = job({ job_id: "jx", kind: "refresh", status: "running" });
+    const sent = Date.now();
+    push({ active_job: busy, cache: { epoch: 1, generation: 2, snapshot_id: "snap-2" } });
+    await expect(editor.locator("#editor-sync")).toBeDisabled();
+    expect(Date.now() - sent).toBeLessThan(1000);
+    push({ active_job: null, last_job: { ...busy, status: "done", finished_at: "t" }, cache: { epoch: 1, generation: 2, snapshot_id: "snap-2" } });
+    await expect(editor.locator("#editor-sync")).toBeEnabled();
+
+    // Elsewhere the same name changes again: the user's edit is kept, and one line (no button) says so.
+    moveTo(3, { name: "Other", brand: "LG" });
+    await expect(editor.locator("#editor-changed-elsewhere")).toContainText("This device was also changed elsewhere");
+    await expect(editor.locator("#editor-changed-elsewhere button")).toHaveCount(0);
+    await expect(editor.locator("#editor-title")).toHaveText("Mine");
+    const draft = JSON.parse(await page.evaluate(() => localStorage.getItem("sofabaton-panel-draft:e26a44861b45")));
+    expect(draft.snapshotId).toBe("snap-3");
+    expect(draft.data.element.device.brand).toBe("LG");
+    await expect(page.locator("#dock-keep-draft")).toHaveCount(0);
   });
 
   test("the activity editor recreates the card's Edit activity screen: shortcuts, macros, the power sequence with members and inputs, roles, individual buttons, one Sync carrying the touched device", async ({ page }, testInfo) => {
@@ -2251,7 +2308,7 @@ test.describe("control panel, views", () => {
     await editor.locator('.macro-picker-option[data-value="copy:102:1"]').click();
     await expect(editor.locator("#sb-add-macro-target .macro-picker-chip")).toHaveText("Music");
     await expect(editor.locator("#sb-add-macro-name")).toHaveCount(0);
-    await expect(editor.locator("#add-shortcut-dialog .decoded-field-helper")).toHaveText("Copied from Music as it is, with 1 step.");
+    await expect(editor.locator("#add-shortcut-dialog .decoded-field-helper")).toHaveText("Will be copied unchanged from Music, with 1 step.");
     await page.screenshot({ path: shot(testInfo, "activity-macro-copy") });
     await editor.locator("#add-shortcut-save").click();
     await expect(editor.locator("#step-title")).toHaveCount(0);
@@ -3548,26 +3605,52 @@ test.describe("control panel, wifi commands", () => {
     await expect(view(page).locator(".device-card-name")).toHaveText("Lamps");
   });
 
-  test("a button taken from another Wifi Device: the dialog names it, the sync clears it there too", async ({ page }, testInfo) => {
+  test("a button another Wifi Device binds in the same activity: the dialog names it, the sync takes it there (issue #306)", async ({ page }, testInfo) => {
     const blinds = wifiDevice({ key: "0badf00d", device_id: 8, spec: { name: "Blinds", slots: slots({ 1: "Down" }, { 1: { favorite: true, button: 185, long_press: true, activities: [102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-0badf00d" } });
-    const { calls } = await wifiServer(page, [wifiDevice(), blinds]);
+    const amp = wifiDevice({ key: "feedface", device_id: 9, spec: { name: "Amp", slots: slots({ 1: "Softer" }, { 1: { button: 185, activities: [101, 102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-feedface" } });
+    const { calls } = await wifiServer(page, [wifiDevice(), blinds, amp]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    await detail.locator('.slot-btn[data-slot="5"]').click();
+    const dialog = view(page).locator("#wifi-slot-dialog");
+    const hints = dialog.locator("#wifi-slot-button-hint .button-conflict-hint");
+    await dialog.locator("#wifi-slot-name").fill("Quieter");
+    await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
+    // Watch TV (the default): only the Amp binds VOL- there, and keeps it in Listen.
+    await expect(hints).toHaveText(['Replaces "Softer" from Amp in Watch TV']);
+    await dialog.locator('.activity-chip[data-activity="102"]').click();
+    await expect(hints).toHaveText(['Replaces "Down" from Blinds', 'Replaces "Softer" from Amp']);
+    await dialog.locator('.activity-chip[data-activity="101"]').click();
+    // Listen only: the Blinds' favorite takes its whole button with it, the Amp keeps VOL- in Watch TV.
+    await expect(hints).toHaveText(['Replaces "Down" from Blinds', 'Replaces "Softer" from Amp in Listen']);
+    await dialog.locator("#wifi-slot-save").click();
+    // The dock's Sync is the header's (a phone shows the header's only).
+    await (testInfo.project.name.includes("phone") ? detail.locator("#wifi-sync") : page.locator("#dock-sync")).click();
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(3);
+    const updates = calls.filter((c) => c.key === "update");
+    expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d", "feedface"]);  // this device first, then the ones that gave the button up
+    expect(updates[0].body.slots[4]).toMatchObject({ label: "Quieter", button: 185, activities: [102] });
+    expect(updates[1].body.slots[0]).toMatchObject({ label: "Down", favorite: true, button: null, long_press: false, activities: [102] });
+    expect(updates[1].body.name).toBe("Blinds");
+    expect(updates[2].body.slots[0]).toMatchObject({ label: "Softer", button: 185, activities: [101] });
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+  });
+
+  test("a button another Wifi Device binds only in other activities changes no hands", async ({ page }, testInfo) => {
+    const amp = wifiDevice({ key: "feedface", device_id: 9, spec: { name: "Amp", slots: slots({ 1: "Louder" }, { 1: { button: 185, activities: [102] } }), power_on_slot: null, power_off_slot: null, input_slots: [], brand: "c0-feedface" } });
+    const { calls } = await wifiServer(page, [wifiDevice(), amp]);
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
     const detail = view(page).locator("#wifi-device-detail");
     await detail.locator('.slot-btn[data-slot="5"]').click();
     const dialog = view(page).locator("#wifi-slot-dialog");
     await dialog.locator("#wifi-slot-name").fill("Quieter");
     await dialog.locator("#wifi-slot-button").selectOption({ label: "Volume & Channel - Vol -" });
-    await expect(dialog.locator("#wifi-slot-button-hint")).toHaveText('Replaces "Down" from Blinds');
+    await expect(dialog.locator("#wifi-slot-button-hint")).toHaveCount(0);
     await dialog.locator("#wifi-slot-save").click();
-    // The dock's Sync is the header's (a phone shows the header's only).
     await (testInfo.project.name.includes("phone") ? detail.locator("#wifi-sync") : page.locator("#dock-sync")).click();
-    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(2);
-    const updates = calls.filter((c) => c.key === "update");
-    expect(updates.map((c) => c.device)).toEqual(["a1b2c3d4", "0badf00d"]);             // this device first, then the one that lost the button
-    expect(updates[0].body.slots[4]).toMatchObject({ label: "Quieter", button: 185, activities: [101] });
-    expect(updates[1].body.slots[0]).toMatchObject({ label: "Down", favorite: true, button: null, long_press: false, activities: [102] });
-    expect(updates[1].body.name).toBe("Blinds");
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
     await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    expect(calls.filter((c) => c.key === "update").map((c) => c.device)).toEqual(["a1b2c3d4"]);
   });
 
   test("a press lights the roster row, then the slot tile of the open device, and only the matching one", async ({ page }) => {

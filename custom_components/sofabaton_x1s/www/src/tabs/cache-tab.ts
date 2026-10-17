@@ -31,7 +31,6 @@ export function renderCacheTab(params: {
   error: string | null;
   hub: CacheHubState | null;
   persistentCacheEnabled: boolean;
-  staleData: boolean;
   refreshBusy: boolean;
   hubCommandBusy: boolean;
   activeRefreshLabel: string | null;
@@ -40,7 +39,6 @@ export function renderCacheTab(params: {
   selectedHubProxyConnected: boolean;
   enablingPersistentCache: boolean;
   onEnablePersistentCache: () => void;
-  onRefreshStale: () => void;
   onSelectSection: (sectionId: SectionId) => void;
   onToggleEntity: (key: string) => void;
   // Global "Hub Tab Clicks" setting: what clicking an inner drawer row does
@@ -517,7 +515,6 @@ export function renderCacheTab(params: {
 
   return html`
     <div class="tab-panel">
-      ${params.staleData ? html`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
       ${renderSecondaryTabShell({
         connected: true,
         shellClassName: "cache-panel secondary-view-shell--edge",

@@ -8,11 +8,11 @@ class _FakeHub:
     def __init__(self, *, entry_id: str, action_id: str, host: str) -> None:
         self.entry_id = entry_id
         self.host = host
-        self._action_id = action_id
+        self.action_ids = [action_id]
         self.received: list[dict] = []
 
-    def get_roku_action_id(self) -> str:
-        return self._action_id
+    def get_roku_action_ids(self) -> tuple[str, ...]:
+        return tuple(self.action_ids)
 
     async def async_handle_roku_http_post(self, **payload):
         self.received.append(payload)
@@ -465,6 +465,36 @@ def test_the_source_allowlist_follows_the_hubs_current_host() -> None:
             method="POST", path="/launch/abc123/7/0/short", headers={}, body=b"", source_ip="10.0.0.12"
         )
         assert (moved, old) == (200, 403)
+        await manager.async_remove_hub("e1")
+
+    asyncio.run(_run())
+
+
+def test_the_action_ids_follow_the_hub_and_all_of_them_route() -> None:
+    """Issue #308: a manually-added hub's records carry its synthetic entry
+    MAC or, once its banner was read, the banner MAC. The banner arrives
+    after the registration; both ids must route without re-registering."""
+
+    async def _run() -> None:
+        manager = RokuListenerManager(_FakeHass())
+        hub = _FakeHub(entry_id="e1", action_id="02abcd123456", host="10.0.0.12")
+        await manager.async_register_hub(hub, enabled=True)
+
+        async def _post(action_id: str) -> int:
+            status, _ = await manager.async_handle_post(
+                method="POST",
+                path=f"/launch/{action_id}/7/0/short",
+                headers={},
+                body=b"",
+                source_ip="10.0.0.12",
+            )
+            return status
+
+        assert await _post("e26a44861b45") == 404
+        hub.action_ids.insert(0, "e26a44861b45")  # the banner was read
+        assert await _post("e26a44861b45") == 200
+        assert await _post("02abcd123456") == 200
+        assert len(hub.received) == 2
         await manager.async_remove_hub("e1")
 
     asyncio.run(_run())

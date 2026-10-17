@@ -669,7 +669,7 @@ test("a failing Wifi Events list lands in sync_failed instead of hanging on Sync
   assert.equal(element._stage, "sync_failed");
   assert.ok(element._syncError);
   assert.equal(element._syncProgress, null);
-  assert.deepEqual(types(calls), ["wifi_event/list"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "cache/structural_bundle"]);
 });
 
 test("an activity without Wifi Event references skips phase 1", async () => {
@@ -683,7 +683,7 @@ test("an activity without Wifi Event references skips phase 1", async () => {
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["activity/sync"]);
+  assert.deepEqual(types(calls), ["activity/sync", "cache/structural_bundle"]);
   assert.equal(element._stage, "sync_failed");
 });
 
@@ -697,7 +697,7 @@ test("an out-of-step events record is deployed before the activity sync", async 
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync", "cache/structural_bundle"]);
 });
 
 test("a first-ever event deploy rewrites the placeholder to the hub's device id", async () => {
@@ -718,11 +718,47 @@ test("a first-ever event deploy rewrites the placeholder to the hub's device id"
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync", "cache/structural_bundle"]);
   const activity = (edited as any).activities[0];
   assert.equal(activity.favorite_slots[0].device_id, 42);
   assert.deepEqual((edited as any).devices.map((entry: any) => entry.device.device_id), [42]);
   assert.equal(element._wifiEventsPlaceholderId, null);
+});
+
+test("a replace deploy of the events device follows the new id in both bundles", async () => {
+  // The record had no deploy snapshot (a backup restore wiped it), so phase 1
+  // recreated the device as 12 and moved every reference off 11 (Marcel's
+  // X1, 2026-10-14: the activity sync then refused on its stale preflight
+  // and the new shortcut was never written).
+  const deployed = eventsActivityBundle(12, 12);
+  let sent: { baseline: any; edited: any } | null = null;
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/wifi_event/list": () => ({ device_id: 11, record_needs_sync: true, events: [] }),
+    "sofabaton_x1s/wifi_event/sync": () => ({ device_id: 12, record_needs_sync: false, events: [] }),
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: deployed, generation: 2 }),
+    "sofabaton_x1s/activity/sync": (message) => {
+      sent = { baseline: message.baseline, edited: message.edited };
+      throw new Error("stop here");
+    },
+  });
+  const working = eventsActivityBundle(11, 11);
+  // The user's new shortcut: event 2 of the events device as it was captured.
+  (working as any).activities[0].favorite_slots.push({ button_id: 2, device_id: 11, command_id: 2 });
+  const element = syncingEditor(hass, eventsActivityBundle(11, 11), working);
+
+  await element._requestSync();
+
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "cache/structural_bundle", "activity/sync", "cache/structural_bundle"]);
+  for (const bundle of [sent!.baseline, sent!.edited]) {
+    assert.deepEqual(bundle.devices.map((entry: any) => entry.device.device_id), [12]);
+    assert.ok(bundle.activities[0].favorite_slots.every((slot: any) => slot.device_id === 12));
+  }
+  // the baseline now matches the hub; the user's new shortcut is still the diff
+  assert.equal(sent!.baseline.activities[0].favorite_slots.length, 1);
+  assert.deepEqual(
+    sent!.edited.activities[0].favorite_slots.map((slot: any) => [slot.device_id, slot.command_id]),
+    [[12, 1], [12, 2]],
+  );
 });
 
 // ── Wifi Events as single records (wifi-events-single-record-plan) ───
@@ -759,7 +795,7 @@ test("phase 1 that retires the long records rebases both bundles before the acti
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/list", "wifi_event/sync", "activity/sync", "cache/structural_bundle"]);
   for (const bundle of [sent!.baseline, sent!.edited]) {
     assert.equal(bundle.activities[0].button_bindings[0].long_press_command_id, 2);
     assert.equal(bundle.devices[0].commands.length, 25);
@@ -826,7 +862,7 @@ test("Wifi Events device edits sync after the events deploy, on rebased bundles"
 
   await element._requestSync();
 
-  assert.deepEqual(types(calls), ["wifi_event/sync", "device/sync"]);
+  assert.deepEqual(types(calls), ["wifi_event/sync", "device/sync", "cache/structural_bundle"]);
   assert.equal(sent!.baseline.devices[0].commands.length, 25);
   assert.equal(sent!.edited.devices[0].commands.length, 25);
   assert.equal(sent!.edited.devices[0].commands[0].name, "Movie Night");
@@ -913,6 +949,8 @@ test("edits made before the switch sync against the replacement device", async (
 
   assert.deepEqual(types(calls).filter((type) => type !== "command_sync/progress").slice(2), [
     "command_config/set_transport", "wifi_event/sync", "cache/structural_bundle", "device/sync",
+    // The failed sync rebases onto what landed.
+    "cache/structural_bundle",
   ]);
   assert.equal(sent!.baseline.devices[0].device.device_id, 12);
   assert.equal(sent!.edited.devices[0].device.device_id, 12);
@@ -957,4 +995,51 @@ test("a withdrawn wish follows the transport the hub has after the failure", asy
 
   const sent = calls.filter((call) => String(call.type).endsWith("set_transport")).map((call) => call.transport);
   assert.deepEqual(sent, ["mqtt", "mqtt"]);
+});
+
+test("an open editor follows the cache only once the hub's work has ended", async () => {
+  // Mid job the cache passes through partial states (a command re-read
+  // clears the table before it refills): the editor waits for the end.
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: eventsActivityBundle(null, null), generation: 2 }),
+  });
+  const base = eventsActivityBundle(null, null);
+  const element = syncingEditor(hass, base, structuredClone(base));
+  element._dirty = false;
+  element._capturedVersion = "1:1";
+  element.cacheVersion = "1:2";
+  element.hub = { entry_id: "hub-1", runtime_state: { kind: "operation_running", operation: "hub_write" } };
+
+  element._maybeFollowCache();
+  assert.deepEqual(types(calls), []);
+
+  // The work ends; the hub's last rows land a moment later (live, X1S:
+  // idle at version 21, version 22 0.2 s after). One follow, after both.
+  element.hub = { entry_id: "hub-1", runtime_state: { kind: "idle" } };
+  element._maybeFollowCache();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.deepEqual(types(calls), []);
+  element.cacheVersion = "1:3";
+  element._maybeFollowCache();
+  await new Promise((resolve) => setTimeout(resolve, 800));
+
+  assert.deepEqual(types(calls), ["cache/structural_bundle"]);
+  assert.equal(element._capturedVersion, "1:3");
+});
+
+test("an editor nothing held back follows a change at once", async () => {
+  const { hass, calls } = phaseHass({
+    "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: eventsActivityBundle(null, null), generation: 2 }),
+  });
+  const base = eventsActivityBundle(null, null);
+  const element = syncingEditor(hass, base, structuredClone(base));
+  element._dirty = false;
+  element._capturedVersion = "1:1";
+  element.cacheVersion = "1:2";
+  element.hub = { entry_id: "hub-1", runtime_state: { kind: "idle" } };
+
+  element._maybeFollowCache();
+
+  assert.deepEqual(types(calls), ["cache/structural_bundle"]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
 });

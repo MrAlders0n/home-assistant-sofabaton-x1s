@@ -429,6 +429,87 @@ def test_async_reconcile_deployed_wifi_devices_assigns_one_owner_and_clears_conf
     assert store.get_deployed_wifi_commands("hub-1", device_key="default") == []
 
 
+def _deployed_store(device_key: str, *, port: int) -> tuple[CommandConfigStore, str, list]:
+    """A store holding one Wifi record, deployed the way a Sync saves it."""
+
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    commands = default_commands()
+    commands[0] = {**commands[0], "name": "Lights On"}
+    commands[1] = {**commands[1], "name": "Lights Off"}
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {"hub-1": {"devices": [{"device_key": device_key, "commands": commands}]}}
+    }
+    payload = _run(store.async_get_hub_config("hub-1", device_key=device_key, roku_listen_port=port))
+    snapshot = list(payload["commands"][: payload["slot_count"]])
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1",
+            device_key,
+            snapshot,
+            deployed_device_id=10,
+            commands_hash=payload["commands_hash"],
+            request_port=port,
+        )
+    )
+    return store, payload["commands_hash"], snapshot
+
+
+def test_reconcile_relink_refills_the_snapshot_an_erase_emptied() -> None:
+    # Issue #307: a restore's first catalog read is the erased hub, which
+    # unlinks every record and empties its snapshot; the re-link once the
+    # device is back must restore the snapshot presses resolve against.
+    # A non-default listener port: the hash is the one the deploy baked in.
+    store, commands_hash, snapshot = _deployed_store("http", port=9000)
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=10) == snapshot
+
+    _run(store.async_reconcile_deployed_wifi_devices("hub-1", []))
+    assert store.get_deployed_wifi_commands("hub-1", device_key="http") == []
+
+    changed = _run(
+        store.async_reconcile_deployed_wifi_devices("hub-1", [("http", 10, commands_hash)])
+    )
+
+    assert changed is True
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=10) == snapshot
+    assert snapshot[0]["name"] == "Lights On"
+
+
+def test_reconcile_relink_refills_the_wifi_events_snapshot() -> None:
+    store, commands_hash, snapshot = _deployed_store("haevents", port=8060)
+
+    _run(store.async_reconcile_deployed_wifi_devices("hub-1", []))
+    _run(store.async_reconcile_deployed_wifi_devices("hub-1", [("haevents", 10, commands_hash)]))
+
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=10) == snapshot
+
+
+def test_reconcile_relink_leaves_the_snapshot_empty_when_the_hub_holds_other_commands() -> None:
+    # The hub's device was built from other commands (an older backup):
+    # the staged ones say nothing about its records, and the differing
+    # hash offers a Sync instead.
+    store, _commands_hash, _snapshot = _deployed_store("http", port=8060)
+
+    _run(store.async_reconcile_deployed_wifi_devices("hub-1", []))
+    _run(store.async_reconcile_deployed_wifi_devices("hub-1", [("http", 10, "0123456789abcde")]))
+
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=10) == []
+
+
+def test_reconcile_relink_keeps_an_existing_snapshot() -> None:
+    store, commands_hash, snapshot = _deployed_store("http", port=8060)
+    store._data["hubs"]["hub-1"]["devices"][0]["commands"][0]["name"] = "Edited"  # type: ignore[attr-defined]
+
+    changed = _run(
+        store.async_reconcile_deployed_wifi_devices("hub-1", [("http", 11, commands_hash)])
+    )
+
+    assert changed is True
+    deployed = store.get_deployed_wifi_commands("hub-1", hub_device_id=11)
+    assert deployed == snapshot
+    assert deployed[0]["name"] == "Lights On"
+
+
 def test_command_store_persists_activity_label_snapshot() -> None:
     store = CommandConfigStore(SimpleNamespace())
     _run(store.async_load())

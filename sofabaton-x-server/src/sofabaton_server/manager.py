@@ -25,6 +25,7 @@ from .models import HubRecord, HubView, light_job, mac_key, now_iso
 from .store import HubStore, StateStore, UiDocumentStore
 
 if TYPE_CHECKING:  # pragma: no cover
+    from .hub_updates import CacheVersions
     from .jobs import JobRunner
 
 log = logging.getLogger(__name__)
@@ -98,6 +99,9 @@ class HubManager:
         # view then carries the hub's active and last job. Left None,
         # views simply omit them (the manager's own tests).
         self.jobs: Optional[JobRunner] = None
+        # The cache version tracker (hub_updates.py), attached by create_app:
+        # a hub view then carries ``cache``. Left None, views omit it.
+        self.cache_versions: Optional[CacheVersions] = None
         self._records: dict[str, HubRecord] = {}
         self._proxies: dict[str, AsyncXProxy] = {}
         self._watchers: dict[str, asyncio.Task] = {}
@@ -190,13 +194,19 @@ class HubManager:
             raise HubDisabled(hub_id)
         return proxy
 
+    def running_proxy(self, hub_id: str) -> Optional[AsyncXProxy]:
+        """The running proxy for an enabled hub, or None (unknown, disabled, not started)."""
+
+        record = self._records.get(hub_id)
+        proxy = self._proxies.get(hub_id)
+        return proxy if proxy is not None and record is not None and record.enabled else None
+
     async def view(self, hub_id: str) -> HubView:
         record = self.record(hub_id)
         status: Optional[HubStatus] = None
         proxy = self._proxies.get(hub_id)
         if proxy is not None:
             status = await proxy.status()
-        jobs = self.jobs
         hub_name = record.hub_name
         if hub_name is None and proxy is not None:
             # Not yet remembered: the banner the engine already holds. Never
@@ -204,6 +214,13 @@ class HubManager:
             # (a banner request here duplicated the initial sync's, CR-X3-3).
             info = await proxy.hub_info(cached_only=True)
             hub_name = info.name if info.known else None
+        local_address = await self._local_address(proxy)
+        versions = self.cache_versions
+        cache = await versions.version(hub_id) if versions is not None and proxy is not None else None
+        # The jobs last, after every await: a job that started or ended
+        # while the rest was read is in this view, so a view sent on the
+        # event stream never trails a job_event queued before it.
+        jobs = self.jobs
         return HubView(
             hub_id=record.hub_id,
             enabled=record.enabled,
@@ -214,7 +231,8 @@ class HubManager:
             active_job=light_job(jobs.active(hub_id)) if jobs is not None else None,
             last_job=light_job(jobs.last_finished(hub_id)) if jobs is not None else None,
             hub_name=hub_name,
-            local_address=await self._local_address(proxy),
+            local_address=local_address,
+            cache=cache,
         )
 
     @staticmethod

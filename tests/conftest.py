@@ -362,6 +362,7 @@ def _install_homeassistant_stubs() -> None:
 
     websocket_api.websocket_command = _websocket_command
     websocket_api.async_response = lambda func: func
+    websocket_api.event_message = lambda msg_id, event: {"id": msg_id, "type": "event", "event": event}
     sys.modules.setdefault("homeassistant.components.websocket_api", websocket_api)
 
     http = types.ModuleType("homeassistant.components.http")
@@ -451,3 +452,29 @@ def _x1_live_quick_access_read_unavailable(monkeypatch):
     from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
 
     monkeypatch.setattr(ActivityOpsMixin, "_x1_live_quick_access_ids", lambda self, act_lo: None)
+
+
+@pytest.fixture(autouse=True)
+def _restore_display_order_unchecked(monkeypatch):
+    """A bundle restore ends by reading both catalogs back to give the
+    restored entities the bundle's display order. Without a hub those reads
+    would wait out their timeouts, so by default the step reports
+    "skipped". Tests of the step put the real method back (captured at
+    import, before this fixture runs)."""
+
+    from custom_components.sofabaton_x1s.lib.proxy_restore import RestoreMixin
+
+    monkeypatch.setattr(RestoreMixin, "_restore_display_order", lambda self, kind, source_order, id_map: "skipped")
+
+
+@pytest.fixture(autouse=True)
+def _settle_order_unchecked(monkeypatch):
+    """Device and activity creates end by reading the catalog back to put
+    the new entity last in the display order (_settle_order). Without a hub
+    that read would wait out its timeout, so by default the step reports
+    "kept". Tests of the step put the real method back (captured at import,
+    before this fixture runs)."""
+
+    from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
+
+    monkeypatch.setattr(ActivityOpsMixin, "_settle_order", lambda self, kind, last_ids: "kept")

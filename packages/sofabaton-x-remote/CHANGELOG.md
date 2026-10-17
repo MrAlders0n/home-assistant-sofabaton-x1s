@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.1.3 (2026-10-17)
+
+Changes since `sofabaton-x-remote-v0.1.2`.
+
+- Update the shared Virtual Remote bundle to 0.2.8. This includes updated
+  shared translation data for the Home Assistant sidebar; those text
+  changes do not affect the embedded remote's interface.
+- The element's attributes, methods and events are unchanged. The minimum
+  server version remains 0.2.2; server 0.2.6 ships the corresponding
+  server-hosted bundle.
+
 ## 0.1.2 (2026-10-09)
 
 Changes since `sofabaton-x-remote-v0.1.1`.

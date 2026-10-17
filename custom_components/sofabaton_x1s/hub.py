@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections import deque
 from functools import partial
 from typing import Any, Dict, Optional
@@ -22,6 +23,7 @@ from .const import (
     signal_settings,
     signal_wifi_device,
     signal_hub,
+    signal_panel_state,
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .logging_utils import get_hub_logger
@@ -119,6 +121,10 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         self._devices_generation: int = 0
         self._activities_generation: int = 0
         self._cache_generation: int = 0
+        # The generation restarts at 0 with every hub object (HA restart,
+        # entry reload); the epoch tells an open card that a lower
+        # generation is newer, not older.
+        self._cache_epoch: int = int(time.time() * 1000)
         self.proxy_enabled: bool = proxy_enabled
         # Manual "Home Assistant IP address" for this hub; None = automatic.
         self.local_address: str | None = local_address
@@ -174,6 +180,12 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         return self._cache_generation
 
     @property
+    def cache_epoch(self) -> int:
+        """When this hub object (and its generation count) started, in ms."""
+
+        return getattr(self, "_cache_epoch", 0)
+
+    @property
     def bridge_stats(self) -> dict[str, Any] | None:
         """Bridge-loop health counters for diagnostics (issue #279)."""
 
@@ -184,6 +196,17 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
 
     def _bump_cache_generation(self) -> int:
         self._cache_generation += 1
+        # Open control panels follow the generation (hub_state/subscribe).
+        # Every bump runs on the loop today; going through
+        # call_soon_threadsafe keeps a future off-loop caller safe too.
+        loop = getattr(self.hass, "loop", None)
+        if loop is not None:
+            try:
+                loop.call_soon_threadsafe(
+                    async_dispatcher_send, self.hass, signal_panel_state(self.entry_id)
+                )
+            except RuntimeError:
+                pass  # the loop is closed (shutdown): nobody is listening
         return self._cache_generation
 
     def _create_proxy(self) -> X1Proxy:
@@ -348,12 +371,23 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
 
         self._hub_work += 1
         self._hub_idle.clear()
+        if self._hub_work == 1:
+            # Open control panels lock while the hub works (hub_state).
+            async_dispatcher_send(self.hass, signal_panel_state(self.entry_id))
         try:
             yield
         finally:
             self._hub_work -= 1
             if self._hub_work == 0:
                 self._hub_idle.set()
+                async_dispatcher_send(self.hass, signal_panel_state(self.entry_id))
+
+    @property
+    def hub_write_active(self) -> bool:
+        """True while hub work (an immediate write, a write service, a
+        registry operation) runs; a Wifi Command sync reports its own."""
+
+        return getattr(self, "_hub_work", 0) > 0
 
     @property
     def hub_work_active(self) -> bool:

@@ -1040,7 +1040,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
               : nothing}
           </div>
           <div class="detail-scroll">
-            ${this._renderDeleteErrorBanner()}
+            ${this._renderEditorBanners()}
             ${this._managedByHa ? html`<div class="notice-banner" id="editor-managed-warning">${icon(mdiWifiCog)}<span>${S.managedWifiWarning}</span></div>` : nothing}
             ${callback ? html`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S.serverWifiDeviceNote : S.callbackDeviceNote}</span></div>` : nothing}
             ${this._renderPowerSection(deviceId)}

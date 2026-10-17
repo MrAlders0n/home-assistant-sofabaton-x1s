@@ -429,6 +429,67 @@ test("a failed event-actions load blocks saves that would erase the stored maps"
   assert.ok(element._hubEventResetError);
 });
 
+test("a saved button changes hands only in the activities both commands name (issue #306)", async () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  element._selectedDeviceKey = "soundbar";
+  const volup = (activities: string[], extra: Record<string, unknown> = {}) =>
+    ({ name: "Volume Up", add_as_favorite: false, hard_button: "volup", activities, ...extra });
+  const devices = [
+    { device_key: "soundbar", device_name: "Soundbar", commands: [] },
+    { device_key: "amp", device_name: "Amp", commands: [volup(["102"])] },                      // Cinema only
+    { device_key: "atv", device_name: "Apple TV", commands: [volup(["101", "103"])] },           // TV and PS5
+    { device_key: "hifi", device_name: "Hifi", commands: [volup(["101", "102"], { add_as_favorite: true })] },
+  ];
+  const { hass, calls } = fakeWsHass({
+    "command_config/set": () => ({}),
+    "command_devices/list": () => ({ devices }),
+    "command_sync/progress": () => ({ status: "idle" }),
+  });
+  (hass as any).states = {
+    "remote.living": { state: "on", attributes: { entry_id: "hub-1", activities: [{ id: 101, name: "TV" }, { id: 102, name: "Cinema" }, { id: 103, name: "PS5" }] } },
+  };
+  element.hass = hass;
+  element._wifiDevices = devices;
+  element._commandsData = element._normalizeCommandsForStorage([
+    { name: "Louder", add_as_favorite: false, hard_button: "volup", activities: ["101", "103"] },
+    { name: "Quiet", add_as_favorite: false, hard_button: "voldn", activities: ["101"] },
+  ]);
+  element._activeCommandSlot = 2;
+  element._updateActiveCommandDraft({ name: "Volume Up", add_as_favorite: false, hard_button: "volup", activities: ["101"] });   // VOL+ in TV
+
+  assert.deepEqual(element._hardButtonReplacementLabels(), [
+    'Replaces "Louder" on this button in TV',
+    'Replaces "Volume Up" from Apple TV in TV',
+    'Replaces "Volume Up" from Hifi',                       // a favorite's activities are its button's too
+  ]);
+
+  await element._saveActiveCommandModal();
+  const sets = calls.filter((call) => call.type === "sofabaton_x1s/command_config/set");
+  assert.deepEqual(sets.map((call) => call.device_key), ["atv", "hifi", "soundbar"]);   // the Amp binds VOL+ in Cinema only: left alone
+  const [atv, hifi, soundbar] = sets.map((call) => (call.commands as Array<Record<string, unknown>>)[0]);
+  assert.deepEqual([atv.hard_button, atv.activities], ["volup", ["103"]]);
+  assert.deepEqual([hifi.hard_button, hifi.add_as_favorite, hifi.activities], ["", true, ["101", "102"]]);
+  assert.deepEqual([soundbar.hard_button, soundbar.activities], ["volup", ["103"]]);
+  const saved = (sets[2].commands as Array<Record<string, unknown>>)[2];
+  assert.deepEqual([saved.hard_button, saved.activities], ["volup", ["101"]]);
+});
+
+test("a button in activities nobody else binds it in replaces nothing", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1" };
+  element._selectedDeviceKey = "soundbar";
+  element.hass = { states: { "remote.living": { state: "on", attributes: { entry_id: "hub-1", activities: [{ id: 101, name: "TV" }, { id: 102, name: "Cinema" }] } } } };
+  element._wifiDevices = [
+    { device_key: "amp", device_name: "Amp", commands: [{ name: "Volume Up", add_as_favorite: false, hard_button: "volup", activities: ["102"] }] },
+  ];
+  element._activeCommandSlot = 0;
+  element._updateActiveCommandDraft({ name: "Volume Up", add_as_favorite: false, hard_button: "volup", activities: ["101"] });
+  assert.deepEqual(element._hardButtonReplacementLabels(), []);
+  element._updateActiveCommandDraft({ activities: ["101", "102"] });
+  assert.deepEqual(element._hardButtonReplacementLabels(), ['Replaces "Volume Up" from Amp']);   // Cinema was all it had
+});
+
 test("a failed slot save keeps the stored slots and reports the error", async () => {
   const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1" };

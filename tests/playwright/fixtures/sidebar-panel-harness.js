@@ -40,8 +40,37 @@ class HaMenuButtonStub extends HTMLElement {
     this.attachShadow({ mode: "open" }).innerHTML = `<style>:host{display:inline-flex;width:48px;height:48px;align-items:center;justify-content:center}i{display:block;width:18px;height:2px;background:currentColor;box-shadow:0 -6px 0 currentColor,0 6px 0 currentColor}</style><i></i>`;
   }
 }
+// ha-form: one labelled text field per schema entry (the dock drawer's icon
+// selector), firing value-changed the way HA's form does on a committed change.
+class HaFormStub extends HTMLElement {
+  set schema(value) { this._schema = Array.isArray(value) ? value : []; this._render(); }
+  get schema() { return this._schema || []; }
+  set data(value) { this._data = value && typeof value === "object" ? value : {}; this._render(); }
+  get data() { return this._data || {}; }
+  connectedCallback() { this._render(); }
+  _render() {
+    if (!this.isConnected) return;
+    this.textContent = "";
+    for (const entry of this.schema) {
+      const label = document.createElement("label");
+      label.style.cssText = "display:grid;gap:4px;font-size:12px";
+      label.textContent = typeof this.computeLabel === "function" ? this.computeLabel(entry) : entry.name;
+      const input = document.createElement("input");
+      input.name = entry.name;
+      input.value = String(this.data[entry.name] ?? "");
+      input.placeholder = String(entry.selector?.icon?.placeholder ?? "");
+      input.style.cssText = "height:36px;padding:0 10px;font:inherit;font-size:14px";
+      input.addEventListener("change", () => {
+        this.dispatchEvent(new CustomEvent("value-changed", { detail: { value: { ...this.data, [entry.name]: input.value } }, bubbles: true, composed: true }));
+      });
+      label.appendChild(input);
+      this.appendChild(label);
+    }
+  }
+}
 if (!customElements.get("ha-icon")) customElements.define("ha-icon", HaIconStub);
 if (!customElements.get("ha-menu-button")) customElements.define("ha-menu-button", HaMenuButtonStub);
+if (!customElements.get("ha-form")) customElements.define("ha-form", HaFormStub);
 
 // ---------- fixture ----------
 

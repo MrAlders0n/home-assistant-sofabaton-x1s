@@ -4,8 +4,8 @@ A batch is the engine's "do not talk to the remotes yet" mode. While one
 is open, every request for a physical remote sync (the ``0x64`` trigger
 on the X1 and X1S, the ``0x0364`` broadcast on the X2) is recorded
 instead of sent, whichever code path asks for it: ``resync_remote``
-itself, the inline ``0x64`` step the reorder writes send, or a create
-sequence's terminal step. Closing the batch sends **one** trigger when
+itself, the ``_send_remote_sync_step`` the reorder writes and the Wifi
+create save tail send, or a create sequence's terminal step. Closing the batch sends **one** trigger when
 at least one was requested, and none otherwise: an unchanged document
 produces zero triggers. The batch does not add triggers, it coalesces
 the ones the participating writes would have sent.
@@ -66,6 +66,33 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         self._write_batch: EngineWriteBatch | None = None
         self._write_batch_lock = threading.Lock()
 
+    def _remote_sync_frame(self, hub_version: str | None = None) -> tuple[int, bytes] | None:
+        """``(opcode, payload)`` of the physical remote-sync trigger for
+        this hub, or None when the hub version cannot be resolved."""
+
+        version = hub_version or self.hub_version
+        if not version:
+            try:
+                version = classify_hub_version(self.mdns_txt)
+            except ValueError:
+                self._log.warning(
+                    "%s sync: hub_version unknown; cannot pick opcode.", LogTag.REMOTE
+                )
+                return None
+        self.hub_version = version
+
+        if version == HUB_VERSION_X2:
+            # All-remotes broadcast, bench-validated live 2026-08-27: this
+            # is the only form that actually starts a sync. The historical
+            # remote-list + OP_X2_REMOTE_SYNC [id:3][0x01] flow is ACKed
+            # 0x00 by the hub but starts nothing (accepted no-op), and a
+            # bare 0x0064 was never seen to start one either. The hub
+            # serializes triggers, so re-sending while a sync runs simply
+            # queues one more pass.
+            return OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff"
+
+        return OP_REMOTE_SYNC, b""
+
     def resync_remote(self, hub_version: str | None = None) -> bool:
         """Force a physical remote sync with the hub.
 
@@ -75,27 +102,38 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         """
         if self._defer_remote_sync("resync_remote"):
             return True
-        version = hub_version or self.hub_version
-        if not version:
-            try:
-                version = classify_hub_version(self.mdns_txt)
-            except ValueError:
-                self._log.warning(
-                    "%s sync: hub_version unknown; cannot pick opcode.", LogTag.REMOTE
-                )
-                return False
-        self.hub_version = version
+        frame = self._remote_sync_frame(hub_version)
+        if frame is None:
+            return False
+        return self.enqueue_cmd(*frame)
 
-        if version == HUB_VERSION_X2:
-            # All-remotes broadcast, bench-validated live 2026-08-27: this
-            # is the only form that actually starts a sync. The historical
-            # remote-list + OP_X2_REMOTE_SYNC [id:3][0x01] flow is ACKed
-            # 0x00 by the hub but starts nothing (accepted no-op). The hub
-            # serializes triggers, so re-sending while a sync runs simply
-            # queues one more pass.
-            return self.enqueue_cmd(OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")
+    def _send_remote_sync_step(self, step_name: str, *, ack_first_byte: int | None = None) -> bool:
+        """Send the remote-sync trigger as an acked step of a write sequence.
 
-        return self.enqueue_cmd(OP_REMOTE_SYNC)
+        The frame is the one :meth:`resync_remote` sends for this hub (the
+        all-remotes broadcast on the X2, never a bare ``0x0064`` there),
+        but sent through ``_send_step`` so its STATUS_ACK is consumed
+        before the sequence's next step waits for its own. Inside a write
+        batch the trigger is deferred like any other and the call reports
+        success.
+        """
+
+        if self._defer_remote_sync(step_name):
+            return True
+        frame = self._remote_sync_frame()
+        if frame is None:
+            return False
+        # The family frame derives its opcode from the payload length, so
+        # the remote-sync family plus this payload is exactly the opcode
+        # resync_remote sends (0x0064 empty, 0x0364 FF FF FF).
+        _opcode, payload = frame
+        return self._send_step(
+            step_name=step_name,
+            family=REMOTE_SYNC_FAMILY,
+            payload=payload,
+            ack_opcode=0x0103,
+            ack_first_byte=ack_first_byte,
+        ).ok
 
     # ------------------------------------------------------------------
     # Write batch (phase 4 plan, H2 / decision 8)
@@ -103,9 +141,9 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
     def begin_write_batch(self) -> None:
         """Open a write batch: defer every physical remote-sync trigger.
 
-        While the batch is open, ``resync_remote``, the inline ``0x64``
-        step of the reorder writes and a create sequence's terminal
-        step all record a request instead of sending. Close it with
+        While the batch is open, ``resync_remote``,
+        ``_send_remote_sync_step`` and a create sequence's terminal step
+        all record a request instead of sending. Close it with
         :meth:`end_write_batch`, which sends one trigger when any was
         requested. One batch at a time; a second ``begin`` raises.
         """

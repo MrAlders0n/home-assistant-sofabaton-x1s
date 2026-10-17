@@ -228,15 +228,29 @@ class HubFetchMixin:
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
     async def _async_fetch_device_commands(self, ent_id: int) -> None:
+        # The device's whole structural record, not just its command table:
+        # the commands group also holds the key sort, and a commands-only
+        # re-read left it (and the dropped keymap) empty in the cache
+        # (journey bench W-4). This is the Hub tab's per-device read.
         self._reset_entity_cache(ent_id)
+        result = await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.backup_device,
+                ent_id,
+                include_blobs=False,
+                refresh_catalog=False,
+            )
+        )
+        if result is not None:
+            return
+        # Not in the device catalog (yet): the command table alone.
         await self.hass.async_add_executor_job(
             self._proxy.clear_entity_cache,
             ent_id,
-            True,
+            False,
             False,
             False,
         )
-
         await self.hass.async_add_executor_job(
             partial(self._proxy.get_commands_for_entity, ent_id, fetch_if_missing=True)
         )

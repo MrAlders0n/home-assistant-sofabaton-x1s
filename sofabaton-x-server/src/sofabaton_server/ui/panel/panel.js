@@ -1216,6 +1216,15 @@ var REMOTE_CARD_STRINGS_EN = {
     pullHandle: "Open favorites and macros",
     pullHandleCommands: "Open commands",
     close: "Close",
+    pinToDock: (name) => `Pin ${name} to the dock`,
+    pinnedToDock: (name) => `${name}, pinned to the dock`,
+    dockShortcut: "Dock shortcut",
+    dockSwap: "Swap sides",
+    dockOnLeft: "On the left",
+    dockOnRight: "On the right",
+    unpin: "Unpin",
+    dockFull: "The dock is full",
+    dockIcon: "Icon",
     starting: "Starting",
     poweringOff: "Powering off",
     working: "Working",
@@ -1223,9 +1232,9 @@ var REMOTE_CARD_STRINGS_EN = {
     operations: {
       backup_restore: "Restoring backup",
       cache_refresh: "Refreshing hub cache",
-      entity_sync: "Syncing to hub",
+      entity_sync: "Syncing with hub",
       backup_export: "Creating backup",
-      wifi_deploy: "Deploying Wifi commands"
+      wifi_deploy: "Syncing Wifi Commands"
     }
   },
   assist: {
@@ -3603,7 +3612,7 @@ function customFavoritesSignature(items) {
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.7";
+var CARD_VERSION = "0.2.8";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 var PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -7930,6 +7939,7 @@ var mdiArrowRightBold = "M4,15V9H12V4.16L19.84,12L12,19.84V15H4Z";
 var mdiArrowULeftTop = "M20 13.5C20 17.09 17.09 20 13.5 20H6V18H13.5C16 18 18 16 18 13.5S16 9 13.5 9H7.83L10.91 12.09L9.5 13.5L4 8L9.5 2.5L10.92 3.91L7.83 7H13.5C17.09 7 20 9.91 20 13.5Z";
 var mdiArrowUp = "M13,20H11V8L5.5,13.5L4.08,12.08L12,4.16L19.92,12.08L18.5,13.5L13,8V20Z";
 var mdiArrowUpBold = "M15,20H9V12H4.16L12,4.16L19.84,12H15V20Z";
+var mdiAspectRatio = "M19,12H17V15H14V17H19V12M7,9H10V7H5V12H7V9M21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19V5A2,2 0 0,0 21,3M21,19H3V5H21V19Z";
 var mdiAudioVideo = "M20,7H4A2,2 0 0,0 2,9V15A2,2 0 0,0 4,17H5V18C5,18.6 5.4,19 6,19H8C8.6,19 9,18.6 9,18V17H15V18C15,18.6 15.4,19 16,19H18C18.6,19 19,18.6 19,18V17H20A2,2 0 0,0 22,15V9A2,2 0 0,0 20,7M14,12H4V10H14V12M18,13A2,2 0 0,1 16,11A2,2 0 0,1 18,9A2,2 0 0,1 20,11A2,2 0 0,1 18,13M6,15H4V14H6V15M10,15H8V14H10V15M14,15H12V14H14V15Z";
 var mdiAudioVideoOff = "M22.1 21.5L2.4 1.7L1.1 3L5.1 7H4C2.9 7 2 7.9 2 9V15C2 16.1 2.9 17 4 17H5V18C5 18.6 5.4 19 6 19H8C8.6 19 9 18.6 9 18V17H15V18C15 18.6 15.4 19 16 19H17.1L20.8 22.7L22.1 21.5M6 15H4V14H6V15M4 12V10H8.1L10.1 12H4M10 15H8V14H10V15M12 15V14H12.1L13.1 15H12M14 10V10.8L20.2 17C21.2 16.9 22 16.1 22 15V9C22 7.9 21.1 7 20 7H10.2L13.2 10H14M18 9C19.1 9 20 9.9 20 11S19.1 13 18 13 16 12.1 16 11 16.9 9 18 9Z";
 var mdiBackspace = "M22,3H7C6.31,3 5.77,3.35 5.41,3.88L0,12L5.41,20.11C5.77,20.64 6.31,21 7,21H22A2,2 0 0,0 24,19V5A2,2 0 0,0 22,3M19,15.59L17.59,17L14,13.41L10.41,17L9,15.59L12.59,12L9,8.41L10.41,7L14,10.59L17.59,7L19,8.41L15.41,12";
@@ -8038,6 +8048,7 @@ var mdiFullscreenExit = "M14,14H19V16H16V19H14V14M5,14H10V19H8V16H5V14M8,5H10V10
 var mdiGamepad = "M16.5,9L13.5,12L16.5,15H22V9M9,16.5V22H15V16.5L12,13.5M7.5,9H2V15H7.5L10.5,12M15,7.5V2H9V7.5L12,10.5L15,7.5Z";
 var mdiGamepadRoundOutline = "M4,8H8V4A2,2 0 0,1 10,2H14A2,2 0 0,1 16,4V8H20A2,2 0 0,1 22,10V14A2,2 0 0,1 20,16H16V20A2,2 0 0,1 14,22H10A2,2 0 0,1 8,20V16H4A2,2 0 0,1 2,14V10A2,2 0 0,1 4,8M4,10V14H10V20H14V14H20V10H14V4H10V10H4Z";
 var mdiGamepadVariant = "M7,6H17A6,6 0 0,1 23,12A6,6 0 0,1 17,18C15.22,18 13.63,17.23 12.53,16H11.47C10.37,17.23 8.78,18 7,18A6,6 0 0,1 1,12A6,6 0 0,1 7,6M6,9V11H4V13H6V15H8V13H10V11H8V9H6M15.5,12A1.5,1.5 0 0,0 14,13.5A1.5,1.5 0 0,0 15.5,15A1.5,1.5 0 0,0 17,13.5A1.5,1.5 0 0,0 15.5,12M18.5,9A1.5,1.5 0 0,0 17,10.5A1.5,1.5 0 0,0 18.5,12A1.5,1.5 0 0,0 20,10.5A1.5,1.5 0 0,0 18.5,9Z";
+var mdiGamepadVariantOutline = "M6,9H8V11H10V13H8V15H6V13H4V11H6V9M18.5,9A1.5,1.5 0 0,1 20,10.5A1.5,1.5 0 0,1 18.5,12A1.5,1.5 0 0,1 17,10.5A1.5,1.5 0 0,1 18.5,9M15.5,12A1.5,1.5 0 0,1 17,13.5A1.5,1.5 0 0,1 15.5,15A1.5,1.5 0 0,1 14,13.5A1.5,1.5 0 0,1 15.5,12M17,5A7,7 0 0,1 24,12A7,7 0 0,1 17,19C15.04,19 13.27,18.2 12,16.9C10.73,18.2 8.96,19 7,19A7,7 0 0,1 0,12A7,7 0 0,1 7,5H17M7,7A5,5 0 0,0 2,12A5,5 0 0,0 7,17C8.64,17 10.09,16.21 11,15H13C13.91,16.21 15.36,17 17,17A5,5 0 0,0 22,12A5,5 0 0,0 17,7H7Z";
 var mdiGarage = "M19,20H17V11H7V20H5V9L12,5L19,9V20M8,12H16V14H8V12M8,15H16V17H8V15M16,18V20H8V18H16Z";
 var mdiGarageOpen = "M19,20H17V11H7V20H5V9L12,5L19,9V20M8,12H16V14H8V12Z";
 var mdiGestureDoubleTap = "M10,9A1,1 0 0,1 11,8A1,1 0 0,1 12,9V13.47L13.21,13.6L18.15,15.79C18.68,16.03 19,16.56 19,17.14V21.5C18.97,22.32 18.32,22.97 17.5,23H11C10.62,23 10.26,22.85 10,22.57L5.1,18.37L5.84,17.6C6.03,17.39 6.3,17.28 6.58,17.28H6.8L10,19V9M11,5A4,4 0 0,1 15,9C15,10.5 14.2,11.77 13,12.46V11.24C13.61,10.69 14,9.89 14,9A3,3 0 0,0 11,6A3,3 0 0,0 8,9C8,9.89 8.39,10.69 9,11.24V12.46C7.8,11.77 7,10.5 7,9A4,4 0 0,1 11,5M11,3A6,6 0 0,1 17,9C17,10.7 16.29,12.23 15.16,13.33L14.16,12.88C15.28,11.96 16,10.56 16,9A5,5 0 0,0 11,4A5,5 0 0,0 6,9C6,11.05 7.23,12.81 9,13.58V14.66C6.67,13.83 5,11.61 5,9A6,6 0 0,1 11,3Z";
@@ -8124,6 +8135,9 @@ var mdiPencil = "M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35
 var mdiPencilBoxOutline = "M19,19V5H5V19H19M19,3A2,2 0 0,1 21,5V19C21,20.11 20.1,21 19,21H5A2,2 0 0,1 3,19V5A2,2 0 0,1 5,3H19M16.7,9.35L15.7,10.35L13.65,8.3L14.65,7.3C14.86,7.08 15.21,7.08 15.42,7.3L16.7,8.58C16.92,8.79 16.92,9.14 16.7,9.35M7,14.94L13.06,8.88L15.12,10.94L9.06,17H7V14.94Z";
 var mdiPencilOutline = "M14.06,9L15,9.94L5.92,19H5V18.08L14.06,9M17.66,3C17.41,3 17.15,3.1 16.96,3.29L15.13,5.12L18.88,8.87L20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18.17,3.09 17.92,3 17.66,3M14.06,6.19L3,17.25V21H6.75L17.81,9.94L14.06,6.19Z";
 var mdiPictureInPictureBottomRight = "M19,11H11V17H19V11M23,19V5C23,3.88 22.1,3 21,3H3A2,2 0 0,0 1,5V19A2,2 0 0,0 3,21H21A2,2 0 0,0 23,19M21,19H3V4.97H21V19Z";
+var mdiPin = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
+var mdiPinOffOutline = "M8,6.2V4H7V2H17V4H16V12L18,14V16H17.8L14,12.2V4H10V8.2L8,6.2M20,20.7L18.7,22L12.8,16.1V22H11.2V16H6V14L8,12V11.3L2,5.3L3.3,4L20,20.7M8.8,14H10.6L9.7,13.1L8.8,14Z";
+var mdiPinOutline = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z";
 var mdiPlay = "M8,5.14V19.14L19,12.14L8,5.14Z";
 var mdiPlayCircle = "M10,16.5V7.5L16,12M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
 var mdiPlayCircleOutline = "M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M10,16.5L16,12L10,7.5V16.5Z";
@@ -8292,6 +8306,7 @@ var MDI_ICON_PATHS = {
   "arrow-u-left-top": mdiArrowULeftTop,
   "arrow-up": mdiArrowUp,
   "arrow-up-bold": mdiArrowUpBold,
+  "aspect-ratio": mdiAspectRatio,
   "audio-video": mdiAudioVideo,
   "audio-video-off": mdiAudioVideoOff,
   "backspace": mdiBackspace,
@@ -8386,6 +8401,7 @@ var MDI_ICON_PATHS = {
   "fullscreen-exit": mdiFullscreenExit,
   "gamepad": mdiGamepad,
   "gamepad-variant": mdiGamepadVariant,
+  "gamepad-variant-outline": mdiGamepadVariantOutline,
   "garage": mdiGarage,
   "garage-open": mdiGarageOpen,
   "gesture-double-tap": mdiGestureDoubleTap,
@@ -8464,6 +8480,9 @@ var MDI_ICON_PATHS = {
   "pause-circle": mdiPauseCircle,
   "pause-circle-outline": mdiPauseCircleOutline,
   "picture-in-picture-bottom-right": mdiPictureInPictureBottomRight,
+  "pin": mdiPin,
+  "pin-off-outline": mdiPinOffOutline,
+  "pin-outline": mdiPinOutline,
   "play": mdiPlay,
   "play-circle": mdiPlayCircle,
   "play-circle-outline": mdiPlayCircleOutline,
@@ -9160,13 +9179,13 @@ var REMOTE_CARD_STRINGS_AR = {
   sidebar: {
     title: "\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0627\u0641\u062A\u0631\u0627\u0636\u064A",
     controlPanel: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
-    hubMenu: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0645\u062D\u0648\u0631",
+    hubMenu: `\u0627\u062E\u062A\u064A\u0627\u0631 ${isolate("Hub")}`,
     back: "\u0631\u062C\u0648\u0639",
     hubReachable: "\u0645\u062A\u0635\u0644",
     hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
-    noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
-    hubUnavailable: "\u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D",
-    remoteUnavailable: "\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 \u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.",
+    noHubs: `\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A ${isolate("Hub")} \u0645\u0646 ${SOFABATON} \u0628\u0639\u062F.`,
+    hubUnavailable: `${isolate("Hub")} \u063A\u064A\u0631 \u0645\u062A\u0627\u062D`,
+    remoteUnavailable: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 ${isolate("Hub")} \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.`,
     controlPanelLoadFailed: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645. \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0635\u0641\u062D\u0629 \u0644\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u064B\u0627.",
     activities: "\u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     devices: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
@@ -9174,19 +9193,28 @@ var REMOTE_CARD_STRINGS_AR = {
     off: "\u0645\u0637\u0641\u0623",
     modeToggle: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0628\u064A\u0646 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     numberPad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
-    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     close: "\u0625\u063A\u0644\u0627\u0642",
+    pinToDock: (name) => `\u062A\u062B\u0628\u064A\u062A ${isolate(name)} \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    pinnedToDock: (name) => `${isolate(name)}\u060C \u0645\u062B\u0628\u0651\u062A \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    dockShortcut: "\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A",
+    dockSwap: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062C\u0627\u0646\u0628",
+    dockOnLeft: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0633\u0627\u0631",
+    dockOnRight: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0645\u064A\u0646",
+    unpin: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A",
+    dockFull: "\u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A \u0645\u0645\u062A\u0644\u0626",
+    dockIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
     starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
     poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
     appConnected: "\u062A\u0637\u0628\u064A\u0642 \u2068Sofabaton\u2069 \u0645\u062A\u0635\u0644",
     operations: {
       backup_restore: "\u062C\u0627\u0631\u064D \u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
-      cache_refresh: "\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 \u0627\u0644\u0645\u062D\u0648\u0631 \u0627\u0644\u0645\u0624\u0642\u062A\u0629",
-      entity_sync: "\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 \u0627\u0644\u0645\u062D\u0648\u0631",
+      cache_refresh: `\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 ${isolate("Hub")} \u0627\u0644\u0645\u0624\u0642\u062A\u0629`,
+      entity_sync: `\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 ${isolate("Hub")}`,
       backup_export: "\u062C\u0627\u0631\u064D \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
-      wifi_deploy: "\u062C\u0627\u0631\u064D \u0646\u0634\u0631 \u2068Wifi Commands\u2069"
+      wifi_deploy: `\u062C\u0627\u0631\u064D \u0645\u0632\u0627\u0645\u0646\u0629 ${isolate("Wifi Commands")}`
     }
   },
   assist: {
@@ -9367,6 +9395,9 @@ registerRemoteCardTranslation("en-gb", {
     favoritesTab: "Favourites",
     noFavorites: "No favourites available"
   },
+  sidebar: {
+    pullHandle: "Open favourites and macros"
+  },
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
@@ -9430,10 +9461,19 @@ var REMOTE_CARD_STRINGS_DE = {
     allOff: "Alles aus",
     off: "Aus",
     modeToggle: "Zwischen Aktivit\xE4ten und Ger\xE4ten wechseln",
-    numberPad: "Zifferntasten",
+    numberPad: "Ziffernblock",
     pullHandle: "Favoriten und Makros \xF6ffnen",
     pullHandleCommands: "Befehle \xF6ffnen",
     close: "Schlie\xDFen",
+    pinToDock: (name) => `${name} an das Dock anheften`,
+    pinnedToDock: (name) => `${name}, an das Dock angeheftet`,
+    dockShortcut: "Dock-Verkn\xFCpfung",
+    dockSwap: "Seite wechseln",
+    dockOnLeft: "Auf der linken Seite",
+    dockOnRight: "Auf der rechten Seite",
+    unpin: "L\xF6sen",
+    dockFull: "Das Dock ist voll",
+    dockIcon: "Symbol",
     starting: "Wird gestartet",
     poweringOff: "Wird ausgeschaltet",
     working: "Wird ausgef\xFChrt",
@@ -9443,7 +9483,7 @@ var REMOTE_CARD_STRINGS_DE = {
       cache_refresh: "Hub-Cache wird aktualisiert",
       entity_sync: "Wird mit dem Hub synchronisiert",
       backup_export: "Backup wird erstellt",
-      wifi_deploy: "Wifi Commands werden \xFCbertragen"
+      wifi_deploy: "Wifi Commands werden synchronisiert"
     }
   },
   assist: {
@@ -9671,16 +9711,25 @@ var REMOTE_CARD_STRINGS_ES = {
     pullHandle: "Abrir favoritos y macros",
     pullHandleCommands: "Abrir comandos",
     close: "Cerrar",
+    pinToDock: (name) => `Fijar ${name} en el dock`,
+    pinnedToDock: (name) => `${name}, fijado en el dock`,
+    dockShortcut: "Acceso directo del dock",
+    dockSwap: "Cambiar de lado",
+    dockOnLeft: "A la izquierda",
+    dockOnRight: "A la derecha",
+    unpin: "Dejar de fijar",
+    dockFull: "El dock est\xE1 lleno",
+    dockIcon: "Icono",
     starting: "Iniciando",
     poweringOff: "Apagando",
-    working: "Trabajando",
-    appConnected: "La app de Sofabaton est\xE1 conectada",
+    working: "Procesando",
+    appConnected: "La aplicaci\xF3n Sofabaton est\xE1 conectada",
     operations: {
-      backup_restore: "Restaurando la copia de seguridad",
+      backup_restore: "Restaurando copia de seguridad",
       cache_refresh: "Actualizando la cach\xE9 del hub",
       entity_sync: "Sincronizando con el hub",
-      backup_export: "Creando la copia de seguridad",
-      wifi_deploy: "Desplegando Wifi Commands"
+      backup_export: "Creando copia de seguridad",
+      wifi_deploy: "Sincronizando Wifi Commands"
     }
   },
   assist: {
@@ -9895,7 +9944,7 @@ var REMOTE_CARD_STRINGS_FR = {
     back: "Retour",
     hubReachable: "Joignable",
     hubUnreachable: "Injoignable",
-    noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
+    noHubs: "Aucun hub Sofabaton n\u2019est encore configur\xE9.",
     hubUnavailable: "Hub indisponible",
     remoteUnavailable: "La t\xE9l\xE9commande de ce hub est indisponible.",
     controlPanelLoadFailed: "Impossible de charger le panneau de contr\xF4le. Rechargez la page pour r\xE9essayer.",
@@ -9908,16 +9957,25 @@ var REMOTE_CARD_STRINGS_FR = {
     pullHandle: "Ouvrir les favoris et les macros",
     pullHandleCommands: "Ouvrir les commandes",
     close: "Fermer",
+    pinToDock: (name) => `\xC9pingler ${name} au dock`,
+    pinnedToDock: (name) => `${name}, \xE9pingl\xE9 au dock`,
+    dockShortcut: "Raccourci du dock",
+    dockSwap: "Changer de c\xF4t\xE9",
+    dockOnLeft: "\xC0 gauche",
+    dockOnRight: "\xC0 droite",
+    unpin: "D\xE9s\xE9pingler",
+    dockFull: "Le dock est plein",
+    dockIcon: "Ic\xF4ne",
     starting: "D\xE9marrage",
     poweringOff: "Extinction",
-    working: "En cours",
-    appConnected: "L'application Sofabaton est connect\xE9e",
+    working: "Traitement en cours",
+    appConnected: "L\u2019application Sofabaton est connect\xE9e",
     operations: {
       backup_restore: "Restauration de la sauvegarde",
       cache_refresh: "Actualisation du cache du hub",
       entity_sync: "Synchronisation avec le hub",
       backup_export: "Cr\xE9ation de la sauvegarde",
-      wifi_deploy: "D\xE9ploiement des Wifi Commands"
+      wifi_deploy: "Synchronisation de Wifi Commands"
     }
   },
   assist: {
@@ -10144,16 +10202,25 @@ var REMOTE_CARD_STRINGS_NL = {
     pullHandle: "Favorieten en macro's openen",
     pullHandleCommands: "Commando's openen",
     close: "Sluiten",
+    pinToDock: (name) => `${name} vastzetten in het dock`,
+    pinnedToDock: (name) => `${name}, vastgezet in het dock`,
+    dockShortcut: "Dock-snelkoppeling",
+    dockSwap: "Van kant wisselen",
+    dockOnLeft: "Aan de linkerkant",
+    dockOnRight: "Aan de rechterkant",
+    unpin: "Losmaken",
+    dockFull: "Het dock is vol",
+    dockIcon: "Pictogram",
     starting: "Wordt gestart",
     poweringOff: "Wordt uitgeschakeld",
     working: "Bezig",
     appConnected: "De Sofabaton-app is verbonden",
     operations: {
-      backup_restore: "Back-up wordt teruggezet",
-      cache_refresh: "Hub-cache wordt vernieuwd",
-      entity_sync: "Wordt gesynchroniseerd met de hub",
+      backup_restore: "Back-up wordt hersteld",
+      cache_refresh: "Hubcache wordt vernieuwd",
+      entity_sync: "Synchronisatie met hub wordt uitgevoerd",
       backup_export: "Back-up wordt gemaakt",
-      wifi_deploy: "Wifi Commands worden uitgerold"
+      wifi_deploy: "Wifi Commands worden gesynchroniseerd"
     }
   },
   assist: {
@@ -10380,16 +10447,25 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
     pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
     close: "\u5173\u95ED",
+    pinToDock: (name) => `\u5C06 ${name} \u56FA\u5B9A\u5230\u5E95\u680F`,
+    pinnedToDock: (name) => `${name}\uFF0C\u5DF2\u56FA\u5B9A\u5230\u5E95\u680F`,
+    dockShortcut: "\u5E95\u680F\u5FEB\u6377\u6309\u952E",
+    dockSwap: "\u5DE6\u53F3\u4E92\u6362",
+    dockOnLeft: "\u5728\u5DE6\u4FA7",
+    dockOnRight: "\u5728\u53F3\u4FA7",
+    unpin: "\u53D6\u6D88\u56FA\u5B9A",
+    dockFull: "\u5E95\u680F\u5DF2\u6EE1",
+    dockIcon: "\u56FE\u6807",
     starting: "\u6B63\u5728\u542F\u52A8",
     poweringOff: "\u6B63\u5728\u5173\u95ED",
-    working: "\u5904\u7406\u4E2D",
+    working: "\u6B63\u5728\u5904\u7406",
     appConnected: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
     operations: {
       backup_restore: "\u6B63\u5728\u6062\u590D\u5907\u4EFD",
       cache_refresh: "\u6B63\u5728\u5237\u65B0 Hub \u7F13\u5B58",
-      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230 Hub",
+      entity_sync: "\u6B63\u5728\u4E0E Hub \u540C\u6B65",
       backup_export: "\u6B63\u5728\u521B\u5EFA\u5907\u4EFD",
-      wifi_deploy: "\u6B63\u5728\u90E8\u7F72 Wifi Commands"
+      wifi_deploy: "\u6B63\u5728\u540C\u6B65 Wifi Commands"
     }
   },
   assist: {
@@ -12247,7 +12323,7 @@ function renderBottomDock(params) {
     tone = "dock--warn";
     center = status("Discard this stopped apply? Its record is forgotten; the hub is not changed.");
     actions = confirmActions;
-  } else if ((model.kind === "draft_stale" || model.kind === "dirty") && params.confirming === "draft") {
+  } else if (model.kind === "dirty" && params.confirming === "draft") {
     tone = "dock--warn";
     center = status("Discard your unsaved changes? The hub is not changed.");
     actions = confirmActions;
@@ -12257,12 +12333,6 @@ function renderBottomDock(params) {
     actions = b2`
       ${model.resumable ? b2`<button class="small primary dock-action" id="dock-resume" type="button" @click=${() => params.onResume(model.applyId)}>Resume</button>` : A}
       <button class="small dock-action" id="dock-discard" type="button" @click=${() => params.onDiscard(model.applyId)}>Discard</button>`;
-  } else if (model.kind === "draft_stale") {
-    tone = "dock--warn";
-    center = status(model.text);
-    actions = b2`
-      <button class="small primary dock-action" id="dock-keep-draft" type="button" @click=${params.onKeepDraft}>Keep editing</button>
-      <button class="small dock-action" id="dock-discard-draft" type="button" @click=${params.onDiscardDraft}>Discard</button>`;
   } else if (model.kind === "dirty") {
     tone = "dock--dirty";
     center = status(model.text);
@@ -12628,8 +12698,7 @@ function noticeForJob(job, at) {
   return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
 function draftFor(runtime) {
-  if (!runtime?.draft) return null;
-  return { draft: runtime.draft, check: runtime.draftCheck };
+  return runtime?.draft ?? null;
 }
 function hasDirtyDraft(runtime) {
   return Boolean(runtime?.draft);
@@ -12647,8 +12716,7 @@ function dockModel(snapshot, runtime, view = {}) {
   const stopped = runtime?.stoppedApplies[0];
   if (stopped) return { kind: "apply_stopped", applyId: stopped.apply_id, resumable: stopped.resumable, text: `${stopped.status === "cancelled" ? "An apply was cancelled partway" : "An apply stopped partway"}; ${stopped.resumable ? "resume or discard it" : "discard it"}` };
   const draft = draftFor(runtime);
-  if (draft?.check === "stale") return { kind: "draft_stale", scope: draft.draft.scope, text: "Unsaved changes from an older snapshot: the hub moved on" };
-  if (draft) return { kind: "dirty", scope: draft.draft.scope, text: draftBannerText(draft.draft.scope) };
+  if (draft) return { kind: "dirty", scope: draft.scope, text: draftBannerText(draft.scope) };
   if (view.unsavedBackup) return { kind: "unsaved_backup", text: "Unsaved changes \u2014 download the edited backup" };
   if (view.unsyncedWifi) return { kind: "unsynced_view", text: "Unsynced changes \u2014 sync to the hub to apply them" };
   if (view.unsavedLayout) return { kind: "unsynced_view", text: "Unsaved layout changes \u2014 Save keeps them" };
@@ -12684,6 +12752,8 @@ var PanelStream = class {
     this.messages = [];
     /** Hub ids the server should filter the stream to; applied on the next (re)connect. */
     this.hubFilter = [];
+    /** Ask for `hub_update` frames (the hub's whole view on every change); the panel's store does. */
+    this.hubUpdates = false;
     this.connected = false;
     /** True between start() and stop(): the stream should be up and reconnects. */
     this.wanted = false;
@@ -12702,6 +12772,7 @@ var PanelStream = class {
     const u6 = new URL(`${this._apiRoot}/events`);
     u6.protocol = u6.protocol === "https:" ? "wss:" : "ws:";
     for (const hub of this.hubFilter) u6.searchParams.append("hub_id", hub);
+    if (this.hubUpdates) u6.searchParams.set("hub_updates", "true");
     return u6.toString();
   }
   onMessage(listener) {
@@ -12783,6 +12854,8 @@ function summarizeMessage(data) {
       const suffix = progress ? ` ${progress.completed_steps ?? ""}/${progress.total_steps ?? ""}` : "";
       return `job_event ${m3.hub_id} ${m3.job?.kind} ${m3.job?.status}${suffix}`;
     }
+    case "hub_update":
+      return `hub_update ${m3.hub_id} seq=${m3.seq}${m3.hub?.active_job ? ` job=${m3.hub.active_job.kind}` : ""}${m3.hub?.cache ? ` gen=${m3.hub.cache.generation}` : ""}`;
     case "hello":
       return `hello v${m3.server_version} instance=${m3.instance_id} hubs=${(m3.hubs ?? []).map((h7) => h7.hub_id).join(",")}`;
     case "dropped":
@@ -12800,6 +12873,101 @@ function isHubRefreshTrigger(data) {
   }
   return false;
 }
+
+// server-panel/src/cache-follow.ts
+function isNewerVersion(a4, b3) {
+  if (!a4) return false;
+  if (!b3) return true;
+  if (a4.epoch !== b3.epoch) return a4.epoch > b3.epoch;
+  return a4.generation > b3.generation;
+}
+function loadedVersion(atStart, doc) {
+  return {
+    epoch: atStart?.epoch ?? null,
+    generation: typeof doc?.engine_generation === "number" ? doc.engine_generation : null,
+    snapshotId: doc?.snapshot_id ?? null
+  };
+}
+function versionAsLoaded(version) {
+  return version ? { epoch: version.epoch, generation: version.generation, snapshotId: version.snapshot_id } : null;
+}
+function needsReload(loaded, latest) {
+  if (!latest) return false;
+  if (!loaded || loaded.snapshotId === null) return true;
+  if (latest.snapshot_id === loaded.snapshotId) return false;
+  if (loaded.epoch === null || latest.epoch !== loaded.epoch) return loaded.epoch === null || latest.epoch > loaded.epoch;
+  return loaded.generation === null || latest.generation > loaded.generation;
+}
+var JOB_STATUS_RANK = { queued: 0, running: 1, done: 2, failed: 2, cancelled: 2 };
+function isLive(job) {
+  return Boolean(job && !TERMINAL_JOB_STATES.has(job.status));
+}
+function fresherJob(current, incoming) {
+  const rank = (job) => JOB_STATUS_RANK[job.status] ?? 0;
+  if (rank(current) !== rank(incoming)) return rank(current) > rank(incoming) ? current : incoming;
+  const steps = (job) => Number(job.progress?.completed_steps ?? -1);
+  return steps(current) > steps(incoming) ? current : incoming;
+}
+function reconcileHubView(current, incoming) {
+  if (!current || current.hub_id !== incoming.hub_id) return incoming;
+  let active = incoming.active_job ?? null;
+  let last = incoming.last_job ?? null;
+  const knownActive = isLive(current.active_job) ? current.active_job : null;
+  const knownLast = current.last_job && TERMINAL_JOB_STATES.has(current.last_job.status) ? current.last_job : null;
+  if (active && knownLast && knownLast.job_id === active.job_id) {
+    active = null;
+    if (!last || last.created_at < knownLast.created_at) last = knownLast;
+  }
+  if (knownActive) {
+    if (active && active.job_id === knownActive.job_id) {
+      active = fresherJob(knownActive, active);
+    } else if (active && active.created_at < knownActive.created_at) {
+      active = knownActive;
+    } else if (!active) {
+      const ended = last !== null && (last.job_id === knownActive.job_id || last.created_at > knownActive.created_at);
+      if (!ended) active = knownActive;
+    }
+  }
+  if (knownLast && (!last || last.job_id !== knownLast.job_id && last.created_at < knownLast.created_at)) last = knownLast;
+  let cache = incoming.cache ?? null;
+  if (cache && current.cache && isNewerVersion(current.cache, cache)) cache = current.cache;
+  if (active === (incoming.active_job ?? null) && last === (incoming.last_job ?? null) && cache === (incoming.cache ?? null)) return incoming;
+  return { ...incoming, active_job: active, last_job: last, cache };
+}
+var Coalescer = class {
+  constructor(fn, options) {
+    this._first = null;
+    this._timer = null;
+    this._fn = fn;
+    this._debounceMs = options.debounceMs;
+    this._maxWaitMs = options.maxWaitMs;
+    this._now = options.now ?? (() => Date.now());
+    this._setTimer = options.setTimer ?? ((run, ms) => setTimeout(run, ms));
+    this._clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
+  }
+  get pending() {
+    return this._timer !== null;
+  }
+  poke() {
+    const now = this._now();
+    if (this._first === null) this._first = now;
+    const delay = Math.max(0, Math.min(this._debounceMs, this._first + this._maxWaitMs - now));
+    if (this._timer !== null) this._clearTimer(this._timer);
+    this._timer = this._setTimer(() => {
+      this._timer = null;
+      this._first = null;
+      this._fn();
+    }, delay);
+  }
+  cancel() {
+    if (this._timer !== null) this._clearTimer(this._timer);
+    this._timer = null;
+    this._first = null;
+  }
+};
+var FOLLOW_DEBOUNCE_MS = 250;
+var FOLLOW_MAX_WAIT_MS = 1500;
+var FOLLOW_SETTLE_MS = 600;
 
 // server-panel/src/panel-store.ts
 var ACKS_KEY = "sofabaton-panel-acks";
@@ -12819,6 +12987,10 @@ var PanelStore = class {
     this._messageTimer = null;
     this._noticeTimers = /* @__PURE__ */ new Map();
     this._hubsKey = "";
+    /** The newest hub_update seq per hub on this connection; an older frame is dropped. */
+    this._updateSeq = /* @__PURE__ */ new Map();
+    /** hub_update frames arrive on this connection: the poll slows down. */
+    this._pushLive = false;
     this._api = options.api;
     this._stream = options.stream;
     this._storage = options.storage ?? null;
@@ -12827,6 +12999,7 @@ var PanelStore = class {
     this._clearTimer = options.clearTimer ?? ((handle) => clearTimeout(handle));
     this._isVisible = options.isVisible ?? (() => typeof document === "undefined" || document.visibilityState === "visible");
     this._tickMs = options.tickMs ?? 5e3;
+    this._pushTickMs = options.pushTickMs ?? 1e4;
     this._debounceMs = options.debounceMs ?? 300;
     this._noticeTtlMs = options.noticeTtlMs ?? 6e3;
     this._errorNoticeTtlMs = options.errorNoticeTtlMs ?? 8e3;
@@ -12878,6 +13051,7 @@ var PanelStore = class {
   connect() {
     if (this._connected) return;
     this._connected = true;
+    this._stream.hubUpdates = true;
     this._offStream = [
       this._stream.onState((connected) => this._onStreamState(connected)),
       this._stream.onMessage((message) => this._onStreamMessage(message))
@@ -12915,7 +13089,11 @@ var PanelStore = class {
         void this.refreshSeen();
       }
       this._scheduleTick();
-    }, this._tickMs);
+    }, this.pushLive ? this._pushTickMs : this._tickMs);
+  }
+  /** True while `hub_update` frames keep the hub records current. */
+  get pushLive() {
+    return this._pushLive && this._snapshot.stream.connected;
   }
   // -- selection, route, theme, message ----------------------------------------------------------
   selectHub(hubId) {
@@ -12928,10 +13106,7 @@ var PanelStore = class {
     }
     this._set(patch);
     this._savePrefs();
-    if (hubId) {
-      void this._loadApplies(hubId);
-      void this._checkDraft(hubId);
-    }
+    if (hubId) void this._loadApplies(hubId);
   }
   /** Go somewhere (decision 9). A hub route without a hub takes the selected one; a hub in it becomes the selection. */
   navigate(route, { replace = false } = {}) {
@@ -12980,10 +13155,7 @@ var PanelStore = class {
     const selectedBefore = this._snapshot.selectedHubId;
     await Promise.all([this._loadServer(), this.refreshHubs(), this.refreshSeen()]);
     const selected = this._snapshot.selectedHubId;
-    if (selected && selected === selectedBefore) {
-      await this._loadApplies(selected);
-      await this._checkDraft(selected);
-    }
+    if (selected && selected === selectedBefore) await this._loadApplies(selected);
   }
   /** Reload the hub list soon, coalescing bursts of triggers. */
   refreshSoon() {
@@ -13032,7 +13204,7 @@ var PanelStore = class {
     const draft = loadDraft(this._storage, fromId);
     if (draft && !loadDraft(this._storage, toId)) {
       saveDraft(this._storage, toId, draft);
-      this._patchRuntime(toId, { draft, draftCheck: draft.acceptedStale ? "kept" : "unchecked" });
+      this._patchRuntime(toId, { draft });
     }
     saveDraft(this._storage, fromId, null);
     if (fromId in this._acks) {
@@ -13081,9 +13253,9 @@ var PanelStore = class {
       this._hubsKey = key;
       const runtimes = hubs.map((hub) => {
         const old = previous.get(hub.hub_id);
-        if (old) return { ...old, hub };
+        if (old) return { ...old, hub: reconcileHubView(old.hub, hub) };
         const draft = loadDraft(this._storage, hub.hub_id);
-        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft, draftCheck: draft?.acceptedStale ? "kept" : "unchecked" };
+        return { hub, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft };
       });
       this._set({ hubs: runtimes, listLoaded: true });
       for (const hub of hubs) if (hub.last_job) this._noteFinished(hub.hub_id, hub.last_job, { onLoad: !previous.has(hub.hub_id) });
@@ -13104,6 +13276,8 @@ var PanelStore = class {
   }
   // -- the stream ------------------------------------------------------------------------------
   _onStreamState(connected) {
+    this._updateSeq.clear();
+    this._pushLive = false;
     this._set({ stream: { ...this._snapshot.stream, connected } });
     if (connected) void this.refreshAll();
     else if (this._connected && this._snapshot.server.reachable) void this.refreshHubs();
@@ -13122,6 +13296,11 @@ var PanelStore = class {
       }
       case "press":
         if (typeof data.hub_id === "string") this._onPress(data.hub_id, data);
+        return;
+      case "hub_update":
+        if (typeof data.hub_id === "string" && data.hub && typeof data.hub === "object") {
+          this._onHubUpdate(data.hub_id, typeof data.seq === "number" ? data.seq : 0, data.hub);
+        }
         return;
       case "dropped":
         void this.refreshAll();
@@ -13145,6 +13324,32 @@ var PanelStore = class {
       void this.refreshAll();
     }
     if (instanceId && instanceId !== previous) this._set({ server: { ...this._snapshot.server, instanceId } });
+  }
+  /** A pushed hub view: the hub's record follows it at once (locks, gates, the dock, the cache version). */
+  _onHubUpdate(hubId, seq, hub) {
+    const last = this._updateSeq.get(hubId);
+    if (last !== void 0 && seq <= last) return;
+    this._updateSeq.set(hubId, seq);
+    if (!this._pushLive) {
+      this._pushLive = true;
+      this._scheduleTick();
+    }
+    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
+    if (!runtime || hub.hub_id !== hubId) {
+      this.refreshSoon();
+      return;
+    }
+    const next = reconcileHubView(runtime.hub, hub);
+    if (JSON.stringify(next) === JSON.stringify(runtime.hub)) return;
+    this._hubsKey = "";
+    const previousLast = runtime.hub.last_job?.job_id ?? null;
+    const cancelRequestedJobId = runtime.cancelRequestedJobId && next.active_job?.job_id !== runtime.cancelRequestedJobId ? null : runtime.cancelRequestedJobId;
+    this._patchRuntime(hubId, { hub: next, cancelRequestedJobId });
+    const finished = next.last_job;
+    if (finished && finished.job_id !== previousLast) {
+      this._noteFinished(hubId, finished, { onLoad: false });
+      if (APPLY_JOB_KINDS.has(finished.kind)) void this._loadApplies(hubId);
+    }
   }
   /** A job frame mutates the hub's record directly; a terminal one reloads the hub afterwards. */
   _onJobEvent(hubId, job) {
@@ -13307,32 +13512,11 @@ var PanelStore = class {
   /** An editor's unsaved work: kept on the record and mirrored to storage. Null clears it. */
   setDraft(hubId, draft) {
     const full = draft ? { ...draft, updatedAt: this._now() } : null;
-    if (this._patchRuntime(hubId, { draft: full, draftCheck: full ? "fresh" : "unchecked" })) saveDraft(this._storage, hubId, full);
+    if (this._patchRuntime(hubId, { draft: full })) saveDraft(this._storage, hubId, full);
   }
   /** Drop the hub's draft, in memory and in storage. */
   discardDraft(hubId) {
     this.setDraft(hubId, null);
-  }
-  /** The stale prompt's "Keep editing": the draft stays, marked as accepted so a reload does not ask again. */
-  keepStaleDraft(hubId) {
-    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-    if (!runtime?.draft) return;
-    const draft = { ...runtime.draft, acceptedStale: true };
-    this._patchRuntime(hubId, { draft, draftCheck: "kept" });
-    saveDraft(this._storage, hubId, draft);
-  }
-  /** A restored draft is checked against the hub's current snapshot once: the same id is fresh, another is stale (the prompt). */
-  async _checkDraft(hubId) {
-    const runtime = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-    if (!runtime?.draft || runtime.draftCheck !== "unchecked") return;
-    try {
-      const response = await this._api.snapshot(hubId);
-      if (!response.ok || !response.body) return;
-      const current = this._snapshot.hubs.find((r6) => r6.hub.hub_id === hubId);
-      if (!current?.draft || current.draftCheck !== "unchecked") return;
-      this._patchRuntime(hubId, { draftCheck: response.body.snapshot_id === current.draft.snapshotId ? "fresh" : "stale" });
-    } catch {
-    }
   }
 };
 function loadAcks(storage) {
@@ -13368,8 +13552,8 @@ function loadDraft(storage, hubId) {
       scope: data.scope,
       snapshotId: data.snapshotId,
       data: data.data,
-      updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
-      ...data.acceptedStale ? { acceptedStale: true } : {}
+      ...data.base !== void 0 ? { base: data.base } : {},
+      updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0
     };
   } catch {
     return null;
@@ -13925,7 +14109,7 @@ var SofabatonServerPanel = class extends i4 {
     if (!this._dockConfirm) return;
     const runtime = selectedRuntime(this._snapshot);
     const kind = dockModel(this._snapshot, runtime, { unsavedBackup: this._backupDirty, unsyncedWifi: false }).kind;
-    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty" || kind === "draft_stale";
+    const matches = this._dockConfirm === "apply" ? kind === "apply_stopped" : kind === "dirty";
     if (!matches) this._dockConfirm = null;
   }
   render() {
@@ -14030,9 +14214,6 @@ var SofabatonServerPanel = class extends i4 {
       },
       onDiscard: () => {
         this._dockConfirm = "apply";
-      },
-      onKeepDraft: () => {
-        if (s7.selectedHubId) this.store.keepStaleDraft(s7.selectedHubId);
       },
       onDiscardDraft: () => {
         this._dockConfirm = "draft";
@@ -15250,8 +15431,8 @@ var TOOLS_CARD_STRINGS_EN = {
     hubCommandInProgress: "Hub command in progress\u2026"
   },
   sidebarPanel: {
-    // The sidebar entry and the panel header. A product name: the same in
-    // every language.
+    // The sidebar entry's name until someone renames it. A product name:
+    // the same in every language.
     title: "Sofabaton X"
   },
   adminOnly: {
@@ -15325,6 +15506,7 @@ var TOOLS_CARD_STRINGS_EN = {
     logsNoSocket: "Live logs are unavailable without a websocket connection",
     wifiPressNoSocket: "Wifi press events are unavailable without a websocket connection",
     hubEventsNoSocket: "Hub events are unavailable without a websocket connection",
+    hubStateNoSocket: "Live hub state is unavailable without a websocket connection",
     anotherOperation: "Another hub operation is already running.",
     hubNameInvalid: "The hub cannot store this name.",
     hubRenameFailed: "The hub did not accept the new name.",
@@ -15368,11 +15550,15 @@ var TOOLS_CARD_STRINGS_EN = {
     hubClickActionOptionSend: "Send the command",
     hubClickActionOptionCopy: "Copy the command",
     sidebarPanelTitle: "Sidebar Panel",
-    sidebarPanelDescription: "Add Sofabaton X to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.",
+    // The name is the panel's sidebar name (renameable while it is shown).
+    sidebarPanelDescription: (name) => `Add ${name} to the Home Assistant sidebar: a full-page remote for everyone or for administrators only, with a switch to this control panel for administrators.`,
     sidebarPanelFooter: "GLOBAL",
     sidebarPanelOptionOff: "Off",
     sidebarPanelOptionAll: "All users",
     sidebarPanelOptionAdmin: "Admins only",
+    renameSidebarPanel: "Rename sidebar panel",
+    sidebarPanelNameLabel: "Name in the sidebar",
+    sidebarPanelNameHelper: "The same for everyone who sees the panel, up to 30 characters. Leave it empty to use Sofabaton X.",
     renameHub: "Rename hub",
     hubNameLabel: "Hub name",
     hubNameHelper: "Use 1\u201330 characters: A\u2013Z, a\u2013z, 0\u20139, spaces or basic punctuation except backslash (\\). Other characters are removed.",
@@ -15406,7 +15592,6 @@ var TOOLS_CARD_STRINGS_EN = {
     buttons: "Buttons",
     noCachedData: "No cached data yet.",
     noCachedCommands: "No cached commands.",
-    staleBanner: "Cache was updated externally. Refresh to see latest data.",
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
@@ -15497,6 +15682,7 @@ var TOOLS_CARD_STRINGS_EN = {
     operationCacheRefresh: "Refreshing hub cache",
     operationEntitySync: "Syncing with hub",
     operationWifiDeploy: "Syncing Wifi Commands",
+    operationHubWrite: "Working on the hub",
     working: "Working\u2026",
     step: (current, total) => `Step ${current} of ${total}`,
     backupPreparing: "Preparing backup\u2026",
@@ -15573,6 +15759,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiStepActivityJoin: "Adding the device to an activity\u2026",
     wifiStepActivityLeave: "Removing the device from an activity\u2026",
     wifiStepHeadCommit: "Saving the device\u2026",
+    wifiStepCommandSortRewrite: "Updating the command order\u2026",
     wifiStepBindingWrite: "Assigning a button\u2026"
   },
   activities: {
@@ -15612,6 +15799,9 @@ var TOOLS_CARD_STRINGS_EN = {
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
+    // The cache moved under an open editor and an edit of the user's was
+    // also changed elsewhere: the user's version was kept.
+    changedElsewhere: (kind) => `This ${kind} was also changed elsewhere. Where you both changed something, your edit is kept.`,
     exitUnsyncedTitle: "Unsynced changes",
     exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
@@ -15842,7 +16032,7 @@ var TOOLS_CARD_STRINGS_EN = {
     macroTargetCreateNew: "Create new macro",
     macroTargetOwnGroup: "In this activity",
     macroTargetCopyGroup: "Copy from another activity",
-    macroTargetCopyNote: (steps, activity) => `Copied from ${activity} as it is, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
+    macroTargetCopyNote: (steps, activity) => `Will be copied unchanged from ${activity}, with ${steps === 1 ? "1 step" : `${steps} steps`}.`,
     bindingOneNewNote: "Only one new macro or Wifi Event can be created across this button\u2019s short-press and long-press assignments. Choose an existing macro or Wifi Event here.",
     macroTargetNoExisting: "No macros yet. Create one below.",
     wifiEventTargetLabel: "Wifi Event",
@@ -16105,9 +16295,10 @@ var TOOLS_CARD_STRINGS_EN = {
     powerBothCommand: "Power ON and OFF command",
     powerOnCommand: "Power ON command",
     powerOffCommand: "Power OFF command",
-    thisDevice: "this device",
     replacesOnButton: (slot) => `Replaces "${slot}" on this button`,
     replacesFromDevice: (slot, device) => `Replaces "${slot}" from ${device}`,
+    replacesOnButtonIn: (slot, activities) => `Replaces "${slot}" on this button in ${activities.join(", ")}`,
+    replacesFromDeviceIn: (slot, device, activities) => `Replaces "${slot}" from ${device} in ${activities.join(", ")}`,
     none: "None",
     commandSlotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.",
     syncingDeviceFallback: "Syncing Wifi Device\u2026",
@@ -18802,6 +18993,101 @@ function sanitizeEntityName(hubVersion, value) {
   return stripUnstorableNameChars(hubVersion, value).slice(0, ENTITY_NAME_MAX);
 }
 
+// custom_components/sofabaton_x1s/www/src/tabs/bundle-rebase.ts
+function isPlainObject4(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+function same(a4, b3) {
+  if (a4 === b3) return true;
+  if (a4 === void 0 || b3 === void 0) return false;
+  return JSON.stringify(a4) === JSON.stringify(b3);
+}
+function clone(value) {
+  return value === void 0 ? value : structuredClone(value);
+}
+function idKey(value) {
+  const id = Number(value);
+  return value != null && Number.isFinite(id) ? String(id) : null;
+}
+var LIST_ROW_KEYS = {
+  commands: (row) => idKey(row.command_id),
+  button_bindings: (row) => idKey(row.button_id),
+  macros: (row) => idKey(row.button_id),
+  favorite_slots: (row) => {
+    const device = idKey(row.device_id);
+    const command = idKey(row.command_id);
+    return device && command ? `${device}:${command}` : null;
+  }
+};
+var ENTITY_ROW_KEY = (row) => isPlainObject4(row.device) ? idKey(row.device.device_id) : null;
+function keyedRows(list, key) {
+  if (list === void 0 || list === null) return /* @__PURE__ */ new Map();
+  if (!Array.isArray(list)) return null;
+  const rows = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Map();
+  for (const row of list) {
+    if (!isPlainObject4(row)) return null;
+    const base = key(row);
+    if (base == null) return null;
+    const n7 = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n7);
+    rows.set(n7 === 1 ? base : `${base}#${n7}`, row);
+  }
+  return rows;
+}
+function mergeKeyedList(base, mine, theirs, key, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  const baseRows = keyedRows(base, key);
+  const mineRows = keyedRows(mine, key);
+  const theirRows = keyedRows(theirs, key);
+  if (!baseRows || !mineRows || !theirRows) return mergeWhole(base, mine, theirs, overlap);
+  const out = [];
+  for (const [rowKey, row] of mineRows) {
+    const merged = mergeValue(baseRows.get(rowKey), row, theirRows.get(rowKey), overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  for (const [rowKey, row] of theirRows) {
+    if (mineRows.has(rowKey)) continue;
+    const merged = mergeValue(baseRows.get(rowKey), void 0, row, overlap);
+    if (merged !== void 0) out.push(merged);
+  }
+  return out;
+}
+function mergeWhole(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  overlap.hit = true;
+  return mine;
+}
+function mergeValue(base, mine, theirs, overlap) {
+  if (same(mine, base)) return clone(theirs);
+  if (same(theirs, base) || same(mine, theirs)) return mine;
+  if (isPlainObject4(base) && isPlainObject4(mine) && isPlainObject4(theirs)) {
+    const out = {};
+    for (const key of /* @__PURE__ */ new Set([...Object.keys(theirs), ...Object.keys(mine)])) {
+      const rowKey = LIST_ROW_KEYS[key];
+      const value = rowKey ? mergeKeyedList(base[key], mine[key], theirs[key], rowKey, overlap) : mergeValue(base[key], mine[key], theirs[key], overlap);
+      if (value !== void 0) out[key] = value;
+    }
+    return out;
+  }
+  overlap.hit = true;
+  return mine;
+}
+function rebaseBundle(base, mine, theirs) {
+  const overlap = { hit: false };
+  const out = {};
+  const b3 = base;
+  const m3 = mine;
+  const t5 = theirs;
+  for (const key of /* @__PURE__ */ new Set([...Object.keys(t5), ...Object.keys(m3)])) {
+    const value = key === "devices" || key === "activities" ? mergeKeyedList(b3[key], m3[key], t5[key], ENTITY_ROW_KEY, overlap) : mergeValue(b3[key], m3[key], t5[key], overlap);
+    if (value !== void 0) out[key] = value;
+  }
+  return { bundle: out, overlap: overlap.hit };
+}
+
 // custom_components/sofabaton_x1s/www/src/shared/hub-rules.ts
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
@@ -18812,6 +19098,12 @@ function secondsToByte(value) {
   const seconds = parseFloat(String(value));
   if (!Number.isFinite(seconds) || seconds <= 0) return 0;
   return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+}
+function buttonTakeover(held, taking) {
+  const wanted = new Set(taking.map(String));
+  const shared = held.activities.filter((id) => wanted.has(String(id)));
+  if (!shared.length) return null;
+  return { shared, whole: held.favorite || shared.length === held.activities.length };
 }
 function hubSupportsPowerInput(hubVersion) {
   const version = String(hubVersion ?? "").toUpperCase();
@@ -18855,6 +19147,29 @@ function withDraftData(bundle, kind, entityId, data) {
   let next = withEntityElement(bundle, kind, entityId, data.element);
   for (const device of data.devices ?? []) next = withEntityElement(next, "device", idOf(device), device);
   return next;
+}
+function entityDraftBase(draft, kind, entityId) {
+  if (!draft || draft.base === void 0) return null;
+  return entityDraftData({ ...draft, data: draft.base }, kind, entityId);
+}
+function draftSlot(working, baseline, kind, entityId) {
+  const element = entityElement(working, kind, entityId);
+  const before = entityElement(baseline, kind, entityId);
+  if (!element || !before) return null;
+  const devices = kind === "activity" ? touchedDevices(working, baseline) : [];
+  const baseDevices = devices.map((device) => entityElement(baseline, "device", idOf(device))).filter((row) => row !== null);
+  return {
+    data: devices.length ? { element, devices } : { element },
+    base: baseDevices.length ? { element: before, devices: baseDevices } : { element: before }
+  };
+}
+function rebaseDraftOnto(fresh, kind, entityId, data, base) {
+  const mine = withDraftData(fresh, kind, entityId, data);
+  if (!base) {
+    const changed = JSON.stringify(entityElement(mine, kind, entityId)) !== JSON.stringify(entityElement(fresh, kind, entityId)) || (data.devices ?? []).some((device) => JSON.stringify(device) !== JSON.stringify(entityElement(fresh, "device", idOf(device))));
+    return { bundle: mine, overlap: changed };
+  }
+  return rebaseBundle(withDraftData(fresh, kind, entityId, base), mine, fresh);
 }
 
 // server-panel/src/views/device-editor-state.ts
@@ -18914,6 +19229,8 @@ var SbPanelBackup = class extends i4 {
     this._hubId = null;
     this._jobsSeq = 0;
     this._jobsKey = "";
+    /** The hub's snapshot id the Make list last followed; null before the first look. */
+    this._devicesCacheKey = null;
     /** The hub's gate when the device list was last read; anything but "pass" asks for another read once it passes. */
     this._devicesGate = null;
     this._expiryTimer = null;
@@ -19079,6 +19396,12 @@ var SbPanelBackup = class extends i4 {
         if (hubId && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
       }
       if (hubId && this.ctx?.gate === "pass" && this._devicesGate !== "pass") void this._loadDevices();
+      const cacheKey = hub?.cache?.snapshot_id ?? "";
+      if (cacheKey !== this._devicesCacheKey) {
+        const first = this._devicesCacheKey === null;
+        this._devicesCacheKey = cacheKey;
+        if (!first && hubId && cacheKey && this.ctx?.gate === "pass" && this._devicesGate === "pass") void this._loadDevices();
+      }
     }
     if (!this._editSessionTried && hubId && this.section === "edit" && !this._editBundle) {
       this._editSessionTried = true;
@@ -19100,6 +19423,7 @@ var SbPanelBackup = class extends i4 {
   _onHubChanged(previous) {
     this._jobs = [];
     this._jobsKey = "";
+    this._devicesCacheKey = null;
     this._shownBackupJobId = null;
     this._shownRestoreJobId = null;
     this._backupError = null;
@@ -19892,6 +20216,10 @@ var SbPanelCatalog = class extends i4 {
     this._loadedGate = null;
     this._loadSeq = 0;
     this._lastJobId = null;
+    /** The cache version the lists came from: a newer one reads them again (cache-follow.ts). */
+    this._loadedVersion = null;
+    /** Re-reads for a change made elsewhere, coalesced: a quarter second after the last, at most 1.5 s apart. */
+    this._follow = new Coalescer(() => this._followChange(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._pendingScroll = null;
     this._devices = [];
     this._activities = [];
@@ -19977,6 +20305,7 @@ var SbPanelCatalog = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._sorter.cancel();
+    this._follow.cancel();
   }
   willUpdate(changed) {
     if (changed.has("ctx")) this.hub = this.ctx?.hub ?? null;
@@ -20004,13 +20333,16 @@ var SbPanelCatalog = class extends i4 {
         this._add = null;
         this._refresh = null;
         this._sorter.cancel();
+        this._follow.cancel();
+        this._loadedVersion = null;
         if (id) void this._load();
       } else {
         const jobId = this.hub?.last_job?.job_id ?? null;
         if (jobId && jobId !== this._lastJobId) {
           this._lastJobId = jobId;
-          if (!this._refresh) void this._reloadAll();
+          this._follow.poke();
         }
+        if (needsReload(this._loadedVersion, this.hub?.cache)) this._follow.poke();
       }
     }
     if (changed.has("ctx") && this._loadedFor && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._refresh) void this._reloadAll();
@@ -20046,10 +20378,13 @@ var SbPanelCatalog = class extends i4 {
     if (!hubId) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    const versionAtStart = this.hub?.cache ?? null;
     this._loading = true;
     try {
       const [devices, activities, snapshot] = await Promise.all([this.api.devices(hubId), this.api.activities(hubId), this.api.snapshot(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
+      this._loadedVersion = loadedVersion(versionAtStart, snapshot.ok ? snapshot.body : null);
+      if (!snapshot.ok) this._loadedVersion = { ...this._loadedVersion, snapshotId: versionAtStart?.snapshot_id ?? null };
       const failed = [devices, activities].find((r6) => !r6.ok);
       if (failed) {
         this._notice = problemText(failed);
@@ -20068,12 +20403,19 @@ var SbPanelCatalog = class extends i4 {
       if (seq === this._loadSeq) this._loading = false;
     }
   }
-  /** The lists and every loaded drawer again (after a refresh, or a job that ended elsewhere). */
-  async _reloadAll() {
+  /** The lists and every loaded drawer again (after a refresh, or a change made elsewhere).
+   *  `keepOpen` leaves the open drawer's rows in place until the new ones arrive (no "Loading…" flash). */
+  async _reloadAll({ keepOpen = false } = {}) {
     await this._load();
     const open = this.openEntry;
-    this._details = {};
-    if (open) await this._loadDetail(open);
+    const openKey = open ? entryKey(open.kind, open.id) : null;
+    this._details = keepOpen && openKey && this._details[openKey] ? { [openKey]: this._details[openKey] } : {};
+    if (open) await this._loadDetail(open, { quiet: keepOpen });
+  }
+  /** A change made elsewhere: read the lists and the open drawer again, unless this view's own work is about to. */
+  _followChange() {
+    if (!this._loadedFor || this._refresh || this._reorder?.syncing || this._add?.busy) return;
+    void this._reloadAll({ keepOpen: true });
   }
   _toggle(entry) {
     const key = entryKey(entry.kind, entry.id);
@@ -20084,11 +20426,11 @@ var SbPanelCatalog = class extends i4 {
     this._pendingScroll = key;
     if (!this._details[key]) void this._loadDetail(entry);
   }
-  async _loadDetail(entry) {
+  async _loadDetail(entry, { quiet = false } = {}) {
     const hubId = this.hub?.hub_id;
     if (!hubId) return;
     const key = entryKey(entry.kind, entry.id);
-    this._detailLoading = key;
+    if (!quiet) this._detailLoading = key;
     this._detailNotice = null;
     let detail = null;
     try {
@@ -20521,6 +20863,9 @@ function defineCatalogView() {
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu.ts
 var OVERLAY_MENU_MAX_HEIGHT = 240;
+function isRtl(el) {
+  return getComputedStyle(el).direction === "rtl";
+}
 var viewportBox = () => ({
   left: 0,
   top: 0,
@@ -20559,20 +20904,20 @@ function overlayMenuPosition(anchor, align) {
   const spaceBelow2 = frame.bottom - rect.bottom;
   const openUp = spaceBelow2 < OVERLAY_MENU_MAX_HEIGHT + gap && rect.top - frame.top > spaceBelow2;
   const vertical = openUp ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;` : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
-  const horizontal = align === "right" ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
+  const horizontal = align === "end" !== Boolean(anchor.rtl) ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;` : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
 }
 function menuAnchorRect(event) {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
 }
 function anchoredListPosition(trigger, menu = null) {
   return anchoredListStyle(
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
@@ -20589,7 +20934,8 @@ function anchoredListStyle(anchor, bounds, inner, menu) {
   const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
-  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
+  const left = menu ? Math.min(Math.max(ideal, minX), maxX - width) : anchor.left;
   return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 function moveListFocus(event, optionSelector) {
@@ -20914,8 +21260,15 @@ var SbPanelEntityEditor = class extends i4 {
     this._deleting = false;
     this._deleteError = null;
     this._notice = null;
-    /** The kept draft last spliced in (CR-F5b-4): never reload for the same one twice. */
-    this._splicedDraft = null;
+    /** An edit of the user's was also changed elsewhere; the user's version was kept. */
+    this._changedElsewhere = false;
+    /** The cache version the snapshot came from (cache-follow.ts). */
+    this._loadedVersion = null;
+    this._following = false;
+    /** A job on the hub held this editor back; it follows once that work has settled. */
+    this._heldForWork = false;
+    this._settleTimer = null;
+    this._follow = new Coalescer(() => void this._followCache(), { debounceMs: FOLLOW_DEBOUNCE_MS, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._loadedKey = null;
     this._loadSeq = 0;
     /** The hub's gate when the last load started; anything but "pass" asks for another once it passes. */
@@ -20936,6 +21289,7 @@ var SbPanelEntityEditor = class extends i4 {
       const hubId = this._hub?.hub_id;
       if (hubId) this.store.discardDraft(hubId);
       if (this._baseline) this._working = structuredClone(this._baseline);
+      this._changedElsewhere = false;
       then?.();
     };
     this._syncAndLeave = () => {
@@ -20948,6 +21302,7 @@ var SbPanelEntityEditor = class extends i4 {
     this._retrySync = () => {
       this._stage = "editing";
       this._syncFailed = null;
+      if (!this._differs) return;
       void this._sync();
     };
     this._keepEditing = () => {
@@ -20979,6 +21334,11 @@ var SbPanelEntityEditor = class extends i4 {
     this._working = this.offlineBundle;
     this._stage = this.entityId != null && entityElement(this.offlineBundle, this.entityKind, this.entityId) ? "editing" : "missing";
   }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._follow.cancel();
+    this._clearSettle();
+  }
   updated(changed) {
     if (this._offline) return;
     const key = `${this.ctx?.hub?.hub_id ?? ""}:${this.entityId ?? ""}`;
@@ -20995,16 +21355,9 @@ var SbPanelEntityEditor = class extends i4 {
       void this._load();
     } else if (changed.has("ctx") && this._stage === "editing" && this._dirty && !this.ctx?.runtime?.draft) {
       this._working = this._baseline ? structuredClone(this._baseline) : null;
-    } else if (changed.has("ctx") && this._stage === "editing" && !this._dirty && this._keptDraftWaiting()) {
-      this._splicedDraft = this.ctx?.runtime?.draft ?? null;
-      void this._load();
+      this._changedElsewhere = false;
     }
-  }
-  /** A draft for this entity the user chose to keep past the stale prompt, not yet in the working copy. */
-  _keptDraftWaiting() {
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    return Boolean(draft && draft !== this._splicedDraft && runtime?.draftCheck === "kept" && this.entityId != null && draft.scope === entityDraftScope(this.entityKind, this.entityId));
+    if (changed.has("ctx")) this._maybeFollowCache();
   }
   _reset() {
     this._stage = "loading";
@@ -21018,6 +21371,11 @@ var SbPanelEntityEditor = class extends i4 {
     this._syncFailed = null;
     this._deleteError = null;
     this._notice = null;
+    this._changedElsewhere = false;
+    this._loadedVersion = null;
+    this._follow.cancel();
+    this._heldForWork = false;
+    this._clearSettle();
     this._resetView();
   }
   /** True while the element still shows the entity a job started on: the
@@ -21045,6 +21403,7 @@ var SbPanelEntityEditor = class extends i4 {
     if (!hubId || entityId == null) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
     let snapshot;
     let callback;
     try {
@@ -21067,6 +21426,7 @@ var SbPanelEntityEditor = class extends i4 {
       return;
     }
     this._snapshot = snapshot.body;
+    this._loadedVersion = loadedVersion(versionAtStart, snapshot.body);
     if (firmwareFloor(this._hub)) {
       this._stage = "guard_firmware";
       return;
@@ -21084,13 +21444,127 @@ var SbPanelEntityEditor = class extends i4 {
       return;
     }
     this._baseline = bundle;
-    const runtime = this.ctx?.runtime ?? null;
-    const draft = runtime?.draft ?? null;
-    const restorable = options.keepDraft !== false && draft && (draft.snapshotId === snapshot.body.snapshot_id || runtime?.draftCheck === "kept");
-    const data = restorable ? entityDraftData(draft, kind, entityId) : null;
-    this._working = data ? withDraftData(bundle, kind, entityId, data) : structuredClone(bundle);
     this._stage = "editing";
     this._syncFailed = null;
+    if (options.keepDraft === false) this._changedElsewhere = false;
+    const draft = options.keepDraft !== false ? this.ctx?.runtime?.draft ?? null : null;
+    const data = entityDraftData(draft, kind, entityId);
+    if (!draft || !data) {
+      this._working = structuredClone(bundle);
+      return;
+    }
+    if (draft.snapshotId === snapshot.body.snapshot_id) {
+      this._working = withDraftData(bundle, kind, entityId, data);
+      return;
+    }
+    const carried = rebaseDraftOnto(bundle, kind, entityId, data, entityDraftBase(draft, kind, entityId));
+    this._working = structuredClone(bundle);
+    if (carried.overlap) this._changedElsewhere = true;
+    this._commit(carried.bundle);
+  }
+  // -- following the cache ---------------------------------------------------------------------------
+  /** A newer cache version than the snapshot held: read it again soon (coalesced). Never mid sync, delete or reload: those end in their own read.
+   *  Nor while a job runs on the hub: the next hub update after its end (updated() re-checks on every one) brings the follow. */
+  _maybeFollowCache() {
+    if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => this._settled(), FOLLOW_SETTLE_MS);
+      return;
+    }
+    if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
+    this._follow.poke();
+  }
+  /** The held work has settled: follow once, straight onto the current version. */
+  _settled() {
+    this._settleTimer = null;
+    this._heldForWork = false;
+    if (this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) {
+      this._heldForWork = true;
+      return;
+    }
+    if (!needsReload(this._loadedVersion, this.ctx?.hub?.cache)) return;
+    this._follow.cancel();
+    void this._followCache();
+  }
+  _clearSettle() {
+    if (this._settleTimer !== null) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
+  }
+  async _followCache() {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._offline || this._following || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+    if (activeJob(this._hub)) return;
+    const key = this._loadedKey;
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
+    this._following = true;
+    let read = false;
+    try {
+      const response = await this.api.snapshot(hubId);
+      if (!this._stillOn(key) || this._stage !== "editing" || this._syncing || this._deleting || this._refreshing) return;
+      if (activeJob(this._hub)) return;
+      if (!response.ok || !response.body) return;
+      read = true;
+      const outcome = this._adoptSnapshot(response.body, versionAtStart);
+      if (outcome === "gone") {
+        if (!this._differs) {
+          this._goToList();
+        } else {
+          this.store.discardDraft(hubId);
+          this._notice = null;
+          this._stage = "missing";
+        }
+      }
+    } catch {
+    } finally {
+      this._following = false;
+      if (read && this._stillOn(key)) this._maybeFollowCache();
+    }
+  }
+  /**
+   * Make a fresh snapshot the baseline and carry the user's edits over to it.
+   * "same": nothing moved; "gone": the entity is not in it any more;
+   * "incomplete": its detail is being read again (the next version brings it);
+   * "rebased" / "clean": adopted, with or without edits left to sync.
+   */
+  _adoptSnapshot(doc, versionAtStart) {
+    const entityId = this.entityId;
+    if (entityId == null || !this._baseline || !this._working) return "same";
+    this._loadedVersion = loadedVersion(versionAtStart, doc);
+    if (this._snapshot && doc.snapshot_id === this._snapshot.snapshot_id) return "same";
+    const fresh = snapshotAsBundle(doc);
+    const element = entityElement(fresh, this.entityKind, entityId);
+    if (!element) return "gone";
+    if (element.complete === false) return "incomplete";
+    const dirty = this._differs;
+    this._snapshot = doc;
+    if (!dirty) {
+      this._baseline = fresh;
+      this._working = structuredClone(fresh);
+      return "clean";
+    }
+    const { bundle, overlap } = rebaseBundle(this._baseline, this._working, fresh);
+    this._baseline = fresh;
+    if (overlap) this._changedElsewhere = true;
+    this._commit(bundle);
+    return this._differs ? "rebased" : "clean";
+  }
+  /** Read the current snapshot and carry the edits over (a refused or failed sync); the outcome, or null when the read failed. */
+  async _rebaseOntoCurrent(hubId, key) {
+    const versionAtStart = this.ctx?.hub?.cache ?? null;
+    try {
+      const response = await this.api.snapshot(hubId);
+      if (!this._stillOn(key) || !response.ok || !response.body) return null;
+      return this._adoptSnapshot(response.body, versionAtStart);
+    } catch {
+      return null;
+    }
   }
   // -- the working copy ------------------------------------------------------------------------------------
   get _workingEntity() {
@@ -21107,6 +21581,11 @@ var SbPanelEntityEditor = class extends i4 {
   get _dirty() {
     if (this._offline) return this.offlineDirty;
     if (this._stage !== "editing") return false;
+    return this._differs;
+  }
+  /** The working copy holds edits the hub does not have, whatever the stage (a failed sync's included). */
+  get _differs() {
+    if (!this._working || !this._baseline) return false;
     return !elementsEqual(this._workingEntity, this._baselineEntity) || this._touchedDevices().length > 0;
   }
   /** The card's `_commitEditBundleEdit`: replace the working bundle, mirror the edit into the draft slot. */
@@ -21122,11 +21601,13 @@ var SbPanelEntityEditor = class extends i4 {
     this._working = next;
     const element = entityElement(next, this.entityKind, entityId);
     const devices = this._touchedDevices(next);
-    if (element && (!elementsEqual(element, this._baselineEntity) || devices.length)) {
+    const slot = element && (!elementsEqual(element, this._baselineEntity) || devices.length) ? draftSlot(next, this._baseline, this.entityKind, entityId) : null;
+    if (slot) {
       this.store.setDraft(hubId, {
         scope: entityDraftScope(this.entityKind, entityId),
         snapshotId: this._snapshot.snapshot_id,
-        data: devices.length ? { element, devices } : { element }
+        data: slot.data,
+        base: slot.base
       });
     } else {
       this.store.discardDraft(hubId);
@@ -21185,15 +21666,34 @@ var SbPanelEntityEditor = class extends i4 {
     this._syncing = true;
     this._syncFailed = null;
     this._deleteError = null;
+    this._changedElsewhere = false;
+    this._follow.cancel();
+    this._heldForWork = false;
+    this._clearSettle();
     try {
       if (!await this._beforeSync(hubId)) return false;
-      if (!this._stillOn(key)) return false;
-      const element = this._workingEntity;
-      const snapshot = this._snapshot;
-      if (!element || !snapshot) return false;
-      const failed = await this._followToEnd(hubId, await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id));
+      let failed = null;
+      for (let attempt = 0; ; attempt++) {
+        if (!this._stillOn(key)) return false;
+        const element = this._workingEntity;
+        const snapshot = this._snapshot;
+        if (!element || !snapshot) return false;
+        const started = await this._startSync(hubId, entityId, element, this._touchedDevices(), snapshot.snapshot_id);
+        if (started.status === 412 && attempt === 0 && this._stillOn(key)) {
+          const outcome = await this._rebaseOntoCurrent(hubId, key);
+          if (outcome === "rebased") continue;
+          if (outcome === "clean") break;
+          if (outcome === "gone") return this._failSync(false, this.frameStrings.missingBody);
+        }
+        failed = await this._followToEnd(hubId, started);
+        break;
+      }
       if (!this._stillOn(key)) return !failed;
-      if (failed) return this._failSync(failed.stale, failed.message);
+      if (failed) {
+        this._failSync(failed.stale, failed.message);
+        await this._rebaseOntoCurrent(hubId, key);
+        return false;
+      }
       this._exitConfirm = null;
       this.store.discardDraft(hubId);
       await this._load({ keepDraft: false });
@@ -21201,7 +21701,10 @@ var SbPanelEntityEditor = class extends i4 {
     } catch (err) {
       return this._stillOn(key) ? this._failSync(false, String(err)) : false;
     } finally {
-      if (this._stillOn(key)) this._syncing = false;
+      if (this._stillOn(key)) {
+        this._syncing = false;
+        this._maybeFollowCache();
+      }
     }
   }
   /** The dock's Sync button: the header's sync, or the retry while a failed sync is on screen. */
@@ -21228,7 +21731,10 @@ var SbPanelEntityEditor = class extends i4 {
     } finally {
       if (this._stillOn(key)) this._refreshing = false;
     }
-    if (this._stillOn(key)) await this._load({ keepDraft: false });
+    if (this._stillOn(key)) {
+      await this._load({ keepDraft: false });
+      if (this._stillOn(key)) this._maybeFollowCache();
+    }
   }
   // -- delete the entity (immediate, a job) ---------------------------------------------------------------------
   async _deleteEntity() {
@@ -21302,12 +21808,15 @@ var SbPanelEntityEditor = class extends i4 {
   _renderProgress(id, title, message) {
     return b2`<div class="tab-panel">${renderOperationProgress({ id, mode: "restore", title, message })}</div>`;
   }
-  /** The card's delete-error banner: a failed delete re-opens the editor with the reason on top. */
-  _renderDeleteErrorBanner() {
-    if (!this._deleteError) return A;
-    return b2`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon4(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => {
+  /** The lines over the editor: the card's delete-error banner (a failed delete
+   *  re-opens the editor with the reason on top) and the card's one line when
+   *  an edit of the user's was also changed elsewhere (no button). */
+  _renderEditorBanners() {
+    return b2`
+      ${this._deleteError ? b2`<div class="notice-banner notice-banner--error" id="editor-delete-error" role="alert">${icon4(mdiAlertCircleOutline)}<span>${this._deleteError}</span><button class="notice-banner-btn" type="button" @click=${() => {
       this._deleteError = null;
-    }}>Dismiss</button></div>`;
+    }}>Dismiss</button></div>` : A}
+      ${this._changedElsewhere && !this._offline ? b2`<div class="notice-banner notice-banner--info" id="editor-changed-elsewhere">${icon4(mdiInformationOutline)}<span>${TOOLS_CARD_STRINGS.activities.changedElsewhere(this.entityKind)}</span></div>` : A}`;
   }
   _renderGuard(iconPath, title, body, actions, id) {
     return b2`
@@ -21363,7 +21872,8 @@ SbPanelEntityEditor.properties = {
   _refreshing: { state: true },
   _deleting: { state: true },
   _deleteError: { state: true },
-  _notice: { state: true }
+  _notice: { state: true },
+  _changedElsewhere: { state: true }
 };
 
 // server-panel/src/views/activity-editor.ts
@@ -22259,7 +22769,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             </div>`
     })}
           <div class="detail-scroll">
-            ${this._renderDeleteErrorBanner()}
+            ${this._renderEditorBanners()}
             ${this._renderPowerSection(activityId)}
             ${this._renderRolesSection(activityId)}
             ${this._renderShortcutsSection()}
@@ -22343,7 +22853,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
             ${open ? b2`<button class="member-add-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${() => {
       this._roleMenu = null;
     }}></button>
-                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "right")}>
+                  <div class="member-add-menu role-menu" role="listbox" aria-label=${label} style=${overlayMenuPosition(this._roleMenu?.anchor ?? null, "end")}>
                     <button class="member-add-option" type="button" role="option" data-device="" aria-selected=${role.state === "unused" ? "true" : "false"} @click=${() => this._assignRole(role.group, null)}>${B2.roleNotUsed}</button>
                     ${devices.map((device) => {
       const mappable = roleMappableButtonCount(this._working, device.id, role.group);
@@ -23549,7 +24059,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                 </div>` : A}
           </div>
           <div class="detail-scroll">
-            ${this._renderDeleteErrorBanner()}
+            ${this._renderEditorBanners()}
             ${this._managedByHa ? b2`<div class="notice-banner" id="editor-managed-warning">${icon4(mdiWifiCog)}<span>${S5.managedWifiWarning}</span></div>` : A}
             ${callback ? b2`<div class="notice-banner notice-banner--info" id="editor-callback-note">${icon4(mdiInformationOutline)}<span>${this._isServerWifiDevice ? S5.serverWifiDeviceNote : S5.callbackDeviceNote}</span></div>` : A}
             ${this._renderPowerSection(deviceId)}
@@ -26830,24 +27340,38 @@ function slotHoldingButton(draft, button, index) {
 function slotHoldingInput(draft, activityId, index) {
   return activityId === null ? -1 : draft.slots.findIndex((slot, i8) => i8 !== index && slot.inputActivityId === activityId);
 }
-function otherDeviceHoldingButton(devices, key, button) {
-  if (button === null) return null;
+function slotAfterTakeover(slot, takeover) {
+  if (takeover.whole) return { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] };
+  return { ...slot, activities: slot.activities.filter((id) => !takeover.shared.includes(id)) };
+}
+function otherDevicesHoldingButton(devices, key, button, activities) {
+  if (button === null) return [];
+  const out = [];
   for (const device of devices) {
     if (device.key === key) continue;
-    const row = (device.spec.slots ?? []).find((slot) => Number(slot.button) === button);
-    if (row) return { device, slotLabel: row.label };
+    for (const slot of draftFromSpec(device.spec).slots) {
+      const takeover = slot.button === button ? buttonTakeover(slot, activities) : null;
+      if (takeover) out.push({ device, slotLabel: slot.label, ...takeover });
+    }
   }
-  return null;
+  return out;
 }
 function buttonCleanups(devices, key, draft) {
-  const taken = new Set(draft.slots.map((slot) => slot.button).filter((b3) => b3 !== null));
+  const taking = /* @__PURE__ */ new Map();
+  for (const slot of draft.slots) if (slot.button !== null) taking.set(slot.button, slot.activities);
   const out = [];
   for (const device of devices) {
     if (device.key === key || device.stale || device.device_id == null) continue;
     const theirs = draftFromSpec(device.spec);
-    if (!theirs.slots.some((slot) => slot.button !== null && taken.has(slot.button))) continue;
-    const cleared = { ...theirs, slots: theirs.slots.map((slot) => slot.button !== null && taken.has(slot.button) ? { ...slot, button: null, longPress: false, activities: slot.favorite ? slot.activities : [] } : slot) };
-    out.push({ device, spec: specFromDraft(cleared) });
+    let changed = false;
+    const slots = theirs.slots.map((slot) => {
+      const wanted = slot.button === null ? void 0 : taking.get(slot.button);
+      const takeover = wanted ? buttonTakeover(slot, wanted) : null;
+      if (!takeover) return slot;
+      changed = true;
+      return slotAfterTakeover(slot, takeover);
+    });
+    if (changed) out.push({ device, spec: specFromDraft({ ...theirs, slots }) });
   }
   return out;
 }
@@ -27035,6 +27559,12 @@ var SbPanelWifiDevices = class extends i4 {
     this._loadedGate = null;
     this._loadSeq = 0;
     this._lastJobId = null;
+    /** The hub's cache version when the lists were read: a newer one reads them again (cache-follow.ts). */
+    this._loadedVersion = null;
+    /** Re-reads for a change made elsewhere, 300 ms after the last (the card's Wifi Commands tab), at most 1.5 s apart; drafts stay. */
+    this._follow = new Coalescer(() => {
+      if (this._loadedFor && !this._working) void this._load();
+    }, { debounceMs: 300, maxWaitMs: FOLLOW_MAX_WAIT_MS });
     this._flashTimer = null;
     this._flashFor = null;
     this._reportedDirty = false;
@@ -27219,6 +27749,7 @@ var SbPanelWifiDevices = class extends i4 {
     super.disconnectedCallback();
     this._offStream?.();
     this._offStream = null;
+    this._follow.cancel();
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -27288,13 +27819,16 @@ var SbPanelWifiDevices = class extends i4 {
         this._create = this._delete = this._slotEdit = this._rename = null;
         this._powerPicker = null;
         this._confirmClear = null;
+        this._follow.cancel();
+        this._loadedVersion = null;
         if (hubId) void this._load();
       } else {
         const jobId = this.ctx?.hub?.last_job?.job_id ?? null;
         if (jobId && jobId !== this._lastJobId) {
           this._lastJobId = jobId;
-          if (!this._working) void this._load();
+          this._follow.poke();
         }
+        if (needsReload(this._loadedVersion, this.ctx?.hub?.cache)) this._follow.poke();
         if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
@@ -27327,6 +27861,7 @@ var SbPanelWifiDevices = class extends i4 {
     if (!hubId) return;
     const seq = ++this._loadSeq;
     this._loadedGate = this.ctx?.gate ?? null;
+    this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
       const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
@@ -27710,8 +28245,10 @@ var SbPanelWifiDevices = class extends i4 {
     const inputHolder = slotHoldingInput(draft, edit.inputActivityId, state.index);
     const inputHint = !hasActivities ? S7.noActivitiesForHub : inputHolder >= 0 ? S7.activityInputReplaces(draft.slots[inputHolder].label, this._activityName(edit.inputActivityId)) : S7.activityInputHint;
     const buttonHolder = slotHoldingButton(draft, edit.button, state.index);
-    const otherHolder = buttonHolder < 0 ? otherDeviceHoldingButton(this._devices, device.key, edit.button) : null;
-    const buttonHint = buttonHolder >= 0 ? S7.replacesOnButton(draft.slots[buttonHolder].label) : otherHolder ? S7.replacesFromDevice(otherHolder.slotLabel, otherHolder.device.spec.name) : "";
+    const buttonHints = [
+      ...buttonHolder >= 0 ? [S7.replacesOnButton(draft.slots[buttonHolder].label)] : [],
+      ...otherDevicesHoldingButton(this._devices, device.key, edit.button, edit.activities).map((holder) => holder.whole ? S7.replacesFromDevice(holder.slotLabel, holder.device.spec.name) : S7.replacesFromDeviceIn(holder.slotLabel, holder.device.spec.name, holder.shared.map((id) => this._activityName(id))))
+    ];
     const keyLabels = S7.keyLabels;
     const buttons = availableHardButtons(this._hubVersion).filter((button) => keyLabels[button.name]);
     return b2`
@@ -27757,7 +28294,7 @@ var SbPanelWifiDevices = class extends i4 {
                     ${buttons.map((button) => b2`<option value=${String(button.code)} ?selected=${edit.button === button.code}>${BUTTON_GROUP_TITLES[button.group]} - ${keyLabels[button.name]}</option>`)}
                   </select>
                 </label>
-                ${buttonHint ? b2`<div class="button-conflict-hint" id="wifi-slot-button-hint">${buttonHint}</div>` : A}
+                ${buttonHints.length ? b2`<div id="wifi-slot-button-hint">${buttonHints.map((hint) => b2`<div class="button-conflict-hint">${hint}</div>`)}</div>` : A}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
                   <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
                   <span class="checkbox-copy"><span>${S7.enableLongPress}</span></span>

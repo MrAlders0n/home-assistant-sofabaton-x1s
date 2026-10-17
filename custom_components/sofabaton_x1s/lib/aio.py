@@ -2578,37 +2578,50 @@ class AsyncXProxy:
         # erase empties every cache, which is exactly when a stray read
         # would reach the hub (see _holding_hub).
         async with self._holding_hub("a restore"):
-            if replace:
-                await self.erase()
-            async with self._refresh_lock:
-                result = await self._run_draining(
-                    self._proxy.restore_hub_bundle,
-                    bundle,
-                    progress_callback=self._engine_progress(progress),
+            # One remote sync for the whole restore, after the read-back and
+            # the hub name (issue #307): the engine batch records every
+            # trigger the rebuild asks for. Inside a caller's batch_writes
+            # the caller's batch does that and sends it at its own end.
+            own_batch = self._batch is None and not self._proxy.write_batch_open
+            if own_batch:
+                await self._run_draining(self._proxy.begin_write_batch)
+            try:
+                if replace:
+                    await self.erase()
+                async with self._refresh_lock:
+                    result = await self._run_draining(
+                        self._proxy.restore_hub_bundle,
+                        bundle,
+                        progress_callback=self._engine_progress(progress),
+                    )
+                # The rebuild writes and never reads: read back what it made (a
+                # stopped restore too, up to where it got), so the snapshot that
+                # follows shows the hub and not a row of unfetched entities.
+                restored = result if isinstance(result, dict) else {}
+                await self._reread_after_write(
+                    [row.get("device_id") or 0 for row in restored.get("restored_devices") or () if isinstance(row, dict)]
+                    + [int(i) for i in restored.get("partial_device_ids") or () if isinstance(i, int)],
+                    [row.get("activity_id") or 0 for row in restored.get("restored_activities") or () if isinstance(row, dict)],
+                    refresh_catalog=True,
+                    progress=progress,
                 )
-            # The rebuild writes and never reads: read back what it made (a
-            # stopped restore too, up to where it got), so the snapshot that
-            # follows shows the hub and not a row of unfetched entities.
-            restored = result if isinstance(result, dict) else {}
-            await self._reread_after_write(
-                [row.get("device_id") or 0 for row in restored.get("restored_devices") or () if isinstance(row, dict)]
-                + [int(i) for i in restored.get("partial_device_ids") or () if isinstance(i, int)],
-                [row.get("activity_id") or 0 for row in restored.get("restored_activities") or () if isinstance(row, dict)],
-                refresh_catalog=True,
-                progress=progress,
-            )
-            # A replacing restore rebuilds the hub from the bundle, its name
-            # included (as the HA integration does): the bundle's edited hub
-            # name must not be lost. A merge keeps the hub's own name.
-            hub_name = str((bundle.get("hub") or {}).get("name") or "").strip() if isinstance(bundle, dict) else ""
-            if replace and hub_name and restored.get("status") == "success":
-                try:
-                    await self.set_hub_name(hub_name)
-                    renamed = True
-                except (HubRejectedError, ValueError) as err:
-                    _LOG.warning("replacing restore finished, but restoring hub name %r failed: %s", hub_name, err)
-                    renamed = False
-                result = {**restored, "hub_name": hub_name, "hub_name_restored": renamed}
+                # A replacing restore rebuilds the hub from the bundle, its name
+                # included (as the HA integration does): the bundle's edited hub
+                # name must not be lost. A merge keeps the hub's own name.
+                hub_name = str((bundle.get("hub") or {}).get("name") or "").strip() if isinstance(bundle, dict) else ""
+                if replace and hub_name and restored.get("status") == "success":
+                    try:
+                        await self.set_hub_name(hub_name)
+                        renamed = True
+                    except (HubRejectedError, ValueError) as err:
+                        _LOG.warning("replacing restore finished, but restoring hub name %r failed: %s", hub_name, err)
+                        renamed = False
+                    result = {**restored, "hub_name": hub_name, "hub_name_restored": renamed}
+            finally:
+                if own_batch:
+                    summary = await self._run_draining(self._proxy.end_write_batch)
+                    if summary.get("remote_sync") == "failed":
+                        _LOG.warning("restore finished, but the remote-sync trigger was not sent")
         new_id = await self._rebase_after_write(None, force=True)
         return RestoreResult.from_engine(result, snapshot_id=new_id, erased=bool(replace))
 
@@ -2692,6 +2705,28 @@ class AsyncXProxy:
         if _announce:
             self._last_snapshot_id = snap.snapshot_id
         return snap
+
+    @property
+    def cache_generation(self) -> int:
+        """The cache generation: a counter that moves whenever the cache may
+        have changed (every hub read that ends, every cache clear and
+        import, every write this facade drove). Pure state read, no
+        executor. A change watcher compares it to learn when to look again
+        (:meth:`peek_snapshot`); it never goes back within one proxy, but
+        an imported state document carries its own.
+        """
+
+        return int(getattr(self._proxy.state, "generation", 0) or 0)
+
+    async def peek_snapshot(self) -> HubSnapshot:
+        """:meth:`snapshot` for an observer: the same projection, but it
+        does not count as handed out, so the next write still announces its
+        move with ``snapshot_changed``. Meant for a change watcher that
+        projects whenever :attr:`cache_generation` moves (the server's
+        cache version); clients that edit should use :meth:`snapshot`.
+        """
+
+        return await self.snapshot(_announce=False)
 
     def _project_snapshot(self) -> HubSnapshot:
         # Executor thread: pure state reads through the engine.
@@ -3316,6 +3351,7 @@ ENGINE_ONLY: dict[str, str] = {
             "record_hub_name",
             "record_idle_behavior_value",
             "record_idle_behavior_absent",
+            "record_written_key_sort",
             "forget_idle_behavior",
             "try_finish_activities_burst",
             "try_finish_activity_map_burst",

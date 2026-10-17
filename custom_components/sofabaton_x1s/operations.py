@@ -14,9 +14,10 @@ from uuid import uuid4
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 
-from .const import DOMAIN
+from .const import DOMAIN, signal_panel_state
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -36,6 +37,13 @@ class _BackupOperationRegistry:
         self._ops: dict[str, dict[str, Any]] = {}
 
     @callback
+    def _announce(self, entry_id: Any) -> None:
+        """Tell open control panels this hub's operations changed."""
+
+        if entry_id:
+            async_dispatcher_send(self.hass, signal_panel_state(str(entry_id)))
+
+    @callback
     def create(self, *, kind: str, entry_id: str, initial_state: dict[str, Any]) -> str:
         self._drop_completed_for_entry(entry_id, kind=kind)
         operation_id = uuid4().hex
@@ -52,6 +60,7 @@ class _BackupOperationRegistry:
             },
             "cleanup_unsub": None,
         }
+        self._announce(entry_id)
         return operation_id
 
     @callback
@@ -187,6 +196,7 @@ class _BackupOperationRegistry:
             except Exception:
                 pass
         self._ops.pop(operation_id, None)
+        self._announce(state.get("entry_id"))
         return True
 
     @callback
@@ -214,6 +224,7 @@ class _BackupOperationRegistry:
         if operation is None:
             return
         payload = dict(operation.get("state") or {})
+        self._announce(payload.get("entry_id") or operation.get("entry_id"))
         for callback_fn in list((operation.get("subscribers") or {}).values()):
             try:
                 callback_fn(payload)
@@ -247,6 +258,8 @@ class _BackupOperationRegistry:
                     op["state"] = state
                     self._notify(operation_id)
             self._ops.pop(operation_id, None)
+            if op is not None:
+                self._announce((op.get("state") or {}).get("entry_id"))
 
         operation["cleanup_unsub"] = async_call_later(self.hass, delay_seconds, _cleanup)
 

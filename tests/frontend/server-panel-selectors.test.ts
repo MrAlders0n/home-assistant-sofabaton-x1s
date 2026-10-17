@@ -70,7 +70,7 @@ function job(overrides: Partial<JobView> = {}): JobView {
 }
 
 function runtime(h: HubView = hub(), extra: Partial<HubRuntime> = {}): HubRuntime {
-  return { hub: h, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft: null, draftCheck: "unchecked", ...extra };
+  return { hub: h, localBusy: null, notice: null, stoppedApplies: [], cancelRequestedJobId: null, lastPress: null, draft: null, ...extra };
 }
 
 function snapshot(runtimes: HubRuntime[], extra: Partial<PanelSnapshot> = {}): PanelSnapshot {
@@ -220,13 +220,12 @@ test("dockModel precedence: running job, notice, stopped apply, gate, idle", () 
   assert.deepEqual(dockModel(s, noJob), { kind: "notice", notice });
   const noNotice = runtime(hub({ status: { mode: "observe" } }), { stoppedApplies: [stopped] });
   assert.deepEqual(dockModel(s, noNotice), { kind: "apply_stopped", applyId: "a1", resumable: true, text: "An apply stopped partway; resume or discard it" });
-  // A draft: stale asks, otherwise the dirty banner; both outrank a gate, a stopped apply outranks both.
+  // A draft: the dirty banner, whatever snapshot it came from (the editor carries
+  // an older one over, never a question); it outranks a gate, a stopped apply outranks it.
   const draft = { scope: "hub/devices", snapshotId: "old", data: { x: 1 }, updatedAt: 1 };
-  assert.deepEqual(dockModel(s, runtime(hub({ status: { mode: "observe" } }), { draft, draftCheck: "stale" })), { kind: "draft_stale", scope: "hub/devices", text: "Unsaved changes from an older snapshot: the hub moved on" });
-  assert.deepEqual(dockModel(s, runtime(hub({ status: { mode: "observe" } }), { draft, draftCheck: "fresh" })), { kind: "dirty", scope: "hub/devices", text: "Unsaved changes" });
-  assert.deepEqual(dockModel(s, runtime(hub(), { draft, draftCheck: "kept" })), { kind: "dirty", scope: "hub/devices", text: "Unsaved changes" });
-  assert.deepEqual(dockModel(s, runtime(hub(), { draft, draftCheck: "unchecked" })), { kind: "dirty", scope: "hub/devices", text: "Unsaved changes" });
-  assert.equal(dockModel(s, runtime(hub(), { draft, draftCheck: "stale", stoppedApplies: [stopped] })).kind, "apply_stopped");
+  assert.deepEqual(dockModel(s, runtime(hub({ status: { mode: "observe" } }), { draft })), { kind: "dirty", scope: "hub/devices", text: "Unsaved changes" });
+  assert.deepEqual(dockModel(s, runtime(hub(), { draft })), { kind: "dirty", scope: "hub/devices", text: "Unsaved changes" });
+  assert.equal(dockModel(s, runtime(hub(), { draft, stoppedApplies: [stopped] })).kind, "apply_stopped");
   assert.deepEqual(dockModel(s, runtime(hub({ status: { mode: "observe" } }))), { kind: "gate", gate: "app_holds_hub", text: "The Sofabaton app holds the hub" });
   assert.deepEqual(dockModel(s, runtime()), { kind: "idle" });
   assert.deepEqual(dockModel(s, null), { kind: "idle" });
@@ -252,7 +251,7 @@ test("the Backup tab's unsaved file takes the dock after a draft and before a ga
   const s = snapshot([idle]);
   assert.deepEqual(dockModel(s, idle), { kind: "idle" });
   assert.deepEqual(dockModel(s, idle, { unsavedBackup: true }), { kind: "unsaved_backup", text: "Unsaved changes — download the edited backup" });
-  const drafted = runtime(hub(), { draft: { scope: "hub/devices/4", snapshotId: "s1", data: {}, updatedAt: 1 }, draftCheck: "fresh" });
+  const drafted = runtime(hub(), { draft: { scope: "hub/devices/4", snapshotId: "s1", data: {}, updatedAt: 1 } });
   assert.equal(dockModel(snapshot([drafted]), drafted, { unsavedBackup: true }).kind, "dirty");
   const offline = runtime(hub({ status: { hub_connected: false, controllable: false, mode: "disconnected" } }));
   assert.equal(dockModel(snapshot([offline]), offline).kind, "gate");

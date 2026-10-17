@@ -40,12 +40,17 @@ import {
 import type { IrLearnHost, WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
+import { rebaseBundle } from "./bundle-rebase";
 
 // "list" is the idle stage: no capture running yet (waiting on guards) or the
 // session is winding down after an exit.
 type ActivitiesStage = "list" | "capturing" | "editing" | "syncing" | "sync_failed" | "needs_refresh" | "deleting";
 
 const S = TOOLS_CARD_STRINGS.activities;
+/** After the hub's work ends, its last rows land a moment later (the card
+ *  reloads the hub's rows at the end): an editor held during the work
+ *  waits this long for them, then follows once. */
+const FOLLOW_SETTLE_MS = 600;
 /** The reserved Wifi Events record's store key (command_config.py). */
 const WIFI_EVENTS_DEVICE_KEY = "haevents";
 
@@ -63,7 +68,9 @@ class SofabatonActivitiesTab extends LitElement {
     blockedMessage: { type: String },
     selectedHubProxyConnected: { type: Boolean },
     mqttAvailable: { type: Boolean },
+    cacheVersion: { type: String },
     _stage: { state: true },
+    _changedElsewhere: { state: true },
     _entityId: { state: true },
     _baseline: { state: true },
     _working: { state: true },
@@ -158,6 +165,8 @@ class SofabatonActivitiesTab extends LitElement {
     .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
+    .changed-elsewhere-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; white-space: normal; }
+    .changed-elsewhere-banner ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
     /* Exit-confirm and delete dialogs (§4.4). */
@@ -217,6 +226,9 @@ class SofabatonActivitiesTab extends LitElement {
   selectedHubProxyConnected = false;
   /** MQTT delivery can be offered for this hub (control-panel state). */
   mqttAvailable = false;
+  /** The version of the hub's cache rows the card holds
+   *  (loadedCacheVersionKey): when it moves, an open editor follows. */
+  cacheVersion = "";
 
   private _stage: ActivitiesStage = "list";
   private _entityId: number | null = null;
@@ -240,6 +252,14 @@ class SofabatonActivitiesTab extends LitElement {
   private _pendingTransport: "mqtt" | "http" | null = null;
   private _syncError: string | null = null;
   private _syncFailedAt: string | null = null;
+  /** The cacheVersion the baseline was captured at. */
+  private _capturedVersion = "";
+  private _rebasing = false;
+  /** Work on the hub held this editor back; it follows once it settles. */
+  private _heldForWork = false;
+  private _settleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** An edit of the user's was also changed elsewhere; theirs was kept. */
+  private _changedElsewhere = false;
 
   private _progressUnsub: (() => void) | null = null;
   private _exitAfterSync = false;
@@ -258,6 +278,7 @@ class SofabatonActivitiesTab extends LitElement {
   disconnectedCallback(): void {
     super.disconnectedCallback();
     this._teardownProgressSubscription();
+    this._clearSettle();
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -274,7 +295,116 @@ class SofabatonActivitiesTab extends LitElement {
       this._hubEntryId = nextEntryId;
     }
     this._maybeAutoOpen();
+    if (changed.has("cacheVersion") || changed.has("_stage") || changed.has("hub")) this._maybeFollowCache();
     this._notifyDirtyDock();
+  }
+
+  // ── Following the cache ─────────────────────────────────────────────
+  // The editor's baseline is the cache as captured. When the cache moves
+  // (another tab, a refresh, a write elsewhere) the editor follows it: a
+  // clean editor re-captures, a dirty one keeps the user's edits on top of
+  // the new capture (bundle-rebase.ts). Never mid sync, delete or capture:
+  // those end in their own re-capture. Nor while the hub works for someone
+  // else: the cache passes through partial states then (a command re-read
+  // clears the table before it refills), so the editor follows once, when
+  // the work has ended (the card reloads the hub's rows at that moment).
+
+  private _maybeFollowCache() {
+    if (this._stage !== "editing" || this._rebasing) return;
+    if (this.hub?.runtime_state?.kind === "operation_running") {
+      this._heldForWork = true;
+      this._clearSettle();
+      return;
+    }
+    if (this._heldForWork) {
+      // Restarted by every version that lands within the window.
+      this._clearSettle();
+      this._settleTimer = setTimeout(() => {
+        this._settleTimer = null;
+        this._heldForWork = false;
+        this._maybeFollowCache();
+      }, FOLLOW_SETTLE_MS);
+      return;
+    }
+    const version = String(this.cacheVersion || "");
+    if (!version || version === this._capturedVersion) return;
+    void this._followCache(version);
+  }
+
+  private _clearSettle() {
+    if (this._settleTimer) clearTimeout(this._settleTimer);
+    this._settleTimer = null;
+  }
+
+  private async _followCache(version: string) {
+    if (!this.hub || this._entityId == null) return;
+    const entityId = this._entityId;
+    this._rebasing = true;
+    try {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const fresh = res?.bundle ?? null;
+      // The editor moved on meanwhile (sync, close, another entity).
+      if (this._stage !== "editing" || this._entityId !== entityId) return;
+      this._capturedVersion = version;
+      if (!fresh) return;
+      if (!this._bundleHasEntity(fresh, entityId)) {
+        // Deleted elsewhere: nothing left to edit.
+        if (this._hasUnsynced()) this._stage = "needs_refresh";
+        else this._resetToList();
+        return;
+      }
+      await this._rebaseOnto(fresh);
+    } catch {
+      /* keep editing what we have; the next change tries again */
+    } finally {
+      this._rebasing = false;
+      // A newer version may have come in while this one was fetched.
+      this._maybeFollowCache();
+    }
+  }
+
+  private _bundleHasEntity(bundle: BackupBundlePayload, entityId: number): boolean {
+    const entries = (this.kind === "device" ? bundle.devices : bundle.activities) ?? [];
+    return entries.some((candidate) => Number(candidate.device?.device_id) === entityId);
+  }
+
+  /** Make `fresh` the baseline and carry the user's edits over to it. */
+  private async _rebaseOnto(fresh: BackupBundlePayload) {
+    if (!this._baseline || !this._working) return;
+    const eventsGrafted = this._eventsGrafted();
+    if (!this._dirty) {
+      this._baseline = fresh;
+      this._working = structuredClone(fresh);
+    } else {
+      const { bundle, overlap } = rebaseBundle(this._baseline, this._working, fresh);
+      this._baseline = fresh;
+      this._working = bundle;
+      if (overlap) this._changedElsewhere = true;
+    }
+    // The staged Wifi Events block is the editor's own, not the cache's.
+    if (eventsGrafted) await this._graftWifiEventsDevice({ forceRefresh: true });
+    this._recomputeDirty();
+  }
+
+  /** A sync that failed may still have landed part of its writes (the
+   *  backend reads the entity back into the cache before it reports the
+   *  failure). Rebase onto that, keeping the user's edits on top: a retry
+   *  then writes only what is still missing and passes its stale check,
+   *  and later edits see what landed. */
+  private async _rebaseAfterFailure() {
+    if (!this.hub || this._entityId == null) return;
+    const entityId = this._entityId;
+    const version = String(this.cacheVersion || "");
+    try {
+      const res = await this.api().getStructuralBundle(this.hub.entry_id);
+      const fresh = res?.bundle ?? null;
+      if (!fresh || this._stage !== "sync_failed" || this._entityId !== entityId) return;
+      if (!this._bundleHasEntity(fresh, entityId)) return;
+      await this._rebaseOnto(fresh);
+      this._capturedVersion = version;
+    } catch {
+      /* the failure screen still offers Reload from hub */
+    }
   }
 
   // Tell the host card whether this editor holds changes that only a sync
@@ -449,11 +579,7 @@ class SofabatonActivitiesTab extends LitElement {
    *  first-ever event, in the Sync flow's placeholder swap). */
   private async _graftWifiEventsDevice(options: { forceRefresh?: boolean } = {}): Promise<BackupBundlePayload | null> {
     if (!this.hub) return this._working;
-    const present = (this._working?.devices ?? []).some(
-      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? ""))
-        || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId,
-    );
-    if (present && !options.forceRefresh) return this._working;
+    if (this._eventsGrafted() && !options.forceRefresh) return this._working;
     const entityId = this._wifiEventsHubId();
     const state = entityId ? await this.api().listWifiEvents(entityId) : { events: [] };
     const blockId = state.device_id ?? this._placeholderDeviceId();
@@ -461,6 +587,15 @@ class SofabatonActivitiesTab extends LitElement {
     this._baseline = graftDeviceIntoBundle(this._baseline, entry as never);
     this._working = graftDeviceIntoBundle(this._working, entry as never);
     return this._working;
+  }
+
+  /** The working bundle carries the staged events block (or the deployed
+   *  events device). */
+  private _eventsGrafted(): boolean {
+    return (this._working?.devices ?? []).some(
+      (entry) => isWifiEventsBrand(String(entry?.device?.brand ?? ""))
+        || Number(entry?.device?.device_id ?? -1) === this._wifiEventsPlaceholderId,
+    );
   }
 
   private _wifiEventsFacade: WifiEventsHost = {
@@ -516,6 +651,13 @@ class SofabatonActivitiesTab extends LitElement {
       return refs.some((value) => value != null && eventDeviceIds.has(Number(value)));
     };
     if (!referencesEvents(this._working)) return true;
+    // The deployed events device the bundles were captured with (not the
+    // placeholder of a first-ever event).
+    const capturedEventsId = (this._baseline?.devices ?? [])
+      .map((entry) => entry?.device)
+      .filter((device) => isWifiEventsBrand(String(device?.brand ?? "")))
+      .map((device) => Number(device?.device_id ?? -1))
+      .find((id) => id > 0 && id !== placeholderId) ?? null;
 
     let state = await this.api().listWifiEvents(entityId);
     const hasPlaceholder = placeholderId != null && (this._working?.devices ?? []).some(
@@ -535,6 +677,15 @@ class SofabatonActivitiesTab extends LitElement {
       }
     }
     const realId = state.device_id;
+    // A replace deploy recreated the device under a new id (no deploy
+    // snapshot to update in place, e.g. after a backup restore; a transport
+    // switch) and moved every reference onto it, in every activity, in
+    // place. Follow it in both bundles first: the baseline must match the
+    // hub again, or this activity's stale preflight refuses the sync and the
+    // user's new shortcut is never written (Marcel's X1, 2026-10-14).
+    if (deployed && realId != null && capturedEventsId != null && realId !== capturedEventsId) {
+      await this._followWifiEventsDeviceReplace(capturedEventsId, realId);
+    }
     // The deploy may have retired the long records of the old layout and
     // moved every reference to one onto its event, in every activity.
     // Follow it in both bundles, or this activity's stale preflight and
@@ -561,6 +712,26 @@ class SofabatonActivitiesTab extends LitElement {
       this._wifiEventsPlaceholderId = null;
     }
     return true;
+  }
+
+  /** Follow a replace deploy of the Wifi Events device (old id -> new id)
+   *  in the baseline and the working bundle: the device block is swapped for
+   *  the deployed one and every activity's references move to the new id,
+   *  as the hub-side retarget did. The user's own edits stay as they are. */
+  private async _followWifiEventsDeviceReplace(oldId: number, newId: number) {
+    const res = await this.api().getStructuralBundle(this.hub!.entry_id);
+    const entry = (res?.bundle?.devices ?? []).find(
+      (candidate) => Number(candidate?.device?.device_id ?? -1) === newId,
+    );
+    for (const key of ["_baseline", "_working"] as const) {
+      let bundle = removeBundleDevice(this[key], oldId);
+      if (entry) bundle = graftDeviceIntoBundle(bundle, entry);
+      for (const activity of bundle?.activities ?? []) {
+        bundle = rewriteWifiEventPlaceholderRefs(bundle, Number(activity?.device?.device_id ?? -1), newId, oldId);
+      }
+      this[key] = bundle;
+    }
+    this._recomputeDirty();
   }
 
   /** Apply the hub-side long-record retirement to the baseline and the
@@ -614,8 +785,10 @@ class SofabatonActivitiesTab extends LitElement {
     this._entityId = entityId;
     this._wifiEventsPlaceholderId = null;
     this._captureError = null;
+    this._changedElsewhere = false;
     this._stage = "capturing";
     try {
+      this._capturedVersion = String(this.cacheVersion || "");
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
       const bundle = res?.bundle ?? null;
       const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
@@ -683,6 +856,7 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncProgress = null;
+    this._changedElsewhere = false;
     this._stage = "syncing";
     try {
       // W7 phase 1: deploy the Wifi Events record (and resolve placeholder
@@ -728,6 +902,7 @@ class SofabatonActivitiesTab extends LitElement {
       this._syncProgress = null;
       this._exitAfterSync = false;
       this._stage = "sync_failed";
+      void this._rebaseAfterFailure();
     }
   };
 
@@ -883,6 +1058,7 @@ class SofabatonActivitiesTab extends LitElement {
         this._syncProgress = null;
         this._exitAfterSync = false;
         this._stage = "sync_failed";
+        void this._rebaseAfterFailure();
         return;
       }
       this._syncProgress = payload;
@@ -909,6 +1085,7 @@ class SofabatonActivitiesTab extends LitElement {
     // folded that truth into the structural bundle. Promoting local state
     // would fail the next sync's stale preflight against the hub.
     let rebased: BackupBundlePayload | null = null;
+    this._capturedVersion = String(this.cacheVersion || "");
     try {
       const res = this.hub ? await this.api().getStructuralBundle(this.hub.entry_id) : null;
       const bundle = res?.bundle ?? null;
@@ -931,6 +1108,14 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   private _retrySync = () => {
+    if (!this._hasUnsynced()) {
+      // Everything landed after all (the rebase onto the hub found nothing
+      // left to write).
+      this._stage = "editing";
+      this._syncError = null;
+      this._syncFailedAt = null;
+      return;
+    }
     void this._requestSync();
   };
 
@@ -1002,6 +1187,10 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncError = null;
     this._syncFailedAt = null;
     this._exitAfterSync = false;
+    this._changedElsewhere = false;
+    this._capturedVersion = "";
+    this._heldForWork = false;
+    this._clearSettle();
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
     }
@@ -1139,6 +1328,9 @@ class SofabatonActivitiesTab extends LitElement {
     return html`
       <div class="editing-shell">
         ${this._deleteError ? this._renderDeleteErrorBanner() : nothing}
+        ${this._changedElsewhere
+          ? html`<div class="notice-banner changed-elsewhere-banner"><span class="notice-banner-text"><ha-icon icon="mdi:information-outline"></ha-icon> ${S.changedElsewhere(this.kind)}</span></div>`
+          : nothing}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
           .kind=${this.kind}

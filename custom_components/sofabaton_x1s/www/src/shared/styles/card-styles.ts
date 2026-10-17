@@ -358,8 +358,8 @@ export const cardStyles = [secondaryTabStyles, css`
   .chip-prefix { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: color-mix(in srgb, var(--primary-color) 62%, var(--secondary-text-color)); flex-shrink: 0; }
   .chip-name { font-size: 11px; font-weight: 700; flex: 1; min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip-arrow { --mdc-icon-size: 13px; color: var(--secondary-text-color); flex-shrink: 0; transform: rotate(180deg); }
-  .hub-picker-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
-  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .hub-picker-menu { position: absolute; top: calc(100% + 6px); inset-inline-end: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: start; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--sb-accent-text); }
@@ -376,7 +376,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
-  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); inset-inline-end: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
   .logs-console-wrap {
@@ -391,7 +391,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .logs-title-row { display: flex; align-items: center; gap: 10px; }
   .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
   .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-  .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
+  .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label { color: var(--secondary-text-color); }
   .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, #8fb3d9 16%, var(--divider-color)); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, #16202b 92%, black), color-mix(in srgb, #0f151d 96%, black)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), inset 0 0 0 1px rgba(120, 150, 190, 0.04); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
   .logs-empty.error, .cache-state.error { color: var(--error-color, #db4437); }
@@ -669,9 +669,6 @@ export const cardStyles = [secondaryTabStyles, css`
   .backend-unavailable-icon ha-icon { --mdc-icon-size: 40px; }
   .backend-unavailable-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
   .backend-unavailable-copy { font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); max-width: 320px; }
-  .stale-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent); }
-  .stale-banner-text { flex: 1; }
-  .stale-banner-btn { background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--primary-text-color); }
   .settings-hub-header { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 0; }
   .settings-content { flex-shrink: 0; display: flex; flex-direction: column; }
   .hub-compact-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: var(--ha-card-background, var(--card-background-color, #fff)); }
@@ -689,6 +686,9 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-compact-name { font-size: 15px; font-weight: 800; line-height: 1.2; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-rename-btn { width: 24px; height: 24px; border-radius: 8px; flex-shrink: 0; }
   .hub-rename-btn ha-icon { --mdc-icon-size: 15px; }
+  /* The rename pencil inside a setting's sentence, right behind the name
+     chip; the negative block margins keep the line as tall as the text. */
+  .setting-inline-rename-btn { vertical-align: middle; margin-block: -4px; margin-inline-start: 4px; }
   .hub-compact-meta { font-size: 11.5px; color: var(--secondary-text-color); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .hub-fw-chip { display: inline-flex; align-items: center; gap: 4px; margin-top: 2px; padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; vertical-align: middle; color: color-mix(in srgb, var(--warning-color, #f59e0b) 30%, var(--primary-text-color)); border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 40%, transparent); background: color-mix(in srgb, var(--warning-color, #f59e0b) 12%, transparent); }
   .hub-fw-chip ha-icon { --mdc-icon-size: 12px; display: inline-flex; }

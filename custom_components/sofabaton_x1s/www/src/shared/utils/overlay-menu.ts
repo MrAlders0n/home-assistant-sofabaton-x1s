@@ -15,10 +15,16 @@ export interface Box {
   height: number;
 }
 
-/** A menu trigger captured at click time: its rect and the box its fixed menu is laid out in. */
+/** A menu trigger captured at click time: its rect, the box its fixed menu is laid out in, and its writing direction. */
 export interface MenuAnchor {
   rect: Box;
   frame: Box;
+  rtl?: boolean;
+}
+
+/** True when `el` lays out right-to-left (an RTL Home Assistant language, inherited through the shadow roots). */
+export function isRtl(el: Element): boolean {
+  return getComputedStyle(el).direction === "rtl";
 }
 
 const viewportBox = (): Box => ({
@@ -73,8 +79,10 @@ export function fixedFrameBox(el: Element | null): Box {
  * the host tab closes any open menu on scroll so a fixed menu never drifts
  * away from its trigger. Flips above the anchor when the space below is too
  * tight. Coordinates are relative to the anchor's frame (fixedFrameBox).
+ * `align` names the trigger edge the menu lines up with, in the anchor's
+ * writing direction: "end" is the right edge, or the left one in RTL.
  */
-export function overlayMenuPosition(anchor: MenuAnchor | null, align: "left" | "right"): string {
+export function overlayMenuPosition(anchor: MenuAnchor | null, align: "start" | "end"): string {
   if (!anchor) return "";
   const { rect, frame } = anchor;
   const gap = 4;
@@ -83,7 +91,7 @@ export function overlayMenuPosition(anchor: MenuAnchor | null, align: "left" | "
   const vertical = openUp
     ? `bottom: ${Math.round(frame.bottom - rect.top + gap)}px; top: auto;`
     : `top: ${Math.round(rect.bottom - frame.top + gap)}px; bottom: auto;`;
-  const horizontal = align === "right"
+  const horizontal = (align === "end") !== Boolean(anchor.rtl)
     ? `right: ${Math.round(frame.right - rect.right)}px; left: auto;`
     : `left: ${Math.round(rect.left - frame.left)}px; right: auto;`;
   return `position: fixed; ${vertical} ${horizontal}`;
@@ -93,13 +101,14 @@ export function overlayMenuPosition(anchor: MenuAnchor | null, align: "left" | "
 export function menuAnchorRect(event: Event): MenuAnchor | null {
   const target = event.currentTarget;
   if (!(target instanceof HTMLElement)) return null;
-  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target) };
+  return { rect: target.getBoundingClientRect(), frame: fixedFrameBox(target), rtl: isRtl(target) };
 }
 
 export interface AnchoredMenuOptions {
-  /** A menu under a small button: at least this wide, right-aligned to the
-   *  trigger where that fits, and kept inside `within` (the card or view the
-   *  button sits in), so it never opens over whatever lies beside it. */
+  /** A menu under a small button: at least this wide, aligned to the
+   *  trigger's end edge (right, or left in RTL) where that fits, and kept
+   *  inside `within` (the card or view the button sits in), so it never
+   *  opens over whatever lies beside it. */
   minWidth: number;
   within?: HTMLElement | null;
 }
@@ -117,12 +126,12 @@ export function anchoredListPosition(trigger: HTMLElement, menu: AnchoredMenuOpt
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth } : null,
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null,
   );
 }
 
 /** The pure math behind anchoredListPosition: `anchor` and `inner` in the same coordinates as `bounds`. */
-export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, menu: { minWidth: number } | null): string {
+export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, menu: { minWidth: number; rtl?: boolean } | null): string {
   const room = inner ?? bounds;
   const gap = 4;
   const margin = 8;
@@ -139,7 +148,8 @@ export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, m
     ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;`
     : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
-  const left = menu ? Math.min(Math.max(anchor.right - width, minX), maxX - width) : anchor.left;
+  const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
+  const left = menu ? Math.min(Math.max(ideal, minX), maxX - width) : anchor.left;
   return `position: fixed; ${vertical} left: ${Math.round(left - bounds.left)}px; right: auto; width: ${Math.round(width)}px; max-height: ${Math.round(maxHeight)}px;`;
 }
 

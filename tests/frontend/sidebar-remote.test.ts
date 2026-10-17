@@ -9,7 +9,13 @@ import { sidebarHoldKind, SIDEBAR_REPEAT_KEYS } from "../../remote-card/src/side
 import { sidebarBusyState } from "../../remote-card/src/sidebar/sidebar-busy";
 import { resolveSidebarTheme } from "../../remote-card/src/sidebar/sidebar-remote-theme";
 import { entityForHub, pathForView, pickHub, viewForPath } from "../../remote-card/src/sidebar/sidebar-panel-element";
-import { REMOTE_CARD_STRINGS_EN } from "../../remote-card/src/remote-card-strings";
+import { REMOTE_CARD_STRINGS_EN, setRemoteCardLanguage, str } from "../../remote-card/src/remote-card-strings";
+import "../../remote-card/src/remote-card-translations/ar";
+import "../../remote-card/src/remote-card-translations/de";
+import "../../remote-card/src/remote-card-translations/es";
+import "../../remote-card/src/remote-card-translations/fr";
+import "../../remote-card/src/remote-card-translations/nl";
+import "../../remote-card/src/remote-card-translations/zh-hans";
 
 const STRINGS = {
   starting: "Starting",
@@ -126,6 +132,99 @@ test("strings: the sidebar section exists in English with every operation label"
     assert.ok(sidebar.operations[op], op);
   }
   assert.equal(sidebar.title, "Virtual Remote");
+});
+
+test("dock: pins fill left then right, a third finds both sides taken", async () => {
+  const { pinToFreeSlot, dockSlotOf, dockIsFull } = await import("../../remote-card/src/sidebar/sidebar-dock");
+  const a = { kind: "favorites" as const, commandId: 600, deviceId: 3 };
+  const b = { kind: "macros" as const, commandId: 501, deviceId: 101 };
+  const c = { kind: "favorites" as const, commandId: 601, deviceId: 3 };
+  const first = pinToFreeSlot({}, a)!;
+  assert.equal(first.slot, "left");
+  assert.deepEqual(first.slots.left, { ...a, icon: null });
+  const second = pinToFreeSlot(first.slots, b)!;
+  assert.equal(second.slot, "right");
+  assert.equal(dockIsFull(first.slots), false);
+  assert.equal(dockIsFull(second.slots), true);
+  assert.equal(pinToFreeSlot(second.slots, c), null);
+  assert.equal(dockSlotOf(second.slots, { ...b }), "right");
+  // Same command, other device: a different item.
+  assert.equal(dockSlotOf(second.slots, { ...a, deviceId: 4 }), null);
+  // A freed left side is the next one filled.
+  const { unpinDockSlot } = await import("../../remote-card/src/sidebar/sidebar-dock");
+  assert.equal(pinToFreeSlot(unpinDockSlot(second.slots, "left"), c)!.slot, "left");
+});
+
+test("dock: moving a shortcut to the other side swaps with what is there; icons stay with their pin", async () => {
+  const { moveDockSlot, setDockIcon } = await import("../../remote-card/src/sidebar/sidebar-dock");
+  const a = { kind: "favorites" as const, commandId: 1, deviceId: 1, icon: "mdi:netflix" };
+  const b = { kind: "commands" as const, commandId: 2, deviceId: 1, icon: null };
+  assert.deepEqual(moveDockSlot({ left: a }, "left", "right"), { right: a });
+  assert.deepEqual(moveDockSlot({ left: a, right: b }, "left", "right"), { left: b, right: a });
+  assert.deepEqual(moveDockSlot({ left: a }, "left", "left"), { left: a });
+  assert.deepEqual(setDockIcon({ left: a }, "left", "monogram").left?.icon, "monogram");
+  assert.deepEqual(setDockIcon({ left: a }, "right", "mdi:x"), { left: a });
+  // A cleared icon goes back to the automatic one.
+  assert.equal(setDockIcon({ left: a }, "left", null).left?.icon, null);
+});
+
+test("dock: one set per activity and per device; nothing without an activity or device", async () => {
+  const { dockScope } = await import("../../remote-card/src/sidebar/sidebar-dock");
+  assert.equal(dockScope("activity", 101, 1), "activity:101");
+  assert.equal(dockScope("device", 101, 1), "device:1");
+  assert.equal(dockScope("activity", null, 1), null);
+  assert.equal(dockScope("device", 101, null), null);
+});
+
+test("dock: the stored table keeps only well-formed pins and drops empty scopes", async () => {
+  const { parseDockTable, withDockSlots } = await import("../../remote-card/src/sidebar/sidebar-dock");
+  assert.deepEqual(parseDockTable(null), {});
+  assert.deepEqual(parseDockTable("not json"), {});
+  assert.deepEqual(parseDockTable("[1,2]"), {});
+  const table = parseDockTable(JSON.stringify({
+    "activity:101": {
+      left: { kind: "favorites", commandId: 600, deviceId: 3, icon: "mdi:netflix" },
+      right: { kind: "bogus", commandId: 1, deviceId: 1 },
+      middle: { kind: "macros", commandId: 1, deviceId: 1 },
+    },
+    "device:1": { left: { kind: "commands", commandId: "x", deviceId: 1 } },
+  }));
+  assert.deepEqual(table, { "activity:101": { left: { kind: "favorites", commandId: 600, deviceId: 3, icon: "mdi:netflix" } } });
+  assert.deepEqual(withDockSlots(table, "activity:101", {}), {});
+  assert.deepEqual(Object.keys(withDockSlots(table, "device:2", { right: { kind: "commands", commandId: 5, deviceId: 2, icon: null } })), ["activity:101", "device:2"]);
+});
+
+test("dock: the automatic icon is the item's own, else a guess from the name, else the initials", async () => {
+  const { dockIconFor, dockMonogram, guessDockIcon, DOCK_MONOGRAM } = await import("../../remote-card/src/sidebar/sidebar-dock");
+  const pin = { kind: "favorites" as const, commandId: 1, deviceId: 1, icon: null };
+  assert.equal(dockIconFor(pin, "Netflix", "mdi:star"), "mdi:star");
+  assert.equal(dockIconFor(pin, "Netflix", null), "mdi:netflix");
+  assert.equal(dockIconFor(pin, "Aspect ratio", null), "mdi:aspect-ratio");
+  assert.equal(dockIconFor(pin, "Grandma's corner", null), DOCK_MONOGRAM);
+  assert.equal(dockIconFor({ ...pin, icon: "mdi:fan" }, "Netflix", "mdi:star"), "mdi:fan");
+  // Specific before general: a movie night is a movie, a night mode is the night.
+  assert.equal(guessDockIcon("Movie night"), "mdi:movie-open-outline");
+  assert.equal(guessDockIcon("Night mode"), "mdi:weather-night");
+  assert.equal(guessDockIcon("Input HDMI 2"), "mdi:video-input-hdmi");
+  assert.equal(guessDockIcon("Mute all"), "mdi:volume-mute");
+  assert.equal(guessDockIcon("Vol +"), "mdi:volume-plus");
+  assert.equal(guessDockIcon("Sleep"), "mdi:sleep");
+  assert.equal(guessDockIcon("Disney+"), null);
+  assert.equal(dockMonogram("Disney+"), "D");
+  assert.equal(dockMonogram("Scene: Movie"), "SM");
+  assert.equal(dockMonogram("HDMI 1"), "H1");
+  assert.equal(dockMonogram("电视 开"), "电开");
+  assert.equal(dockMonogram(""), "");
+});
+
+test("strings: the dock pin names its item in every built-in language", () => {
+  for (const lang of ["en", "ar", "de", "es", "fr", "nl", "zh-Hans"]) {
+    setRemoteCardLanguage(lang);
+    assert.ok(str().sidebar.pinToDock("Netflix").includes("Netflix"), lang);
+    assert.ok(str().sidebar.pinnedToDock("Netflix").includes("Netflix"), lang);
+    assert.notEqual(str().sidebar.pinnedToDock("Netflix"), str().sidebar.pinToDock("Netflix"), lang);
+  }
+  setRemoteCardLanguage("en");
 });
 
 test("layout: the landscape split only when the portrait wheel would be too small", async () => {

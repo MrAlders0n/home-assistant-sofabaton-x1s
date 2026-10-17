@@ -11,6 +11,77 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+## 0.2.5 (2026-10-17)
+
+Changes since `sofabaton-x-v0.2.4`. Backward-compatible additions and
+fixes; applications can use `sofabaton-x>=0.2.5,<0.3`. This release is
+mostly about display order: restores, creates and shortcut edits now
+keep the order the user sees on the remote, and the X2 remote picks up
+reorders.
+
+### Added
+
+- `AsyncXProxy.cache_generation` (a pure state read of the cache
+  generation, which moves whenever the cache may have changed) and
+  `AsyncXProxy.peek_snapshot()`, the `snapshot()` projection for an
+  observer: it does not count as handed out, so the next write still
+  announces its move with `snapshot_changed`. Together they let a
+  consumer keep a cache version current (the server's `HubView.cache`)
+  without holding back the events other consumers rely on.
+
+### Fixed
+
+- X2: `reorder_devices()`, `reorder_activities()` and a Wifi Device deploy
+  without references send the X2's own remote-sync trigger. They sent the
+  X1/X1S trigger (`0x0064`), which was never seen to start a sync on the
+  X2. They now send the all-remotes broadcast that `resync_remote()`
+  already uses. X1 and X1S are unchanged.
+- `restore()` gives the restored devices and activities the backup's
+  display order. The hub numbers what a restore creates itself (an erased
+  X1 put everything in id order), so a backup in any other order came back
+  reordered. Existing devices and activities keep their order; restored
+  entities follow them in the backup's display order. On an empty hub,
+  this reproduces the backup's order. The restore writes each list's
+  order only when needed. `restore_hub_bundle()` reports what it did
+  under `display_order`.
+- `restore()` sends its one remote-sync trigger after everything it
+  writes, a replacing restore's hub name included. It went out after the
+  devices and activities, so the remotes started syncing while the
+  restore was still writing. `restore_hub_bundle()` holds its trigger in
+  the caller's write batch when one is open, and opens its own otherwise.
+- X1S and X2: adding a favorite keeps the activity's shortcut order and
+  puts the new favorite last. It rewrote the order as plain id order,
+  which undid a custom order and could drop shortcuts with a higher id.
+- `restore()` and `restore_activity()` put an activity's shortcuts
+  (favorites and macro shortcuts) back in the backup's order on every
+  hub; this was done on the X1 only. An activity with macro shortcuts and
+  no favorites gets its order written too.
+- New devices and activities go last in the display order:
+  `add_device()`, `add_activity()`, `deploy_wifi_device()` and a merging
+  `restore()` write the order after the create when the hub did not
+  already put them there. The X1S kept a created device unpositioned (or
+  tied with another one), and a later delete then shifted the whole list.
+- Updating a Wifi Device that removes commands also updates the device's
+  command display order, as editing any other device does.
+- X1: writes that rewrite an activity's shortcut order (`sync_activity()`,
+  Wifi Device deploys and updates, `restore()`) leave out ids that no
+  favorite or macro holds any more, and write a refused order once more
+  from a fresh read. The X1 keeps the order slot of a macro removed by its
+  key delete and refuses an order that lists that id again (status
+  `0x06`): a `sync_activity()` that removed a macro and then a favorite
+  failed although both had landed, and every later order write failed the
+  same way.
+- `add_device()` reads the new device's idle behavior, so the cache and
+  `snapshot()` have it without a device refresh.
+- A committed device or activity catalog forgets what the cache held for
+  every id it no longer lists, and a create forgets what the cache held for
+  the id the hub hands out. The hub reuses freed ids: an activity the hub
+  removed on its own (its last member deleted) kept its cached shortcut
+  order, and the next activity created with that id showed it.
+- `sync_device()` adding or removing commands keeps the device's cached
+  command display order in step with the order it wrote. It wrote a new
+  order to the hub but kept the one it had read before.
+
 ## 0.2.4 (2026-10-10)
 
 Changes since `sofabaton-x-v0.2.3`. Backward-compatible additions and

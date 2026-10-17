@@ -976,6 +976,15 @@ var REMOTE_CARD_STRINGS_EN = {
     pullHandle: "Open favorites and macros",
     pullHandleCommands: "Open commands",
     close: "Close",
+    pinToDock: (name) => `Pin ${name} to the dock`,
+    pinnedToDock: (name) => `${name}, pinned to the dock`,
+    dockShortcut: "Dock shortcut",
+    dockSwap: "Swap sides",
+    dockOnLeft: "On the left",
+    dockOnRight: "On the right",
+    unpin: "Unpin",
+    dockFull: "The dock is full",
+    dockIcon: "Icon",
     starting: "Starting",
     poweringOff: "Powering off",
     working: "Working",
@@ -983,9 +992,9 @@ var REMOTE_CARD_STRINGS_EN = {
     operations: {
       backup_restore: "Restoring backup",
       cache_refresh: "Refreshing hub cache",
-      entity_sync: "Syncing to hub",
+      entity_sync: "Syncing with hub",
       backup_export: "Creating backup",
-      wifi_deploy: "Deploying Wifi commands"
+      wifi_deploy: "Syncing Wifi Commands"
     }
   },
   assist: {
@@ -3010,7 +3019,7 @@ var REMOTE_CARD_EDITOR_CSS = `
 
 // remote-card/src/remote-card-shared.ts
 var CARD_NAME = "Sofabaton Virtual Remote";
-var CARD_VERSION = "0.2.7";
+var CARD_VERSION = "0.2.8";
 var KEY_CAPTURE_HELP_URL = "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 var LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 var AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -9803,13 +9812,13 @@ var REMOTE_CARD_STRINGS_AR = {
   sidebar: {
     title: "\u062C\u0647\u0627\u0632 \u062A\u062D\u0643\u0645 \u0627\u0641\u062A\u0631\u0627\u0636\u064A",
     controlPanel: "\u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645",
-    hubMenu: "\u0627\u062E\u062A\u064A\u0627\u0631 \u0645\u062D\u0648\u0631",
+    hubMenu: `\u0627\u062E\u062A\u064A\u0627\u0631 ${isolate("Hub")}`,
     back: "\u0631\u062C\u0648\u0639",
     hubReachable: "\u0645\u062A\u0635\u0644",
     hubUnreachable: "\u063A\u064A\u0631 \u0645\u062A\u0635\u0644",
-    noHubs: "\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0645\u062D\u0648\u0631 \u2068Sofabaton\u2069 \u0628\u0639\u062F.",
-    hubUnavailable: "\u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D",
-    remoteUnavailable: "\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 \u0627\u0644\u0645\u062D\u0648\u0631 \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.",
+    noHubs: `\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A ${isolate("Hub")} \u0645\u0646 ${SOFABATON} \u0628\u0639\u062F.`,
+    hubUnavailable: `${isolate("Hub")} \u063A\u064A\u0631 \u0645\u062A\u0627\u062D`,
+    remoteUnavailable: `\u062C\u0647\u0627\u0632 \u0627\u0644\u062A\u062D\u0643\u0645 \u0639\u0646 \u0628\u064F\u0639\u062F \u0627\u0644\u062E\u0627\u0635 \u0628\u0647\u0630\u0627 ${isolate("Hub")} \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.`,
     controlPanelLoadFailed: "\u062A\u0639\u0630\u0651\u0631 \u062A\u062D\u0645\u064A\u0644 \u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645. \u0623\u0639\u062F \u062A\u062D\u0645\u064A\u0644 \u0627\u0644\u0635\u0641\u062D\u0629 \u0644\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u0645\u062C\u062F\u062F\u064B\u0627.",
     activities: "\u0627\u0644\u0623\u0646\u0634\u0637\u0629",
     devices: "\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
@@ -9817,19 +9826,28 @@ var REMOTE_CARD_STRINGS_AR = {
     off: "\u0645\u0637\u0641\u0623",
     modeToggle: "\u0627\u0644\u062A\u0628\u062F\u064A\u0644 \u0628\u064A\u0646 \u0627\u0644\u0623\u0646\u0634\u0637\u0629 \u0648\u0627\u0644\u0623\u062C\u0647\u0632\u0629",
     numberPad: "\u0644\u0648\u062D\u0629 \u0627\u0644\u0623\u0631\u0642\u0627\u0645",
-    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0629 \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
+    pullHandle: "\u0641\u062A\u062D \u0627\u0644\u0645\u0641\u0636\u0644\u0627\u062A \u0648\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0645\u0627\u0643\u0631\u0648",
     pullHandleCommands: "\u0641\u062A\u062D \u0627\u0644\u0623\u0648\u0627\u0645\u0631",
     close: "\u0625\u063A\u0644\u0627\u0642",
+    pinToDock: (name) => `\u062A\u062B\u0628\u064A\u062A ${isolate(name)} \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    pinnedToDock: (name) => `${isolate(name)}\u060C \u0645\u062B\u0628\u0651\u062A \u0641\u064A \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A`,
+    dockShortcut: "\u0627\u062E\u062A\u0635\u0627\u0631 \u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A",
+    dockSwap: "\u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062C\u0627\u0646\u0628",
+    dockOnLeft: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0633\u0627\u0631",
+    dockOnRight: "\u0639\u0644\u0649 \u0627\u0644\u064A\u0645\u064A\u0646",
+    unpin: "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A",
+    dockFull: "\u0627\u0644\u0634\u0631\u064A\u0637 \u0627\u0644\u0633\u0641\u0644\u064A \u0645\u0645\u062A\u0644\u0626",
+    dockIcon: "\u0627\u0644\u0623\u064A\u0642\u0648\u0646\u0629",
     starting: "\u062C\u0627\u0631\u064D \u0627\u0644\u0628\u062F\u0621",
     poweringOff: "\u062C\u0627\u0631\u064D \u0627\u0644\u0625\u064A\u0642\u0627\u0641",
     working: "\u062C\u0627\u0631\u064D \u0627\u0644\u0639\u0645\u0644",
     appConnected: "\u062A\u0637\u0628\u064A\u0642 \u2068Sofabaton\u2069 \u0645\u062A\u0635\u0644",
     operations: {
       backup_restore: "\u062C\u0627\u0631\u064D \u0627\u0633\u062A\u0639\u0627\u062F\u0629 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
-      cache_refresh: "\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 \u0627\u0644\u0645\u062D\u0648\u0631 \u0627\u0644\u0645\u0624\u0642\u062A\u0629",
-      entity_sync: "\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 \u0627\u0644\u0645\u062D\u0648\u0631",
+      cache_refresh: `\u062C\u0627\u0631\u064D \u062A\u062D\u062F\u064A\u062B \u0630\u0627\u0643\u0631\u0629 ${isolate("Hub")} \u0627\u0644\u0645\u0624\u0642\u062A\u0629`,
+      entity_sync: `\u062C\u0627\u0631\u064D \u0627\u0644\u0645\u0632\u0627\u0645\u0646\u0629 \u0645\u0639 ${isolate("Hub")}`,
       backup_export: "\u062C\u0627\u0631\u064D \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0646\u0633\u062E\u0629 \u0627\u0644\u0627\u062D\u062A\u064A\u0627\u0637\u064A\u0629",
-      wifi_deploy: "\u062C\u0627\u0631\u064D \u0646\u0634\u0631 \u2068Wifi Commands\u2069"
+      wifi_deploy: `\u062C\u0627\u0631\u064D \u0645\u0632\u0627\u0645\u0646\u0629 ${isolate("Wifi Commands")}`
     }
   },
   assist: {
@@ -10010,6 +10028,9 @@ registerRemoteCardTranslation("en-gb", {
     favoritesTab: "Favourites",
     noFavorites: "No favourites available"
   },
+  sidebar: {
+    pullHandle: "Open favourites and macros"
+  },
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
@@ -10073,10 +10094,19 @@ var REMOTE_CARD_STRINGS_DE = {
     allOff: "Alles aus",
     off: "Aus",
     modeToggle: "Zwischen Aktivit\xE4ten und Ger\xE4ten wechseln",
-    numberPad: "Zifferntasten",
+    numberPad: "Ziffernblock",
     pullHandle: "Favoriten und Makros \xF6ffnen",
     pullHandleCommands: "Befehle \xF6ffnen",
     close: "Schlie\xDFen",
+    pinToDock: (name) => `${name} an das Dock anheften`,
+    pinnedToDock: (name) => `${name}, an das Dock angeheftet`,
+    dockShortcut: "Dock-Verkn\xFCpfung",
+    dockSwap: "Seite wechseln",
+    dockOnLeft: "Auf der linken Seite",
+    dockOnRight: "Auf der rechten Seite",
+    unpin: "L\xF6sen",
+    dockFull: "Das Dock ist voll",
+    dockIcon: "Symbol",
     starting: "Wird gestartet",
     poweringOff: "Wird ausgeschaltet",
     working: "Wird ausgef\xFChrt",
@@ -10086,7 +10116,7 @@ var REMOTE_CARD_STRINGS_DE = {
       cache_refresh: "Hub-Cache wird aktualisiert",
       entity_sync: "Wird mit dem Hub synchronisiert",
       backup_export: "Backup wird erstellt",
-      wifi_deploy: "Wifi Commands werden \xFCbertragen"
+      wifi_deploy: "Wifi Commands werden synchronisiert"
     }
   },
   assist: {
@@ -10314,16 +10344,25 @@ var REMOTE_CARD_STRINGS_ES = {
     pullHandle: "Abrir favoritos y macros",
     pullHandleCommands: "Abrir comandos",
     close: "Cerrar",
+    pinToDock: (name) => `Fijar ${name} en el dock`,
+    pinnedToDock: (name) => `${name}, fijado en el dock`,
+    dockShortcut: "Acceso directo del dock",
+    dockSwap: "Cambiar de lado",
+    dockOnLeft: "A la izquierda",
+    dockOnRight: "A la derecha",
+    unpin: "Dejar de fijar",
+    dockFull: "El dock est\xE1 lleno",
+    dockIcon: "Icono",
     starting: "Iniciando",
     poweringOff: "Apagando",
-    working: "Trabajando",
-    appConnected: "La app de Sofabaton est\xE1 conectada",
+    working: "Procesando",
+    appConnected: "La aplicaci\xF3n Sofabaton est\xE1 conectada",
     operations: {
-      backup_restore: "Restaurando la copia de seguridad",
+      backup_restore: "Restaurando copia de seguridad",
       cache_refresh: "Actualizando la cach\xE9 del hub",
       entity_sync: "Sincronizando con el hub",
-      backup_export: "Creando la copia de seguridad",
-      wifi_deploy: "Desplegando Wifi Commands"
+      backup_export: "Creando copia de seguridad",
+      wifi_deploy: "Sincronizando Wifi Commands"
     }
   },
   assist: {
@@ -10538,7 +10577,7 @@ var REMOTE_CARD_STRINGS_FR = {
     back: "Retour",
     hubReachable: "Joignable",
     hubUnreachable: "Injoignable",
-    noHubs: "Aucun hub Sofabaton n'est encore configur\xE9.",
+    noHubs: "Aucun hub Sofabaton n\u2019est encore configur\xE9.",
     hubUnavailable: "Hub indisponible",
     remoteUnavailable: "La t\xE9l\xE9commande de ce hub est indisponible.",
     controlPanelLoadFailed: "Impossible de charger le panneau de contr\xF4le. Rechargez la page pour r\xE9essayer.",
@@ -10551,16 +10590,25 @@ var REMOTE_CARD_STRINGS_FR = {
     pullHandle: "Ouvrir les favoris et les macros",
     pullHandleCommands: "Ouvrir les commandes",
     close: "Fermer",
+    pinToDock: (name) => `\xC9pingler ${name} au dock`,
+    pinnedToDock: (name) => `${name}, \xE9pingl\xE9 au dock`,
+    dockShortcut: "Raccourci du dock",
+    dockSwap: "Changer de c\xF4t\xE9",
+    dockOnLeft: "\xC0 gauche",
+    dockOnRight: "\xC0 droite",
+    unpin: "D\xE9s\xE9pingler",
+    dockFull: "Le dock est plein",
+    dockIcon: "Ic\xF4ne",
     starting: "D\xE9marrage",
     poweringOff: "Extinction",
-    working: "En cours",
-    appConnected: "L'application Sofabaton est connect\xE9e",
+    working: "Traitement en cours",
+    appConnected: "L\u2019application Sofabaton est connect\xE9e",
     operations: {
       backup_restore: "Restauration de la sauvegarde",
       cache_refresh: "Actualisation du cache du hub",
       entity_sync: "Synchronisation avec le hub",
       backup_export: "Cr\xE9ation de la sauvegarde",
-      wifi_deploy: "D\xE9ploiement des Wifi Commands"
+      wifi_deploy: "Synchronisation de Wifi Commands"
     }
   },
   assist: {
@@ -10787,16 +10835,25 @@ var REMOTE_CARD_STRINGS_NL = {
     pullHandle: "Favorieten en macro's openen",
     pullHandleCommands: "Commando's openen",
     close: "Sluiten",
+    pinToDock: (name) => `${name} vastzetten in het dock`,
+    pinnedToDock: (name) => `${name}, vastgezet in het dock`,
+    dockShortcut: "Dock-snelkoppeling",
+    dockSwap: "Van kant wisselen",
+    dockOnLeft: "Aan de linkerkant",
+    dockOnRight: "Aan de rechterkant",
+    unpin: "Losmaken",
+    dockFull: "Het dock is vol",
+    dockIcon: "Pictogram",
     starting: "Wordt gestart",
     poweringOff: "Wordt uitgeschakeld",
     working: "Bezig",
     appConnected: "De Sofabaton-app is verbonden",
     operations: {
-      backup_restore: "Back-up wordt teruggezet",
-      cache_refresh: "Hub-cache wordt vernieuwd",
-      entity_sync: "Wordt gesynchroniseerd met de hub",
+      backup_restore: "Back-up wordt hersteld",
+      cache_refresh: "Hubcache wordt vernieuwd",
+      entity_sync: "Synchronisatie met hub wordt uitgevoerd",
       backup_export: "Back-up wordt gemaakt",
-      wifi_deploy: "Wifi Commands worden uitgerold"
+      wifi_deploy: "Wifi Commands worden gesynchroniseerd"
     }
   },
   assist: {
@@ -11023,16 +11080,25 @@ var REMOTE_CARD_STRINGS_ZH_HANS = {
     pullHandle: "\u6253\u5F00\u6536\u85CF\u548C\u5B8F",
     pullHandleCommands: "\u6253\u5F00\u547D\u4EE4",
     close: "\u5173\u95ED",
+    pinToDock: (name) => `\u5C06 ${name} \u56FA\u5B9A\u5230\u5E95\u680F`,
+    pinnedToDock: (name) => `${name}\uFF0C\u5DF2\u56FA\u5B9A\u5230\u5E95\u680F`,
+    dockShortcut: "\u5E95\u680F\u5FEB\u6377\u6309\u952E",
+    dockSwap: "\u5DE6\u53F3\u4E92\u6362",
+    dockOnLeft: "\u5728\u5DE6\u4FA7",
+    dockOnRight: "\u5728\u53F3\u4FA7",
+    unpin: "\u53D6\u6D88\u56FA\u5B9A",
+    dockFull: "\u5E95\u680F\u5DF2\u6EE1",
+    dockIcon: "\u56FE\u6807",
     starting: "\u6B63\u5728\u542F\u52A8",
     poweringOff: "\u6B63\u5728\u5173\u95ED",
-    working: "\u5904\u7406\u4E2D",
+    working: "\u6B63\u5728\u5904\u7406",
     appConnected: "Sofabaton \u5E94\u7528\u5DF2\u8FDE\u63A5",
     operations: {
       backup_restore: "\u6B63\u5728\u6062\u590D\u5907\u4EFD",
       cache_refresh: "\u6B63\u5728\u5237\u65B0 Hub \u7F13\u5B58",
-      entity_sync: "\u6B63\u5728\u540C\u6B65\u5230 Hub",
+      entity_sync: "\u6B63\u5728\u4E0E Hub \u540C\u6B65",
       backup_export: "\u6B63\u5728\u521B\u5EFA\u5907\u4EFD",
-      wifi_deploy: "\u6B63\u5728\u90E8\u7F72 Wifi Commands"
+      wifi_deploy: "\u6B63\u5728\u540C\u6B65 Wifi Commands"
     }
   },
   assist: {

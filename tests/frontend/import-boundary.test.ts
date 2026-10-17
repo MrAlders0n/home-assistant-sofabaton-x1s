@@ -28,6 +28,8 @@ const PANEL_ALLOWED: Record<string, "*" | string[]> = {
   "shared/ir-format": "*",
   "shared/utils/overlay-menu": "*",
   "tabs/backup-state": "*",
+  // The editors' three-way merge when the cache moves under them (the card's own, 2026-10-16).
+  "tabs/bundle-rebase": "*",
   // Renders the hub icon template too: only the pure picks.
   "shared/utils/control-panel-selectors": ["hubIcon", "creatableDeviceClasses"],
 };

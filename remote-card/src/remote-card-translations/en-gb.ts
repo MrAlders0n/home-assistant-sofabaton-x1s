@@ -11,6 +11,9 @@ registerRemoteCardTranslation("en-gb", {
     favoritesTab: "Favourites",
     noFavorites: "No favourites available",
   },
+  sidebar: {
+    pullHandle: "Open favourites and macros",
+  },
   editor: {
     fieldLabels: {
       use_background_override: "Customise background colour",
