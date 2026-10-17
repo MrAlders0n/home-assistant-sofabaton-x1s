@@ -9,6 +9,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 import custom_components.sofabaton_x1s.button as button_platform
 import custom_components.sofabaton_x1s.hub as hub_module
+import custom_components.sofabaton_x1s.remote as remote_platform
 import custom_components.sofabaton_x1s.select as select_platform
 import custom_components.sofabaton_x1s.sensor as sensor_platform
 import custom_components.sofabaton_x1s.switch as switch_platform
@@ -175,6 +176,26 @@ def test_the_ip_text_entity_leaves_the_host_change_to_the_update_listener(monkey
 def test_the_index_sensor_keeps_its_catalog_out_of_the_recorder():
     """CR-H3-13."""
     assert {"activities", "devices"} <= set(sensor_platform.SofabatonIndexSensor._unrecorded_attributes)
+
+
+def test_the_remote_entity_keeps_its_catalog_out_of_the_recorder():
+    """The card's catalog attributes stay out of the recorder; the current
+    activity and the hub status stay in."""
+    loop = asyncio.new_event_loop()
+    try:
+        hub = _hub(loop)
+        hub.hass.data[DOMAIN]["persistent_cache_store"] = SimpleNamespace(enabled=True)
+        entity = remote_platform.SofabatonRemote(hub, ENTRY)
+        entity.hass = hub.hass
+        published = set(entity.extra_state_attributes)
+        unrecorded = set(remote_platform.SofabatonRemote._unrecorded_attributes)
+
+        # A renamed attribute would silently start recording again.
+        assert unrecorded - {"activity_list"} <= published
+        assert {"activities", "devices", "assigned_keys", "macro_keys", "favorite_keys", "long_press_keys"} <= unrecorded
+        assert not unrecorded & {"current_activity", "current_activity_id", "load_state", "proxy_client_connected"}
+    finally:
+        loop.close()
 
 
 def _local_address_entity(monkeypatch, loop, *, os_ip="192.0.2.10", options=None):

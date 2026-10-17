@@ -49,19 +49,23 @@ The API prefix and advertised API generation remain `/api/v1` and `1`.
   is carried over the same way when the editor opens; the "older
   snapshot" prompt in the dock is gone. A Sync refused because the
   snapshot moved is carried over and sent once more.
-- Updated the shared Virtual Remote to 0.2.8 and the embedded package
-  build to 0.1.3: translation updates in every language.
+- Updated the shared Virtual Remote bundle to 0.2.8 and the embedded
+  package build to 0.1.3. The shared translation changes are for the Home
+  Assistant sidebar; the web and embedded remotes' interfaces are unchanged.
 - Translation updates in the control panel.
 
 ### Fixed
 
-- Wifi Devices: two Wifi Devices can share a remote button in different
-  activities, for example VOL+ for the Amp in Cinema and for the Soundbar
-  in TV. Saving one device's command took the button from the other
-  device in every activity, and that device then showed "Sync needed".
-  The button now moves only in the activities both use, and the editor
-  says which ones (issue #306). Within one Wifi Device a button still
-  belongs to one command.
+- Wifi Commands: assigning a remote button to a command on one Wifi
+  Device no longer removes that button from another Wifi Device used in
+  separate activities (issue #306). For example, VOL+ can run an Amp
+  command in Cinema and a Soundbar command in TV. Previously, saving the
+  Soundbar assignment also removed the Amp assignment in Cinema.
+  If the assignments overlap in an activity, the new assignment replaces
+  the old one there. If the old command is also a favorite, its button
+  assignment is cleared in all its activities; its favorite assignments
+  remain. The editor shows which assignments will be replaced. Within one
+  Wifi Device, a button still belongs to one command.
 - Restoring a backup keeps its display order, and the remotes only start
   syncing once the whole restore has finished (library 0.2.5, issue #307).
 - New devices, activities and Wifi Devices go last in the display order;

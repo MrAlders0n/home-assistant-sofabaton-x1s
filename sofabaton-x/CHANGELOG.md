@@ -39,11 +39,11 @@ reorders.
 - `restore()` gives the restored devices and activities the backup's
   display order. The hub numbers what a restore creates itself (an erased
   X1 put everything in id order), so a backup in any other order came back
-  reordered. When the hub holds only what the backup restored, the restore
-  now writes the order, once per list and only when it differs. Next to
-  devices or activities that were already on the hub, the restored ones
-  stay where the hub put them, as before. `restore_hub_bundle()` reports
-  what it did under `display_order`.
+  reordered. Existing devices and activities keep their order; restored
+  entities follow them in the backup's display order. On an empty hub,
+  this reproduces the backup's order. The restore writes each list's
+  order only when needed. `restore_hub_bundle()` reports what it did
+  under `display_order`.
 - `restore()` sends its one remote-sync trigger after everything it
   writes, a replacing restore's hub name included. It went out after the
   devices and activities, so the remotes started syncing while the
