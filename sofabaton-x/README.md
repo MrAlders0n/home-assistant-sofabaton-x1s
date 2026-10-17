@@ -1,8 +1,10 @@
 # sofabaton-x — Python Library
 
-> **This README describes 0.2.4.** This release adds per-hub local address
-> overrides and fixes routing on hosts with multiple network interfaces.
-> See the [0.2.4 release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#024-2026-10-09).
+> **This README describes 0.2.5.** This release keeps the display order
+> through restores, creates and shortcut edits, makes the X2 remote pick up
+> reorders, and adds `cache_generation` and `peek_snapshot()` for consumers
+> that follow the cache.
+> See the [0.2.5 release notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#025-2026-10-17).
 > Consumers upgrading from before 0.2.3 must also read the
 > [0.2.3 upgrade notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#023-2026-10-02).
 > Consumers on 0.2.1 also need the [0.2.2 migration notes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/sofabaton-x/CHANGELOG.md#022-2026-09-25);
@@ -77,7 +79,7 @@ Home Assistant integration provide their own listeners on top.
 ## Install
 
 ```
-python -m pip install "sofabaton-x>=0.2.4,<0.3"
+python -m pip install "sofabaton-x>=0.2.5,<0.3"
 ```
 
 From a checkout, run `python -m pip install .` from the repository root

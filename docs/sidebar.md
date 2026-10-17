@@ -17,6 +17,10 @@ dashboard setup needed. If you have several hubs, select one in the header.
   a long-press binding, holding it runs that binding instead.
 - Tap the handle at the bottom for **Favorites** and **Macros** in Activity
   mode, or a searchable **Commands** list in Device mode.
+- Tap the pin next to an item in those lists to put it on the dock beside
+  the handle, up to two per Activity or Device; tap a dock shortcut to send
+  it. Tap a pinned item's pin to change its icon, swap sides or unpin it.
+  Pins are saved in this browser.
 
 Controls pause while an Activity starts or the hub is busy. Close the official
 Sofabaton app if it is holding the hub connection.

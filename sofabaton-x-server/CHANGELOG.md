@@ -6,9 +6,20 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
-Requires the library release with `AsyncXProxy.cache_generation` and
-`peek_snapshot()` (an older library leaves `cache` null and the push runs
-on events alone).
+## 0.2.6 (2026-10-17)
+
+Changes since `sofabaton-x-server-v0.2.5`. Requires
+**sofabaton-x >=0.2.5,<0.3**; publish the library first.
+The API prefix and advertised API generation remain `/api/v1` and `1`.
+
+### Upgrade notes
+
+- Existing registrations, access settings, Wifi Devices and remote layouts
+  carry forward. Reload browser pages after updating.
+- The API changes are additions. Regenerate clients from `openapi.json`
+  to read the hub view's `cache` field and the `WsHubUpdate` message.
+  `hub_update` messages only arrive on a stream opened with
+  `?hub_updates=true`, so existing clients see no new message type.
 
 ### Added
 
@@ -21,16 +32,50 @@ on events alone).
   jobs or its cache changed, coalesced per hub (0.15 s after the last
   change, at most 0.5 s after the first). A cache that moves without an
   event (another client's first look at a device, the vendor app's
-  session) is found by a watcher while such a client is connected. The
-  control panel uses it: open tabs lock within a fraction of a second when
-  another client starts a job, the Hub tab lists, Wifi Devices and the
-  Backup tab's device list follow changes made elsewhere, and an open
-  device or activity editor carries a change made elsewhere into its
-  working copy (the user's edit wins where both changed the same thing,
-  and one line says so). A draft from an older snapshot is carried over
-  the same way when the editor opens; the "older snapshot" prompt in the
-  dock is gone. A Sync refused because the snapshot moved is carried over
-  and sent once more.
+  session) is found by a watcher while such a client is connected.
+
+### Changed
+
+- The control panel follows changes made elsewhere, using the
+  `hub_update` push. Open tabs lock within a fraction of a second when
+  another client starts a job, and the Hub tab lists, Wifi Devices and the
+  Backup tab's device list follow changes made elsewhere.
+- An open device or activity editor carries a change made elsewhere into
+  its working copy. The user's edit wins where both changed the same
+  thing, and one line says so. Lists inside a device or activity merge
+  row by row: renaming one command here and another one elsewhere keeps
+  both. While a job runs on the hub the editor waits, and follows once
+  after the job's last changes have landed. A draft from an older snapshot
+  is carried over the same way when the editor opens; the "older
+  snapshot" prompt in the dock is gone. A Sync refused because the
+  snapshot moved is carried over and sent once more.
+- Updated the shared Virtual Remote to 0.2.8 and the embedded package
+  build to 0.1.3: translation updates in every language.
+- Translation updates in the control panel.
+
+### Fixed
+
+- Wifi Devices: two Wifi Devices can share a remote button in different
+  activities, for example VOL+ for the Amp in Cinema and for the Soundbar
+  in TV. Saving one device's command took the button from the other
+  device in every activity, and that device then showed "Sync needed".
+  The button now moves only in the activities both use, and the editor
+  says which ones (issue #306). Within one Wifi Device a button still
+  belongs to one command.
+- Restoring a backup keeps its display order, and the remotes only start
+  syncing once the whole restore has finished (library 0.2.5, issue #307).
+- New devices, activities and Wifi Devices go last in the display order;
+  on the X1S, deleting a device no longer shifts the rest of the list.
+  Adding a favorite or restoring an activity keeps the activity's shortcut
+  order, and removing commands from a Wifi Device keeps the command order
+  on the remote (library 0.2.5).
+- X2: reordering devices or activities, or creating a Wifi Device, makes
+  the X2 remote sync the change (library 0.2.5).
+- X1: an activity edit that removes a macro and then a favorite no longer
+  fails, and later edits of that activity no longer fail the same way
+  (library 0.2.5).
+- RTL languages: the activity editor's role menu opens under its button
+  instead of past the edge of the panel.
 
 ## 0.2.5 (2026-10-10)
 

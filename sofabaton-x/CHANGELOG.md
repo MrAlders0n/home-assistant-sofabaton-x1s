@@ -11,6 +11,14 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+## 0.2.5 (2026-10-17)
+
+Changes since `sofabaton-x-v0.2.4`. Backward-compatible additions and
+fixes; applications can use `sofabaton-x>=0.2.5,<0.3`. This release is
+mostly about display order: restores, creates and shortcut edits now
+keep the order the user sees on the remote, and the X2 remote picks up
+reorders.
+
 ### Added
 
 - `AsyncXProxy.cache_generation` (a pure state read of the cache
