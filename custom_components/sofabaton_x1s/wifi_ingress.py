@@ -177,6 +177,15 @@ class WifiIngressMixin:
                 command_label=command_label,
                 press_type=press_type,
             )
+        elif command_index is not None:
+            # An indexed press carries no name, so the by-name lookup below
+            # has nothing to match; it used to raise KeyError (issue #307).
+            self._log.warning(
+                "[WIFI_ACTION] press for hub device %s command %s matches no synced Wifi "
+                "Device; no action runs. Syncing it in Wifi Commands repairs this",
+                device_id,
+                command_index,
+            )
         else:
             await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
@@ -248,7 +257,14 @@ class WifiIngressMixin:
         press_type: str = "short",
     ) -> None:
         store = await async_get_command_config_store(self.hass)
-        payload = await store.async_get_hub_config(self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY)
+        try:
+            payload = await store.async_get_hub_config(
+                self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY
+            )
+        except KeyError:
+            # Named callbacks predate multiple Wifi Devices; a store whose
+            # devices all have their own keys holds no record they target.
+            return
         command_key = normalize_command_name(command_label)
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:

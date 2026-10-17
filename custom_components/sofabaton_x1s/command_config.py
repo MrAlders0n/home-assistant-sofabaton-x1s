@@ -1004,6 +1004,8 @@ class CommandConfigStore:
                 if str(device.get("deployed_commands_hash") or "").strip() != deployed_commands_hash:
                     device["deployed_commands_hash"] = deployed_commands_hash
                     changed = True
+                if self._refill_deployed_commands(device, deployed_commands_hash):
+                    changed = True
                 continue
 
             if device.get("deployed_device_id") is not None:
@@ -1020,6 +1022,38 @@ class CommandConfigStore:
         if changed:
             await self._save()
         return changed
+
+    def _refill_deployed_commands(
+        self,
+        device: dict[str, Any],
+        deployed_commands_hash: str,
+    ) -> bool:
+        """Rebuild an emptied deployed snapshot on a re-link, when provable.
+
+        A catalog read that misses the device clears its snapshot (above),
+        and the re-link brings back only the id and the hash. A restore
+        does exactly that: its first read is the erased, empty hub. Every
+        press then resolved to nothing (issue #307). When the staged
+        commands hash to what the hub's device carries, the hub was built
+        from them, so the snapshot is those commands, exactly as a deploy
+        saves it. Hashed with the port the deploy baked in. Otherwise the
+        snapshot stays empty and the differing hash offers a Sync.
+        """
+
+        existing = device.get("deployed_commands")
+        if not deployed_commands_hash or (isinstance(existing, list) and existing):
+            return False
+        deployed_port = device.get("deployed_request_port")
+        payload = self._payload_for_device(
+            device,
+            roku_listen_port=(
+                deployed_port if isinstance(deployed_port, int) else DEFAULT_ROKU_LISTEN_PORT
+            ),
+        )
+        if payload["commands_hash"] != deployed_commands_hash:
+            return False
+        device["deployed_commands"] = list(payload["commands"][: payload["slot_count"]])
+        return True
 
     def get_deployed_wifi_commands(
         self,

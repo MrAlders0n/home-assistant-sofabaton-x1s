@@ -551,6 +551,80 @@ def test_roku_http_post_logs_mapped_command(caplog):
     loop.close()
 
 
+def test_unresolved_indexed_press_without_a_default_record_runs_nothing(caplog):
+    # Issue #307: a press the deployed snapshots don't know fell back to the
+    # by-name lookup of the legacy "default" record, which raised KeyError
+    # when every Wifi Device has its own key.
+    from custom_components.sofabaton_x1s.command_config import CommandConfigStore
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple] = []
+
+    async def _async_call(*args, **kwargs):
+        service_calls.append((args, kwargs))
+
+    store = CommandConfigStore(SimpleNamespace())
+    loop.run_until_complete(store.async_load())
+    store._data = {
+        "hubs": {
+            "entry-id": {
+                "devices": [
+                    {
+                        "device_key": "http",
+                        "commands": [
+                            {
+                                "name": "",
+                                "action": {"action": "perform-action", "perform_action": "light.turn_on"},
+                            }
+                        ],
+                        "deployed_device_id": 10,
+                        "deployed_commands": [],
+                    }
+                ]
+            }
+        }
+    }
+    hass.services = SimpleNamespace(async_call=_async_call)
+    hass.data = {"sofabaton_x1s": {"command_config_store": store}}
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    with caplog.at_level(logging.WARNING):
+        for path in ("/launch/actionid/10/0/short", "/launch/actionid/10/Lights_On/Http"):
+            loop.run_until_complete(
+                hub.async_handle_roku_http_post(
+                    path=path,
+                    headers={},
+                    body=b"",
+                    source_ip="127.0.0.1",
+                )
+            )
+
+    assert service_calls == []
+    assert hub.get_last_ip_command()["entity_id"] == 10
+    assert any(
+        "press for hub device 10 command 0 matches no synced Wifi Device" in record.getMessage()
+        for record in caplog.records
+    )
+
+    loop.close()
+
+
 def _mqtt_msg(payload, retain=False):
     return SimpleNamespace(payload=payload, retain=retain)
 
