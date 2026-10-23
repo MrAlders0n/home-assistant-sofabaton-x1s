@@ -611,6 +611,8 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "tail_flag": 0,
         "tail_marker": 0,
         "extras": None,
+        "color_id": 0,
+        "bt_mode": 0,
     }
     # restore_data now carries a `decoded` block alongside the raw bytes —
     # the same IR descriptor decoder that the fetch-blob path uses. This is

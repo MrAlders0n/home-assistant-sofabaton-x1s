@@ -11,6 +11,17 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Fixed
+
+- Devices and activities keep their color (X2) and Bluetooth link mode
+  through every record rewrite and through backup and restore. A rename,
+  an IP edit, a Wifi Device update or a restore rebuilt the record with
+  zeros in tail bytes 22-23, which reset a color picked in the app and
+  could change how the hub links a BLE device. `DeviceConfig` gains
+  `color_id` and `bt_mode`, and the backup device block gains the matching
+  `color_id` and `bt_mode` fields. Older backups restore as before. X1
+  records have no such bytes and are unchanged.
+
 ## 0.2.5 (2026-10-17)
 
 Changes since `sofabaton-x-v0.2.4`. Backward-compatible additions and

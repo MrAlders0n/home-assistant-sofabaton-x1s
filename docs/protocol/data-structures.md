@@ -110,6 +110,13 @@ Observed tail-slot structure:
 - bytes `6..8`: optional poll-time marker + 2-byte value
 - bytes `9..17`: input/power/share/tail-marker control region
 - bytes `18..21`: optional vendor-extension block on some captures
+- byte `22` (X1S/X2 60-byte tail only): color id (X2 activities and devices:
+  palette ids `1..12`, `0` = never set; `0` on X1S records)
+- byte `23` (X1S/X2 60-byte tail only): Bluetooth link mode on Bluetooth devices
+  (`0` classic, `2` BLE); other classes can carry `0xFF`
+
+Rewrites must carry bytes `22..23` through unchanged: a record rebuilt with zeros
+there loses its color and can change how the hub links a Bluetooth device.
 
 The family-`0x37` activity-create body is layout-compatible with the family-`0x07`
 device-create body; the difference is the opcode family and the meaning of the

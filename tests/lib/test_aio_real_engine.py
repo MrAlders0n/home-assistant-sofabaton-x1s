@@ -1199,6 +1199,23 @@ def test_update_of_an_mqtt_device_keeps_its_head_an_mqtt_head(monkeypatch) -> No
     asyncio.run(main())
 
 
+def test_wifi_head_commit_keeps_the_color_the_user_picked(monkeypatch) -> None:
+    # The http head is rebuilt from scratch, not from the cached record; a
+    # color set on the device in the X2 app must survive that rewrite.
+    engine = _engine("X2")
+    _hub_link(engine, True)
+    current = devices_mod.DeviceConfig(name="Server", brand="c0-a1b2c3d4", device_id=12, code_type=0x1C,
+                                       input_mode=2, tail_marker=1, color_id=7)
+    raw = devices_mod.build_device_create_payload(current, hub_version="X2")[3:]
+    engine.state.devices[12] = {"name": "Server", "brand": "c0-a1b2c3d4", "device_class": "wifi_ip", "raw_body": raw}
+    sent: list[dict] = []
+    monkeypatch.setattr(engine, "_send_step", lambda **kw: sent.append(kw) or _ok_step())
+
+    assert engine._sync_step_wifi_head_commit({"device_id": 12, "name": "Media", "ip_address": _TARGET}) is True
+    written = devices_mod.parse_device_record(sent[0]["payload"][3:], hub_version="X2", entity_kind="device")
+    assert (written.name, written.color_id) == ("Media", 7)
+
+
 def test_update_wifi_device_rename_on_x1_pins_the_head_address(monkeypatch) -> None:
     async def main():
         dep = _deployment(hub_version="X1")

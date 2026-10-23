@@ -1084,6 +1084,46 @@ def test_device_rename_step_without_brand_preserves_the_brand(monkeypatch):
     assert cached["brand"] == original.brand
 
 
+def test_device_rename_step_keeps_color_and_bluetooth_mode(monkeypatch):
+    """A rename rebuilds the record from its parsed fields; the color id
+    (tail 22) and Bluetooth link mode (tail 23) must come through it, or
+    the rename resets the X2 color and can flip a BLE device to classic."""
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Shield", code_type=0x03, device_id=1, color_id=5, bt_mode=2)
+    raw_body = build_device_create_payload(original, hub_version="X2")[3:]
+    cached = {"raw_body": raw_body, "name": "Shield"}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X2"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+
+    def fake_run_create_sequence(proxy, steps):
+        captured.extend(steps)
+        return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(pas, "run_create_sequence", fake_run_create_sequence)
+
+    assert RenameProxy()._sync_step_device_rename({"device_id": 1, "name": "Living Shield"}) is True
+    written = parse_device_record(
+        bytes(captured[0].payload[3:]), hub_version="X2", entity_kind="device"
+    )
+    assert written.name == "Living Shield"
+    assert (written.color_id, written.bt_mode) == (5, 2)
+
+
 def test_command_rename_refuses_when_payload_unreadable():
     base = device_base_bundle()
     edited = copy.deepcopy(base)

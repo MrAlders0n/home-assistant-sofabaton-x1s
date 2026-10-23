@@ -50,6 +50,12 @@ assert schema_for(HUB_VERSION_X1).device_slot_width == 30
 assert schema_for(HUB_VERSION_X1S).device_slot_width == 60
 assert schema_for(HUB_VERSION_X2).device_slot_width == 60
 
+#: Tail bytes 22-23 (color id, Bluetooth mode) exist on the 60-byte
+#: X1S/X2 tail only. X1 records leave them zero, so they are neither
+#: parsed nor written there: an X2 bundle restored onto an X1 must not
+#: put bytes into the X1 record that it never carries.
+_WIDE_TAIL_WIDTH: Final[int] = schema_for(HUB_VERSION_X1S).device_slot_width
+
 
 @dataclass(slots=True, frozen=True)
 class DeviceConfig:
@@ -194,6 +200,19 @@ class DeviceConfig:
     extra_c: int = 0
     extras_present: bool = False
 
+    #: Color id at tail offset 22. The X2 app draws activities and
+    #: devices on a colored tile and offers a fixed palette (ids 1-12);
+    #: ``0`` means no color was ever picked. X1S records carry ``0``;
+    #: the X1 record has no such byte (see ``_WIDE_TAIL_WIDTH``).
+    #: Round-tripped so a rewrite keeps the user's color.
+    color_id: int = 0
+
+    #: Bluetooth link mode at tail offset 23 on Bluetooth devices
+    #: (``0`` classic, ``2`` BLE on the X2). Other device classes can
+    #: carry ``0xFF`` here. Not bench-validated; round-tripped so a
+    #: rewrite never changes how the hub links a Bluetooth device.
+    bt_mode: int = 0
+
     @property
     def is_input_configured(self) -> bool:
         """``True`` when the device has been configured for inputs.
@@ -272,9 +291,10 @@ def _encode_ip(ip_address: str | None) -> bytes | None:
 def _build_tail_slot(config: DeviceConfig, *, width: int) -> bytes:
     """Build the tail-slot bytes (width 30 on X1, 60 on X1S/X2).
 
-    The first 18 bytes carry the structured device-state markers; the
-    remaining bytes are zero (or, when ``extras_present`` is true,
-    carry an extra 4-byte marker block in the X1S/X2 variant).
+    The first 18 bytes carry the structured device-state markers, bytes
+    18-21 an optional 4-byte marker block (when ``extras_present`` is
+    true), and, on the 60-byte tail only, bytes 22-23 the color id and
+    Bluetooth mode. The remaining bytes are zero.
     """
 
     tail = bytearray(width)
@@ -304,6 +324,10 @@ def _build_tail_slot(config: DeviceConfig, *, width: int) -> bytes:
         tail[19] = config.extra_a & 0xFF
         tail[20] = config.extra_b & 0xFF
         tail[21] = config.extra_c & 0xFF
+
+    if width >= _WIDE_TAIL_WIDTH:
+        tail[22] = config.color_id & 0xFF
+        tail[23] = config.bt_mode & 0xFF
 
     return bytes(tail)
 
@@ -463,6 +487,11 @@ def parse_device_record(
         extra_b = tail[20]
         extra_c = tail[21]
 
+    color_id = bt_mode = 0
+    if slot_width >= _WIDE_TAIL_WIDTH:
+        color_id = tail[22]
+        bt_mode = tail[23]
+
     return DeviceConfig(
         name=name,
         brand=brand,
@@ -489,6 +518,8 @@ def parse_device_record(
         extra_b=extra_b,
         extra_c=extra_c,
         extras_present=extras_present,
+        color_id=color_id,
+        bt_mode=bt_mode,
     )
 
 
@@ -563,6 +594,11 @@ def device_config_from_backup(
         extra_b=_extra("b"),
         extra_c=_extra("c"),
         extras_present=extras_present,
+        # Carried on create too: a restored entity keeps its color, and a
+        # Bluetooth device keeps its link mode. Bundles from before these
+        # fields existed restore with 0, as before.
+        color_id=_as_int("color_id", 0) & 0xFF,
+        bt_mode=_as_int("bt_mode", 0) & 0xFF,
     )
 
 
