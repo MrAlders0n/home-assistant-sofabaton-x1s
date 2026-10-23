@@ -57,6 +57,7 @@ from .protocol_const import (
     DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_WIFI_SONOS,
     ButtonName,
+    classify_device_class_code,
     known_public_device_classes,
     normalize_device_class,
 )
@@ -224,11 +225,17 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
     """Mixin providing device/activity restore orchestration."""
 
     def _restore_device_class(self, device_block: dict[str, Any]) -> str | None:
-        """Return the normalized device class declared by a backup payload."""
+        """Return the normalized device class declared by a backup payload.
 
-        return normalize_device_class(
-            device_block.get("device_class", device_block.get("device_class_code"))
-        )
+        A block without a class name falls back to its class code: RF
+        devices were exported with ``device_class: None`` before their
+        codes were mapped, and the code still identifies them.
+        """
+
+        declared = normalize_device_class(device_block.get("device_class"))
+        if declared is not None:
+            return declared
+        return classify_device_class_code(device_block.get("device_class_code"))
 
     @staticmethod
     def _command_restore_data(command_row: dict[str, Any]) -> dict[str, Any] | None:

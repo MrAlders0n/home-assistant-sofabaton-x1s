@@ -15632,7 +15632,9 @@ var TOOLS_CARD_STRINGS_EN = {
       wifi_hue: "Hue",
       wifi_sonos: "Sonos",
       wifi_ip: "Generic HTTP",
-      wifi_mqtt: "MQTT"
+      wifi_mqtt: "MQTT",
+      rf_433mhz: "RF 433 MHz",
+      rf_315mhz: "RF 315 MHz"
     }
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).

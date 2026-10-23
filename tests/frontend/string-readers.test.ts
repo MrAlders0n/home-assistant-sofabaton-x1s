@@ -53,7 +53,7 @@ test("every tools-card English string has a production reader (CR-X7-1)", () => 
   );
   const dynamicTables = [
     // Indexed by the hub's device class.
-    "deviceClassLabels",
+    "cache.deviceClassLabels",
     // Indexed by backend step kinds, phases and error codes.
     "backendState",
     // Indexed by keymap button names.

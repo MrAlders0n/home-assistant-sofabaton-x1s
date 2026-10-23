@@ -289,6 +289,8 @@ export const TOOLS_CARD_STRINGS_EN = {
       wifi_sonos: "Sonos",
       wifi_ip: "Generic HTTP",
       wifi_mqtt: "MQTT",
+      rf_433mhz: "RF 433 MHz",
+      rf_315mhz: "RF 315 MHz",
     } as Record<string, string>,
   },
   // Hub-tab row clicks ("send the command" / "copy the command" modes).

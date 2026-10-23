@@ -917,13 +917,14 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
     ("device_class", "device_class_code"),
     [
         ("bluetooth", 0x03),
-        ("rf_433mhz", None),
+        ("rf_433mhz", 0x1D),
+        ("rf_315mhz", 0x1E),
     ],
 )
 def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
     monkeypatch,
     device_class: str,
-    device_class_code: int | None,
+    device_class_code: int,
 ):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -957,7 +958,9 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
                     "ir_blob_hex": "aa bb cc dd",
                     "pages": [
                         {
-                            "payload_hex": "01 00 01 01 00 01 07 05 03 00 00 00 00 4e 25 42 6c 75 65 74 6f 6f 74 68",
+                            # Byte 8 is the record's type byte: an RF command
+                            # carries its band code there, like the device.
+                            "payload_hex": f"01 00 01 01 00 01 07 05 {device_class_code:02x} 00 00 00 00 4e 25 42 6c 75 65 74 6f 6f 74 68",
                         }
                     ],
                 }
@@ -1011,7 +1014,7 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
             "name": "Bluetooth",
             "restore_data": {
                 "transport": "hub_code_record",
-                "library_type": 0x03,
+                "library_type": device_class_code,
                 "command_code": "00 00 00 00 4e 25",
                 "data_hex": "aa bb cc",
                 "persist_tail_hex": "dd",
@@ -1142,7 +1145,10 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
     loop.close()
 
 
-def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch):
+# An RF device can hold learned IR commands next to its RF ones: each
+# command record carries its own transport type.
+@pytest.mark.parametrize("device_class", ["ir", "rf_433mhz", "rf_315mhz"])
+def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch, device_class: str):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     hass = FakeHass(loop)
@@ -1160,7 +1166,7 @@ def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch
         False,
     )
 
-    hub._proxy.state.devices[11] = {"device_class": "ir"}
+    hub._proxy.state.devices[11] = {"device_class": device_class}
     full_refresh_calls: list[tuple[int, float]] = []
     single_refresh_calls: list[tuple[int, int, float, bool]] = []
 
@@ -1218,6 +1224,21 @@ def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch
     # force_refresh=False — the persist itself has already settled on the
     # hub, so this pass just re-pulls the metadata on a best-effort basis.
     assert single_refresh_calls == [(11, 112, 2.0, False)]
+
+    loop.close()
+
+
+def test_async_persist_ir_blob_refuses_a_bluetooth_device(monkeypatch):
+    from homeassistant.exceptions import HomeAssistantError
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hub = SofabatonHub(FakeHass(loop), "entry-id", "hub-name", "127.0.0.1", 1234, {}, 9999, 10000, True, False)
+    hub._proxy.state.devices[11] = {"device_class": "bluetooth"}
+    monkeypatch.setattr(hub._proxy, "persist_ir_blob", lambda **kwargs: pytest.fail("must not persist"))
+
+    with pytest.raises(HomeAssistantError, match="only supports IR devices"):
+        loop.run_until_complete(hub.async_persist_ir_blob(device_id=11, command_name="X", blob=b"\x00" * 10))
 
     loop.close()
 

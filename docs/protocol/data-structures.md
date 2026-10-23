@@ -49,7 +49,14 @@ Observed device-class codes:
 | `0x0D` | `ir` | Learned or catalog IR devices |
 | `0x1A` | `wifi_hue` | Hue / WiFi rows |
 | `0x1C` | `wifi_ip` | Virtual IP / HTTP rows |
+| `0x1D` | `rf_433mhz` | RF 433 MHz devices (device type byte `0x11`); not yet seen in a capture |
+| `0x1E` | `rf_315mhz` | RF 315 MHz devices (device type byte `0x11`); not yet seen in a capture |
 | `0x20` | `wifi_mqtt` | MQTT-style rows |
+
+An RF command record carries the same `0x1D` / `0x1E` value in its own type byte,
+and its signal data after the record header is opaque. Commands carry their
+transport type individually, so an RF device can also hold learned IR (`0x0D`)
+commands; backup and restore replay each command record with its own type byte.
 
 The exact meaning of several surrounding control bytes is still incomplete, but
 the rows behave as fixed-position records rather than short TLV structures.

@@ -24,6 +24,8 @@ from .const import (
 from .lib.protocol_const import (
     ButtonName,
     DEVICE_CLASS_IR,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
 )
 from .lib.blob_decoders import (
     format_decoded_for_display as decoded_blob_display_text,
@@ -640,7 +642,13 @@ class HubOpsMixin:
         """Persist a new IR command blob onto an existing device."""
 
         device_class = self._get_cached_device_class(device_id)
-        if device_class is not None and device_class != DEVICE_CLASS_IR:
+        # Each command record carries its own transport type, so an RF
+        # device can hold learned IR commands next to its RF ones.
+        if device_class is not None and device_class not in (
+            DEVICE_CLASS_IR,
+            DEVICE_CLASS_RF_433,
+            DEVICE_CLASS_RF_315,
+        ):
             raise HomeAssistantError(
                 f"persist_ir_blob only supports IR devices; device {device_id} is {device_class}"
             )

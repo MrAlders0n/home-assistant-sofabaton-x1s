@@ -21,6 +21,14 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   `color_id` and `bt_mode`, and the backup device block gains the matching
   `color_id` and `bt_mode` fields. Older backups restore as before. X1
   records have no such bytes and are unchanged.
+- RF devices (433 MHz and 315 MHz) are recognized: their class codes
+  (`0x1D`, `0x1E`) map to `rf_433mhz` and `rf_315mhz`. Before, an RF
+  device came out class-less, so a backup kept only its command labels
+  (no signal data) and any restore containing it was refused, a whole-hub
+  restore included. Backups now capture each RF command record and
+  restore replays it. A backup taken before this release still holds no
+  RF signal data: take a new one. Restore also classifies a device block
+  that has a class code but no class name.
 
 ## 0.2.5 (2026-10-17)
 

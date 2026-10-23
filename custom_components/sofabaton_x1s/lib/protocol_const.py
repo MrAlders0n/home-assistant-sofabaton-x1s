@@ -281,7 +281,7 @@ OP_IR_LEARN_EXIT = 0x0005  # A→H: exit/cancel IR learn mode (len 0)
 OP_IR_LEARN_FAILED = 0x0068  # H→A: learn-failure push per research; not observed live
 
 # RF learning is one two-byte command: payload [enter_flag, band] where
-# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz.
+# enter_flag 0x01 arms and 0x00 exits, band 0x00 = 433 MHz, 0x01 = 315 MHz.
 OP_RF_LEARN = 0x0270  # A→H payload: [enter_flag, band]
 
 
@@ -513,6 +513,11 @@ DEVICE_CLASS_CODE_IR = 0x0D
 DEVICE_CLASS_CODE_WIFI_HUE = 0x1A
 DEVICE_CLASS_CODE_WIFI_SONOS = 0x1B
 DEVICE_CLASS_CODE_WIFI_IP = 0x1C
+# RF devices: the record's code-type byte names the band. Each command
+# record carries its own type byte too (0x1D / 0x1E for an RF command),
+# and its signal data after the record header is opaque.
+DEVICE_CLASS_CODE_RF_433 = 0x1D
+DEVICE_CLASS_CODE_RF_315 = 0x1E
 DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
 
 DEVICE_CLASS_BY_CODE: Dict[int, str] = {
@@ -522,6 +527,8 @@ DEVICE_CLASS_BY_CODE: Dict[int, str] = {
     DEVICE_CLASS_CODE_WIFI_HUE: DEVICE_CLASS_WIFI_HUE,
     DEVICE_CLASS_CODE_WIFI_SONOS: DEVICE_CLASS_WIFI_SONOS,
     DEVICE_CLASS_CODE_WIFI_IP: DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_CODE_RF_433: DEVICE_CLASS_RF_433,
+    DEVICE_CLASS_CODE_RF_315: DEVICE_CLASS_RF_315,
     DEVICE_CLASS_CODE_WIFI_MQTT: DEVICE_CLASS_WIFI_MQTT,
 }
 
@@ -626,6 +633,8 @@ __all__ = [
     "DEVICE_CLASS_CODE_WIFI_HUE",
     "DEVICE_CLASS_CODE_WIFI_SONOS",
     "DEVICE_CLASS_CODE_WIFI_IP",
+    "DEVICE_CLASS_CODE_RF_433",
+    "DEVICE_CLASS_CODE_RF_315",
     "DEVICE_CLASS_CODE_WIFI_MQTT",
     "DEVICE_CLASS_BY_CODE",
     "DEVICE_CLASS_ALIASES",

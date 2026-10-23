@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 import types
 
+import pytest
+
 # Minimal stubs to import the integration without Home Assistant installed
 if "homeassistant" not in sys.modules:
     ha = types.ModuleType("homeassistant")
@@ -1056,6 +1058,36 @@ def test_catalog_device_handler_decodes_shared_device_class_code() -> None:
         "device_class_code": 0x1A,
         "raw_body": bytes(payload[3:]),
     }
+
+
+@pytest.mark.parametrize(("code", "device_class"), [(0x1D, "rf_433mhz"), (0x1E, "rf_315mhz")])
+def test_catalog_device_handler_classifies_rf_devices(code: int, device_class: str) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy._begin_device_request()
+
+    payload = bytearray(218)
+    payload[0] = 0x01
+    payload[3] = 0x01
+    payload[6:8] = (0x0009).to_bytes(2, "big")
+    payload[10] = code
+    payload[11] = 0x11  # RF device type
+    raw = bytearray([0xA5, 0x5A, 0xD5, 0x0B]) + payload + bytearray([0x00])
+
+    CatalogDeviceHandler().handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=OP_CATALOG_ROW_DEVICE,
+            direction="H→A",
+            payload=bytes(payload),
+            raw=bytes(raw),
+            name="CATALOG_ROW_DEVICE",
+        )
+    )
+
+    assert proxy.state.devices[0x09]["device_class"] == device_class
+    assert proxy.state.devices[0x09]["device_class_code"] == code
 
 
 def test_catalog_device_handler_ingests_a_name_with_a_lone_surrogate() -> None:

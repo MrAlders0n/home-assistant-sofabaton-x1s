@@ -721,6 +721,8 @@ def test_key_sort_timeout_on_a_network_device_records_an_empty_row() -> None:
     assert export._key_sort_row_or_fallback(4, "wifi_sonos", None) == empty
     assert export._key_sort_row_or_fallback(4, "wifi_hue", None) == empty
     assert export._key_sort_row_or_fallback(1, "ir", None) is None          # a real gap
+    assert export._key_sort_row_or_fallback(1, "rf_433mhz", None) is None   # RF has key pages too
+    assert export._key_sort_row_or_fallback(1, "rf_315mhz", None) is None
     assert export._key_sort_row_or_fallback(1, None, None) is None          # class unknown: no guess
     row = {"device_id": 1, "msg_hex": "01 ff"}
     assert export._key_sort_row_or_fallback(1, "wifi_sonos", row) is row    # a reply always wins
