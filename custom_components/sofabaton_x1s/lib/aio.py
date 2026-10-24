@@ -3326,6 +3326,10 @@ _R_ENTITY_RESTORE = (
     "announce like its own writes; restore() takes a hub_bundle, and the "
     "engine call stays reachable through .sync"
 )
+_R_REMOTE_SYNC_BENCH = (
+    "X2 paired-device rows for the targeted remote-sync bench (bench_333); "
+    "no facade feature uses them until that form is validated"
+)
 
 
 def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
@@ -3334,6 +3338,7 @@ def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
 
 ENGINE_ONLY: dict[str, str] = {
     **_reasons(_R_ENTITY_RESTORE, ("restore_device", "restore_activity")),
+    **_reasons(_R_REMOTE_SYNC_BENCH, ("x2_paired_devices",)),
     **_reasons(
         _R_TRANSPORT,
         (
@@ -3363,6 +3368,7 @@ ENGINE_ONLY: dict[str, str] = {
             "drop_cached_macro_records",
             "set_assigned_device_id",
             "update_x2_remote_sync_id",
+            "note_x2_paired_device",
             "get_routed_local_ip",
             "select_local_address",
             "enqueue_cmd",

@@ -403,7 +403,9 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
 
         # The app follows the order write with REMOTE_SYNC so the remote
         # refreshes its local view (on the X2, the all-remotes broadcast).
-        if remote_sync and not self._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00):
+        if remote_sync and not self._send_remote_sync_step(
+            "activity-sort-remote-sync", ack_first_byte=0x00, purpose="order"
+        ):
             self._log.warning("[ACT_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_activities_and_wait():
@@ -496,7 +498,9 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self._log.warning("[DEV_REORDER] hub did not accept the new order")
             return None
 
-        if remote_sync and not self._send_remote_sync_step("device-sort-remote-sync", ack_first_byte=0x00):
+        if remote_sync and not self._send_remote_sync_step(
+            "device-sort-remote-sync", ack_first_byte=0x00, purpose="order"
+        ):
             self._log.warning("[DEV_REORDER] REMOTE_SYNC after reorder was not acked")
 
         if not self._request_devices_and_wait():
@@ -1098,13 +1102,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not step.ok:
             return None
-        step = self._send_step(
-            step_name=f"fav-order-repair-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not step.ok:
+        if not self._send_entity_sync_step(act_lo, f"fav-order-repair-commit-65[act=0x{act_lo:02X}]"):
             return None
         self.state.activity_favorites_order[act_lo] = [
             (fav_id, slot) for slot, fav_id in enumerate(repaired, start=1)
@@ -1284,13 +1282,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name=f"fav-reorder-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"fav-reorder-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
@@ -1388,13 +1380,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # Step 3: commit
-        _step = self._send_step(
-            step_name=f"fav-delete-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"fav-delete-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
@@ -1569,13 +1555,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name=f"favorite-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"favorite-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
@@ -1684,13 +1664,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         if not _step.ok:
             return None
 
-        _step = self._send_step(
-            step_name=f"keymap-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        if not _step.ok:
+        if not self._send_entity_sync_step(act_lo, f"keymap-commit-65[act=0x{act_lo:02X}]"):
             return None
 
         # A 0x3E keymap write changes the entity's key rows only; its

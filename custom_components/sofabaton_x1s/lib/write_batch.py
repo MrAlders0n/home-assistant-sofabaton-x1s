@@ -29,12 +29,31 @@ from typing import Any, TYPE_CHECKING
 from .hub_logging import LogTag
 from .hub_versions import HUB_VERSION_X2, classify_hub_version
 from .protocol_const import OP_REMOTE_SYNC, OP_X2_REMOTE_SYNC_ALL
+from .remote_sync_frames import FAMILY_ENTITY_SYNC, entity_sync_frame, order_sync_frame
 
 if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
 
 #: The family / opcode byte of the physical remote-sync trigger.
 REMOTE_SYNC_FAMILY = 0x64
+
+#: ``entity_sync_form`` values: the frame a write sends after a favorites,
+#: keymap or favorites-order change to the one entity it touched.
+#: ``legacy`` is ``0x0165 [id]`` on every model (what has always been sent);
+#: ``native`` sends the X2 its own ``0x0265 [id][0x01]`` (validated,
+#: bench_333 C4) and the X1/X1S ``0x0165 [id]``; ``none`` sends nothing, for
+#: benches that make the edit and send the sync themselves.
+ENTITY_SYNC_LEGACY = "legacy"
+ENTITY_SYNC_NATIVE = "native"
+ENTITY_SYNC_NONE = "none"
+ENTITY_SYNC_FORMS = (ENTITY_SYNC_LEGACY, ENTITY_SYNC_NATIVE, ENTITY_SYNC_NONE)
+
+#: ``order_sync_form`` values: the trigger closing a device or activity
+#: reorder. ``full`` is the full trigger on every model (validated);
+#: ``native`` sends the X2 its order-only sync (~10 s, bench_333 C3).
+ORDER_SYNC_FULL = "full"
+ORDER_SYNC_NATIVE = "native"
+ORDER_SYNC_FORMS = (ORDER_SYNC_FULL, ORDER_SYNC_NATIVE)
 
 
 @dataclass
@@ -65,6 +84,10 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         # sent; see begin_write_batch.
         self._write_batch: EngineWriteBatch | None = None
         self._write_batch_lock = threading.Lock()
+        # Which sync forms the write flows use; the defaults send
+        # exactly what the flows always sent.
+        self.entity_sync_form: str = ENTITY_SYNC_LEGACY
+        self.order_sync_form: str = ORDER_SYNC_FULL
 
     def _remote_sync_frame(self, hub_version: str | None = None) -> tuple[int, bytes] | None:
         """``(opcode, payload)`` of the physical remote-sync trigger for
@@ -107,7 +130,9 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
             return False
         return self.enqueue_cmd(*frame)
 
-    def _send_remote_sync_step(self, step_name: str, *, ack_first_byte: int | None = None) -> bool:
+    def _send_remote_sync_step(
+        self, step_name: str, *, ack_first_byte: int | None = None, purpose: str = "full"
+    ) -> bool:
         """Send the remote-sync trigger as an acked step of a write sequence.
 
         The frame is the one :meth:`resync_remote` sends for this hub (the
@@ -116,6 +141,11 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         before the sequence's next step waits for its own. Inside a write
         batch the trigger is deferred like any other and the call reports
         success.
+
+        ``purpose="order"`` marks a reorder's trigger: with
+        ``order_sync_form`` set to ``native`` the X2 gets its order-only
+        sync instead of the full broadcast. A batch still coalesces it into
+        the one full trigger, which covers the order.
         """
 
         if self._defer_remote_sync(step_name):
@@ -123,6 +153,8 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         frame = self._remote_sync_frame()
         if frame is None:
             return False
+        if purpose == "order" and self.order_sync_form == ORDER_SYNC_NATIVE:
+            frame = order_sync_frame(self.hub_version) or frame
         # The family frame derives its opcode from the payload length, so
         # the remote-sync family plus this payload is exactly the opcode
         # resync_remote sends (0x0064 empty, 0x0364 FF FF FF).
@@ -133,6 +165,27 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
             payload=payload,
             ack_opcode=0x0103,
             ack_first_byte=ack_first_byte,
+        ).ok
+
+    def _send_entity_sync_step(self, entity_id: int, step_name: str) -> bool:
+        """Send the per-entity sync closing a favorites/keymap write.
+
+        The frame follows ``entity_sync_form``. It is not a remote-sync
+        trigger, so a write batch never defers or counts it.
+        """
+
+        form = self.entity_sync_form
+        if form == ENTITY_SYNC_NONE:
+            self._log.info("%s %s: per-entity sync skipped (entity_sync_form=none)", LogTag.REMOTE, step_name)
+            return True
+        x2_form = form == ENTITY_SYNC_NATIVE and self.hub_version == HUB_VERSION_X2
+        _opcode, payload = entity_sync_frame(entity_id, x2_form=x2_form)
+        # The family frame derives the opcode from the payload length.
+        return self._send_step(
+            step_name=step_name,
+            family=FAMILY_ENTITY_SYNC,
+            payload=payload,
+            ack_opcode=0x0103,
         ).ok
 
     # ------------------------------------------------------------------

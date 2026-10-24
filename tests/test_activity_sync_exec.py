@@ -13,6 +13,7 @@ import logging
 from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.lib.proxy_activity_sync import ActivitySyncMixin
+from custom_components.sofabaton_x1s.lib.write_batch import WriteBatchMixin
 from tests.test_activity_sync_plan import base_bundle, _activity, _device, ACTIVITY_ID
 from tests.test_device_sync_plan import base_bundle as device_base_bundle, DEVICE_ID
 
@@ -135,8 +136,11 @@ class FakeProxy(ActivitySyncMixin):
         return {"commands": [{"command_id": int(command_id), "ir_blob_hex": blob}]}
 
 
-class DeleteKeyProxy(ActivitySyncMixin):
+class DeleteKeyProxy(ActivitySyncMixin, WriteBatchMixin):
     def __init__(self) -> None:
+        self._init_write_batch()
+        self.hub_version = "X1S"
+        self._log = logging.getLogger("test.delete_key")
         self.reset_count = 0
         self.steps: list[dict] = []
 
@@ -318,6 +322,7 @@ def test_activity_sync_delete_key_allows_slow_status_ack():
     assert delete_step["timeout"] >= 10.0
     commit_step = proxy.steps[1]
     assert commit_step["step_name"] == "activity-sync-delete-commit-65[act=0x65]"
+    assert (commit_step["family"], commit_step["payload"]) == (0x65, b"\x65")
     assert "timeout" not in commit_step
 
 

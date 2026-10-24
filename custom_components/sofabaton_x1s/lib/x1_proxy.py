@@ -84,6 +84,7 @@ from .state_helpers import (
 )
 from .deframer import Deframer
 from .write_batch import WriteBatchMixin
+from .remote_sync_frames import X2PairedDevice
 from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
@@ -392,6 +393,8 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._x2_remote_sync_id_lock = threading.Lock()
         self._x2_remote_sync_id: bytes | None = None
         self._x2_remote_sync_id_event = threading.Event()
+        # X2 paired-device rows by (row type, slot), from the last list reply.
+        self._x2_paired_devices: dict[tuple[int, int], X2PairedDevice] = {}
         self._macro_payload_lock = threading.Lock()
         # Transient fetch-arrival signals: popped by wait_for_macro_record,
         # cleared by reset_ack_queues before every write transaction.
@@ -1310,6 +1313,24 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         self._x2_remote_sync_id_event.wait(timeout)
         with self._x2_remote_sync_id_lock:
             return self._x2_remote_sync_id
+
+    def note_x2_paired_device(self, row: X2PairedDevice) -> None:
+        """Record one decoded X2 paired-device row (list reply handler).
+
+        Row 1 starts a new list, so devices unpaired since the last request
+        drop out.
+        """
+
+        with self._x2_remote_sync_id_lock:
+            if row.index <= 1:
+                self._x2_paired_devices.clear()
+            self._x2_paired_devices[(row.row_type, row.slot)] = row
+
+    def x2_paired_devices(self) -> list[X2PairedDevice]:
+        """The X2 paired devices from the last list reply, in row order."""
+
+        with self._x2_remote_sync_id_lock:
+            return sorted(self._x2_paired_devices.values(), key=lambda row: row.index)
 
     # ------------------------------------------------------------------
     # Virtual IP device/button creation

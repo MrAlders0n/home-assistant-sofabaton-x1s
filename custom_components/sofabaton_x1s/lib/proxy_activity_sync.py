@@ -2147,13 +2147,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not step.ok:
             return False
-        commit = self._send_step(
-            step_name=f"activity-sync-delete-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        return commit.ok
+        return self._send_entity_sync_step(act_lo, f"activity-sync-delete-commit-65[act=0x{act_lo:02X}]")
 
     def _macro_key_sequence_from_steps(self, steps: Any) -> list[MacroKeyEntry]:
         """Convert bundle macro steps to the wire key-entry sequence.

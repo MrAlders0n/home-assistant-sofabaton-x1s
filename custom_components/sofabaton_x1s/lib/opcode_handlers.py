@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING
 
 from .commands import decode_burst_frame, parse_ir_command_dump_frame
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
+from .hub_versions import HUB_VERSION_X2
+from .remote_sync_frames import parse_x2_paired_row
 from .state_helpers import one_slot_per_fav_id
 from .macros import (
     parse_macro_burst_frame,
@@ -46,7 +48,6 @@ from .protocol_const import (
     OP_REQ_IDLE_BEHAVIOR,
     OP_REQ_ACTIVITIES,
     OP_SET_IDLE_BEHAVIOR,
-    OP_X2_REMOTE_LIST_ROW,
     OP_ACTIVITY_MAP_PAGE,
     OP_ACTIVITY_MAP_PAGE_X1S,
     OP_ACTIVITY_CREATE_ACK,
@@ -533,20 +534,26 @@ class HubNameReplyHandler(BaseFrameHandler):
 
 
 
-@register_handler(opcodes=(OP_X2_REMOTE_LIST_ROW,), directions=("H→A",))
+@register_handler(opcode_families_low=(FAMILY_REMOTE_STATUS,), directions=("H→A",))
 class X2RemoteListRowHandler(BaseFrameHandler):
-    """Capture the first remote id from X2 remote-list response rows."""
+    """Decode X2 paired-device rows (any length; ``OP_X2_REMOTE_LIST_ROW``
+    is the usual one); the first remote's target is cached."""
 
     def handle(self, frame: FrameContext) -> None:
-        payload = frame.payload
-        if len(payload) < 4:
+        proxy: X1Proxy = frame.proxy
+        if proxy.hub_version != HUB_VERSION_X2:
+            return
+        row = parse_x2_paired_row(frame.payload)
+        if row is None:
             return
 
-        # Observed layout starts with a count byte then a 3-byte remote id.
-        remote_id = payload[1:4]
-        proxy: X1Proxy = frame.proxy
-        proxy.update_x2_remote_sync_id(remote_id)
-        proxy._log.info("[REMOTE_SYNC] X2 remote id=%s", remote_id.hex(" "))
+        proxy.note_x2_paired_device(row)
+        if row.is_remote:
+            proxy.update_x2_remote_sync_id(row.target)
+        proxy._log.info(
+            "[REMOTE_SYNC] X2 paired row %d/%d type=%d slot=%d target=%s online=%s name=%r",
+            row.index, row.count, row.row_type, row.slot, row.target.hex(" "), row.online, row.name,
+        )
 
 
 @register_handler(opcode_families_low=(FAMILY_REMOTE_STATUS,), directions=("H→A",))

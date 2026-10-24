@@ -125,6 +125,11 @@ OP_X2_REMOTE_LIST_ROW = 0x332F  # payload includes 3-byte remote id and remote m
 # accepted no-op. Kept for capture decoding only; senders must use
 # OP_X2_REMOTE_SYNC_ALL.
 OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; accepted no-op (see above)
+# The no-op target above was read from row bytes p[1:4], which start with the
+# row COUNT. With the device's own bit (remote 1 = 00 00 08, layout in
+# remote_sync_frames) the per-remote form starts a full sync of that remote
+# (bench_333 C1, 2026-10-24). [00 00 FF][00] is the order-only sync (C3).
+# Senders keep OP_X2_REMOTE_SYNC_ALL unless order_sync_form says otherwise.
 # The working X2 sync trigger (bench-validated live 2026-08-27): payload
 # FF FF FF = all paired remotes. Instant STATUS_ACK 0x00 means queued,
 # not completed; the hub SERIALIZES triggers (a second one runs after
@@ -252,6 +257,9 @@ OP_ACTIVITY_INPUTS_PAGE_A = 0xFA47  # H→A activity-input candidates page (X1S/
 OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page (X1S/X2)
 OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
 OP_ACTIVITY_ASSIGN_COMMIT = 0x0265  # A→H post-save commit marker (observed on X2)
+# Payload [entity_id][0x01]: the X2 per-entity remote sync (a 1/1 sync of
+# that device or activity), the X2 form of 0x0165 [entity_id]; both work on
+# the X2 (remote_sync_frames.entity_sync_frame; bench_333 C4, 2026-10-24).
 OP_ACTIVITY_CONFIRM = 0x7B38  # A→H activity confirmation row write (observed X1)
 OP_ACTIVITY_CREATE_ACK = 0x0137  # H→A assigned activity id after family-0x37 create write (X1)
 OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)

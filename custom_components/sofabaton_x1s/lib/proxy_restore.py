@@ -2308,13 +2308,7 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
         )
         if not step.ok:
             return False
-        step = self._send_step(
-            step_name=f"restore-fav-order-commit-65[act=0x{act_lo:02X}]",
-            family=0x65,
-            payload=bytes([act_lo]),
-            ack_opcode=0x0103,
-        )
-        return bool(step.ok)
+        return self._send_entity_sync_step(act_lo, f"restore-fav-order-commit-65[act=0x{act_lo:02X}]")
 
     @staticmethod
     def _collect_referenced_entity_ids(payload: dict[str, Any]) -> set[int]:
