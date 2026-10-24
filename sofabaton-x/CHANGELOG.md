@@ -11,7 +11,30 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+### Changed
+
+- X2 device and activity reorders end with the hub's order-only remote
+  sync (about 10 seconds) instead of a full rebuild of every remote (about
+  4.5 minutes). The X1 and X1S have no order-only form and keep the full
+  trigger. Set the engine's `order_sync_form` to `"full"` for the old
+  behaviour.
+- A Wifi Device update that only rewrites the device's own records (command
+  renames, payloads, its head) ends with a per-item remote sync of that
+  device instead of a full rebuild, on every model: the remotes re-read
+  that one device. If the hub does not acknowledge it, the full trigger
+  follows as before. Updates that touch favorites, bindings, membership,
+  inputs or power hooks keep the full sync. The engine gains
+  `sync_remote_entity(entity_id)`.
+
 ### Fixed
+
+- X2 `find_remote()` addresses the remotes actually paired with the hub,
+  read from its paired-device list (once, when none is cached), instead of
+  a fixed target that only reached the first remote slot.
+- The X2 paired-device list is decoded per row type (remote, repeater,
+  single-button RF device); the remote target it caches was built from the
+  row count byte and addressed nothing. The rows are available from the
+  engine's `x2_paired_devices()`.
 
 - Devices and activities keep their color (X2) and Bluetooth link mode
   through every record rewrite and through backup and restore. A rename,

@@ -1079,6 +1079,21 @@ class HubOpsMixin:
         self._log.debug("[%s] Triggering remote resync", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
 
+    async def async_sync_remote_items(self, targets: tuple[int, ...] | None) -> bool:
+        """Per-item remote syncs for ``targets`` (see per_item_sync_targets).
+
+        False when ``targets`` is None or the hub did not ack one: the caller
+        then sends the full resync instead.
+        """
+
+        if targets is None:
+            return False
+        for entity in targets:
+            self._log.debug("[%s] Per-item remote sync of %s", self.entry_id, entity)
+            if not await self.hass.async_add_executor_job(self._proxy.sync_remote_entity, entity):
+                return False
+        return True
+
     async def async_send_button(self, btn_code: int) -> None:
         if self.current_activity is None:
             self._log.debug("[%s] Tried to send button %s but no activity is active", self.entry_id, btn_code)

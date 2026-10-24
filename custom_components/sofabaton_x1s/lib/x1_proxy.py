@@ -84,7 +84,7 @@ from .state_helpers import (
 )
 from .deframer import Deframer
 from .write_batch import WriteBatchMixin
-from .remote_sync_frames import X2PairedDevice
+from .proxy_x2_remotes import X2RemotesMixin
 from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
@@ -260,7 +260,7 @@ def _normalize_mdns_instance(name: str) -> str:
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin, WriteBatchMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin, WriteBatchMixin, X2RemotesMixin):
     def __init__(
         self,
         real_hub_ip: str,
@@ -390,11 +390,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
         # blocks on, so entering would deadlock.
         self._frame_thread_ident: int | None = None
         self._init_write_batch()
-        self._x2_remote_sync_id_lock = threading.Lock()
-        self._x2_remote_sync_id: bytes | None = None
-        self._x2_remote_sync_id_event = threading.Event()
-        # X2 paired-device rows by (row type, slot), from the last list reply.
-        self._x2_paired_devices: dict[tuple[int, int], X2PairedDevice] = {}
+        self._init_x2_remotes()
         self._macro_payload_lock = threading.Lock()
         # Transient fetch-arrival signals: popped by wait_for_macro_record,
         # cleared by reset_ack_queues before every write transaction.
@@ -1300,37 +1296,9 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWai
                 return False
 
         if version == HUB_VERSION_X2:
-            return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")
+            return self.enqueue_cmd(OP_FIND_REMOTE_X2, self._x2_find_remote_target())
 
         return self.enqueue_cmd(OP_FIND_REMOTE)
-
-    def update_x2_remote_sync_id(self, remote_id: bytes) -> None:
-        with self._x2_remote_sync_id_lock:
-            self._x2_remote_sync_id = bytes(remote_id[:3])
-            self._x2_remote_sync_id_event.set()
-
-    def wait_for_x2_remote_sync_id(self, timeout: float = 2.0) -> bytes | None:
-        self._x2_remote_sync_id_event.wait(timeout)
-        with self._x2_remote_sync_id_lock:
-            return self._x2_remote_sync_id
-
-    def note_x2_paired_device(self, row: X2PairedDevice) -> None:
-        """Record one decoded X2 paired-device row (list reply handler).
-
-        Row 1 starts a new list, so devices unpaired since the last request
-        drop out.
-        """
-
-        with self._x2_remote_sync_id_lock:
-            if row.index <= 1:
-                self._x2_paired_devices.clear()
-            self._x2_paired_devices[(row.row_type, row.slot)] = row
-
-    def x2_paired_devices(self) -> list[X2PairedDevice]:
-        """The X2 paired devices from the last list reply, in row order."""
-
-        with self._x2_remote_sync_id_lock:
-            return sorted(self._x2_paired_devices.values(), key=lambda row: row.index)
 
     # ------------------------------------------------------------------
     # Virtual IP device/button creation

@@ -38,6 +38,7 @@ from .lib.wifi_inplace_plan import (
     wifi_membership_order_steps,
 )
 from .lib.protocol_const import ButtonName
+from .lib.remote_sync_frames import per_item_sync_targets
 from .command_config import (
     COMMAND_BRAND_PREFIX,
     LEGACY_COMMAND_BRAND_PREFIX,
@@ -845,7 +846,11 @@ class WifiDeployMixin:
                 step_name=None,
                 message="Resyncing physical remote",
             )
-            await self.async_resync_remote()
+            # A rename-only plan needs just the device re-read by the remote
+            # (seconds); anything structural still needs the full sync.
+            targets = per_item_sync_targets(plan.steps, dev_id) if plan.steps else None
+            if not await self.async_sync_remote_items(targets):
+                await self.async_resync_remote()
 
         if store is not None:
             await store.async_save_deployed_wifi_commands(

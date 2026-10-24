@@ -53,6 +53,7 @@ from .hub_versions import (
     firmware_is_unsupported,
 )
 from .commands import hub_command_label
+from .remote_sync_frames import per_item_sync_targets
 from .wifi_inplace_plan import (
     REFERENCED_RECORD_STEP_KINDS,
     baseline_snapshot_from_bundle,
@@ -2327,9 +2328,12 @@ class AsyncXProxy:
         their new labels and the next update resumes. Returns the new
         :class:`WifiDeployment`.
 
-        An update that wrote anything ends with one physical remote-sync
-        trigger (deferred to the batch end inside :meth:`batch_writes`);
-        an unchanged spec sends none.
+        An update that only renamed commands (or changed their payload)
+        ends with a per-item remote sync of the device: seconds, not a
+        rebuild. Anything else (favorites, bindings, membership, inputs,
+        power hooks) ends with one full remote-sync trigger, deferred to
+        the batch end inside :meth:`batch_writes`; an unchanged spec sends
+        none.
         """
 
         return await self._update_wifi_device(deployment, spec, progress=progress, remote_sync=True)
@@ -2465,9 +2469,35 @@ class AsyncXProxy:
                 completed_steps=int(data.get("completed_steps") or 0),
                 message=str(data.get("message") or "") or None,
             )
-        if remote_sync:
+        # Reads first, trigger last (a hub starting a remote rebuild may not
+        # finish a read): a rename-only plan gets the device's per-item sync,
+        # anything else, or a per-item sync the hub does not ack, the full one.
+        if remote_sync and not await self._sync_remote_items(what, per_item_sync_targets(plan.steps, dev_lo)):
             await self._resync_remote_after(what)
         return updated
+
+    async def _sync_remote_items(self, what: str, targets: Optional[tuple[int, ...]]) -> bool:
+        """Per-item remote syncs closing a write, after its read-back.
+
+        ``targets`` is :func:`per_item_sync_targets`' answer: None means only
+        a full sync covers the write (returns False, the caller sends it);
+        otherwise each entity gets its own per-item sync. Any sync the hub
+        does not ack returns False, so the caller falls back to the full
+        sync.
+        """
+
+        if targets is None:
+            return False
+        for entity in targets:
+            try:
+                sent = bool(await self._run_draining(self._proxy.sync_remote_entity, entity))
+            except Exception:  # noqa: BLE001 - the full sync is the fallback
+                _LOG.warning("%s: the per-item remote sync of %s raised", what, entity, exc_info=True)
+                return False
+            if not sent:
+                _LOG.warning("%s: the per-item remote sync of %s was not acked", what, entity)
+                return False
+        return True
 
     async def _check_order(self, kind: str, ordered_ids: Sequence[int]) -> tuple[int, ...]:
         ids = tuple(int(i) & 0xFF for i in ordered_ids)
@@ -3326,6 +3356,10 @@ _R_ENTITY_RESTORE = (
     "announce like its own writes; restore() takes a hub_bundle, and the "
     "engine call stays reachable through .sync"
 )
+_R_ITEM_SYNC = (
+    "per-item remote sync step composed by the Wifi update paths (facade and "
+    "Home Assistant); not a consumer-facing write"
+)
 _R_REMOTE_SYNC_BENCH = (
     "X2 paired-device rows for the targeted remote-sync bench (bench_333); "
     "no facade feature uses them until that form is validated"
@@ -3339,6 +3373,7 @@ def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
 ENGINE_ONLY: dict[str, str] = {
     **_reasons(_R_ENTITY_RESTORE, ("restore_device", "restore_activity")),
     **_reasons(_R_REMOTE_SYNC_BENCH, ("x2_paired_devices",)),
+    **_reasons(_R_ITEM_SYNC, ("sync_remote_entity",)),
     **_reasons(
         _R_TRANSPORT,
         (

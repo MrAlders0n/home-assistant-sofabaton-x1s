@@ -49,8 +49,10 @@ ENTITY_SYNC_NONE = "none"
 ENTITY_SYNC_FORMS = (ENTITY_SYNC_LEGACY, ENTITY_SYNC_NATIVE, ENTITY_SYNC_NONE)
 
 #: ``order_sync_form`` values: the trigger closing a device or activity
-#: reorder. ``full`` is the full trigger on every model (validated);
-#: ``native`` sends the X2 its order-only sync (~10 s, bench_333 C3).
+#: reorder. ``native`` (the default) sends the X2 its order-only sync
+#: (~10 s instead of a ~4.5 min full sync, bench_333 C3) and the X1/X1S the
+#: full trigger (they have no order-only form, C5); ``full`` sends the full
+#: trigger on every model.
 ORDER_SYNC_FULL = "full"
 ORDER_SYNC_NATIVE = "native"
 ORDER_SYNC_FORMS = (ORDER_SYNC_FULL, ORDER_SYNC_NATIVE)
@@ -84,10 +86,9 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         # sent; see begin_write_batch.
         self._write_batch: EngineWriteBatch | None = None
         self._write_batch_lock = threading.Lock()
-        # Which sync forms the write flows use; the defaults send
-        # exactly what the flows always sent.
+        # Which sync forms the write flows use (see the form constants).
         self.entity_sync_form: str = ENTITY_SYNC_LEGACY
-        self.order_sync_form: str = ORDER_SYNC_FULL
+        self.order_sync_form: str = ORDER_SYNC_NATIVE
 
     def _remote_sync_frame(self, hub_version: str | None = None) -> tuple[int, bytes] | None:
         """``(opcode, payload)`` of the physical remote-sync trigger for
@@ -187,6 +188,18 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
             payload=payload,
             ack_opcode=0x0103,
         ).ok
+
+    def sync_remote_entity(self, entity_id: int) -> bool:
+        """Per-item remote sync of one device or activity: the remotes
+        re-read that one item (a 1/1 sync on the X2, seconds) instead of
+        rebuilding everything. Covers every pending change of that item
+        (bench_333 C4-C6, all models); it cannot add or remove an item, so
+        creates and deletes still need :meth:`resync_remote`. Not deferred
+        by a write batch.
+        """
+
+        entity = int(entity_id) & 0xFF
+        return self._send_entity_sync_step(entity, f"entity-sync[0x{entity:02X}]")
 
     # ------------------------------------------------------------------
     # Write batch (phase 4 plan, H2 / decision 8)

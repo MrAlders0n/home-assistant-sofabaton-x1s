@@ -120,10 +120,19 @@ def test_entity_sync_is_never_deferred_by_a_write_batch(monkeypatch) -> None:
     assert summary["remote_sync_requests"] == 0
 
 
-@pytest.mark.parametrize("hub_version, payload", [("X1S", b""), ("X2", b"\xff\xff\xff")])
-def test_order_trigger_default_is_the_full_trigger(monkeypatch, hub_version, payload) -> None:
+@pytest.mark.parametrize("hub_version, payload", [("X1S", b""), ("X2", bytes.fromhex("00 00 ff 00"))])
+def test_order_trigger_default_is_the_x2_order_sync(monkeypatch, hub_version, payload) -> None:
     engine, sent = _engine(hub_version, monkeypatch)
-    assert engine.order_sync_form == write_batch.ORDER_SYNC_FULL
+    assert engine.order_sync_form == write_batch.ORDER_SYNC_NATIVE
+    assert engine._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00, purpose="order")
+    # The X2 gets its ~10 s order-only sync; the X1S has none and keeps the full trigger.
+    assert sent == [(0x64, payload)]
+
+
+@pytest.mark.parametrize("hub_version, payload", [("X1S", b""), ("X2", b"\xff\xff\xff")])
+def test_order_trigger_full_form_sends_the_full_trigger(monkeypatch, hub_version, payload) -> None:
+    engine, sent = _engine(hub_version, monkeypatch)
+    engine.order_sync_form = write_batch.ORDER_SYNC_FULL
     assert engine._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00, purpose="order")
     assert sent == [(0x64, payload)]
 
@@ -149,3 +158,60 @@ def test_order_trigger_inside_a_batch_coalesces_into_the_full_trigger(monkeypatc
     assert sent == []
     assert engine.end_write_batch()["remote_sync"] == "sent"
     assert enqueued == [(0x0364, b"\xff\xff\xff")]
+
+
+# -- per-item sync after a write plan, find-remote target ---------------------
+
+class _PlanStep:
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+        self.payload = {}
+
+
+@pytest.mark.parametrize("kinds, expected", [
+    (["command_rename", "command_rename"], (12,)),
+    (["command_payload"], (12,)),
+    (["command_rename", "favorite_add"], None),
+    (["binding_write"], None),
+    (["member_replay", "command_rename"], None),
+    (["command_rename", "command_rename", "wifi_head_commit"], (12,)),
+    (["wifi_head_commit"], (12,)),
+    (["wifi_power_config"], None),
+    ([], None),
+])
+def test_per_item_sync_targets_only_covers_command_record_rewrites(kinds, expected) -> None:
+    assert frames.per_item_sync_targets([_PlanStep(k) for k in kinds], 0x10C) == expected
+
+
+@pytest.mark.parametrize("hub_version", ["X1", "X1S", "X2"])
+def test_sync_remote_entity_sends_the_per_item_frame(monkeypatch, hub_version) -> None:
+    engine, sent = _engine(hub_version, monkeypatch)
+    assert engine.sync_remote_entity(0x10C) is True
+    assert sent == [(0x65, b"\x0c")]
+
+
+def _paired_row(index: int, count: int, row_type: int, bit: int) -> bytes:
+    slots = bytearray(3)
+    slots[{2: 0, 1: 1}.get(row_type, 2)] = bit
+    head = bytes([index, count]) + bytes(slots) + bytes(7) + bytes([row_type, 1, 0]) + bytes(6) + b"R"
+    return head.ljust(0x33, b"\x00")
+
+
+def test_x2_find_remote_targets_every_paired_remote(monkeypatch) -> None:
+    engine = x1_proxy_mod.X1Proxy("127.0.0.1", hub_version="X2", proxy_enabled=False)
+    for row in (_paired_row(1, 3, 0, 0x08), _paired_row(2, 3, 1, 0x01), _paired_row(3, 3, 0, 0x10)):
+        engine.note_x2_paired_device(frames.parse_x2_paired_row(row))
+    sent: list = []
+    monkeypatch.setattr(engine, "enqueue_cmd", lambda opcode, payload=b"", **kw: sent.append((opcode, payload)) or True)
+    assert engine.find_remote() is True
+    # Remotes 1 and 2 OR together; the repeater (type 1) is left out.
+    assert sent == [(0x0323, bytes.fromhex("00 00 18"))]
+
+
+def test_x2_find_remote_falls_back_to_remote_one_without_a_list(monkeypatch) -> None:
+    engine = x1_proxy_mod.X1Proxy("127.0.0.1", hub_version="X2", proxy_enabled=False)
+    sent: list = []
+    monkeypatch.setattr(engine, "enqueue_cmd", lambda opcode, payload=b"", **kw: sent.append((opcode, payload)) or True)
+    # Not controllable here: no list request, the validated remote 1 target.
+    assert engine.find_remote() is True
+    assert sent == [(0x0323, bytes.fromhex("00 00 08"))]

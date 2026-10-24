@@ -175,10 +175,24 @@ def _make_hub(
     monkeypatch.setattr(hub, "async_delete_device", _delete)
     monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_fetch_device_commands", _noop)
-    monkeypatch.setattr(hub, "async_resync_remote", _noop)
+    resyncs: list[str] = []
+
+    async def _resync(*_args, **_kwargs):
+        resyncs.append("full")
+
+    item_syncs: list = []
+
+    async def _item_sync(targets):
+        item_syncs.append(targets)
+        return targets is not None
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync)
+    monkeypatch.setattr(hub, "async_sync_remote_items", _item_sync)
     monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _noop)
     hub._inplace_plans = plans
     hub._button_calls = button_calls
+    hub._resyncs = resyncs
+    hub._item_syncs = item_syncs
     return hub
 
 
@@ -210,6 +224,9 @@ def test_inplace_path_runs_and_skips_replace(monkeypatch):
     # the hash changed, so the plan is exactly the brand head commit
     assert [s.kind for s in hub._inplace_plans[0].steps] == ["wifi_head_commit"]
     assert calls == ["inplace_run"]  # no create, no delete
+    # A plan that only rewrites the device's own records ends with its per-item
+    # remote sync, not the full resync.
+    assert hub._item_syncs == [(DEV_ID,)] and hub._resyncs == []
     assert store.saved and store.saved[0]["request_port"] == PORT
     assert store.saved[0]["deployed_device_id"] == DEV_ID
     loop.close()

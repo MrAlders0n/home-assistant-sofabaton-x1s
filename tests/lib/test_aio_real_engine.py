@@ -999,6 +999,7 @@ def _update_engine(monkeypatch, dep, *, hub_version="X1S", device=None, run_resu
 
     monkeypatch.setattr(engine, "run_wifi_inplace_plan", fake_run)
     monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: trace.append("resync") or True)
+    monkeypatch.setattr(engine, "sync_remote_entity", lambda entity: trace.append(("item", entity)) or True)
     return engine, runs
 
 
@@ -1044,8 +1045,14 @@ def test_update_wifi_device_renames_records_in_place(monkeypatch) -> None:
         monkeypatch.setattr(engine, "activities_referencing_device", lambda dev_id: [101])
         engine.trace.clear()
         await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Go"), _WifiSlotSpec("Pause"))))
-        # One remote-sync trigger closes the update, after the read-back.
-        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101), "resync"]
+        # A rename-only update closes with the device's per-item remote sync, after the read-back;
+        # no full trigger.
+        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101), ("item", 12)]
+        # A per-item sync the hub does not ack falls back to the full trigger.
+        monkeypatch.setattr(engine, "sync_remote_entity", lambda entity: engine.trace.append(("item", entity)) and False)
+        engine.trace.clear()
+        await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Run"), _WifiSlotSpec("Pause"))))
+        assert engine.trace[-2:] == [("item", 12), "resync"]
 
     asyncio.run(main())
 

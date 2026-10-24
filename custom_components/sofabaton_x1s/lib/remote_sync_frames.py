@@ -29,6 +29,7 @@ alone; bits OR together, and ``FF FF FF`` addresses everything.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Iterable
 
 from .hub_versions import HUB_VERSION_X2
 from .protocol_const import OP_ACTIVITY_ASSIGN_COMMIT, OP_X2_REMOTE_SYNC
@@ -168,7 +169,33 @@ def order_sync_frame(hub_version: str | None) -> tuple[int, bytes] | None:
     return None
 
 
+#: Write-plan steps that only change one device's own records: a per-item
+#: sync of that device brings them to the remote (bench_333: command renames
+#: on the X1, X1S and X2; one sync carried several renames). The head commit
+#: is the same device's record (a device rename reaches the remote even
+#: without a sync, 2026-08 bench); Home Assistant ends every in-place update
+#: with one.
+DEVICE_ITEM_SYNC_STEP_KINDS = frozenset({"command_rename", "command_payload", "wifi_head_commit"})
+
+
+def per_item_sync_targets(steps: Iterable[Any], device_id: int) -> tuple[int, ...] | None:
+    """The entities to per-item sync after a write plan for ``device_id``,
+    or None when the plan needs the full remote sync.
+
+    Only a plan made of the device's own record rewrites (renames,
+    payloads, the head) is covered: favorites, bindings, membership,
+    inputs and power hooks keep the full sync until a bench shows the
+    per-item form brings them over.
+    """
+
+    kinds = {getattr(step, "kind", None) for step in steps}
+    if not kinds or not kinds <= DEVICE_ITEM_SYNC_STEP_KINDS:
+        return None
+    return (int(device_id) & 0xFF,)
+
+
 __all__ = [
+    "DEVICE_ITEM_SYNC_STEP_KINDS",
     "FAMILY_ENTITY_SYNC",
     "OP_ENTITY_SYNC",
     "OP_X2_ENTITY_SYNC",
@@ -181,6 +208,7 @@ __all__ = [
     "X2_TARGET_ALL_REMOTES",
     "entity_sync_frame",
     "order_sync_frame",
+    "per_item_sync_targets",
     "parse_x2_paired_row",
     "x2_order_sync_frame",
     "x2_remote_sync_frame",

@@ -16,7 +16,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     FAMILY_ACTIVITY_SORT,
     FAMILY_DEVICE_SORT,
     OP_REMOTE_SYNC,
-    OP_X2_REMOTE_SYNC_ALL,
+    OP_X2_REMOTE_SYNC,
 )
 from custom_components.sofabaton_x1s.lib.proxy_activity_ops import ActivityOpsMixin
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
@@ -285,9 +285,9 @@ def _resync_remote_frame(hub_version: str, monkeypatch) -> tuple[int, bytes]:
     [
         (HUB_VERSION_X1, (OP_REMOTE_SYNC, b"")),
         (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
-        # A bare 0x0064 starts no sync on the X2; only the all-remotes
-        # broadcast does (bench 2026-08-27).
-        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+        # The X2 gets its order-only sync (~10 s, bench_333 C3) instead of
+        # the all-remotes full broadcast (a bare 0x0064 starts nothing there).
+        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC, b"\x00\x00\xff\x00")),
     ],
 )
 @pytest.mark.parametrize("kind", ["activity", "device"])
@@ -319,7 +319,9 @@ def test_reorder_remote_sync_is_the_resync_remote_frame(monkeypatch, hub_version
     assert result is not None and result["status"] == "success"
     assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family, FAMILY_REMOTE_SYNC]
     assert wire[1] == trigger
-    assert wire[1] == _resync_remote_frame(hub_version, monkeypatch)
+    if hub_version != HUB_VERSION_X2:
+        # The X1/X1S have no order-only form: the trigger is resync_remote's.
+        assert wire[1] == _resync_remote_frame(hub_version, monkeypatch)
     # The trigger's own STATUS_ACK is consumed as part of the step.
     assert len(ack_waits) == 2 and ack_waits[1][0] == (0x0103, 0x00)
 
