@@ -19,7 +19,7 @@ import functools
 from dataclasses import dataclass, field
 import inspect
 import logging
-from typing import Any, AsyncIterator, Callable, Iterable, Optional, Sequence
+from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Optional, Sequence
 
 from .config import HubConfig
 from .discovery import (
@@ -61,16 +61,22 @@ from .wifi_inplace_plan import (
     classify_live_slots,
 )
 from .wifi_device import (
+    WIFI_PROBE_COMMAND_ID,
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
+    WIFI_TRANSPORT_URL,
     WIFI_TRANSPORTS,
     X1_CALLBACK_PORT,
+    WifiDeliveryProbe,
     WifiDeployment,
     WifiDeviceSpec,
     WifiTarget,
     command_defs_from_spec,
     labels_from_spec,
+    normalize_wifi_url,
     snapshot_from_spec,
+    wifi_http_record_bodies,
+    wifi_url_record_bodies,
 )
 from .devices import parse_device_record
 from .device_class_profiles import supported_create_classes
@@ -479,6 +485,10 @@ class AsyncXProxy:
             "play_ir_blob",
             "ir_learn_command",
             "cancel_ir_learn",
+            # Wifi webhook transport (wave 1)
+            "rewrite_wifi_records",
+            "query_hub_mqtt_status",
+            "set_hub_mqtt_broker",
         }
     )
 
@@ -2127,10 +2137,16 @@ class AsyncXProxy:
         host: Optional[str] = None,
         port: Optional[int] = None,
         transport: str = WIFI_TRANSPORT_HTTP,
+        url: Optional[str] = None,
     ) -> WifiDeployment:
         """Create a managed Wifi Device whose commands call ``host:port``, or,
         with ``transport="mqtt"`` on an X2, one whose presses the hub
-        publishes to ``<MAC>/up`` on the broker set in the Sofabaton app.
+        publishes to ``<MAC>/up`` on the broker set in the Sofabaton app,
+        or, with ``transport="url"`` on an X2, one whose records call
+        ``url`` themselves (``http`` or ``https``; the hub checks no
+        certificate) with the press in the query (:func:`wifi_record_url`).
+        A ``url`` device is created as an ``http`` one and its records are
+        rewritten in place before the remote sync (one write batch).
 
         An MQTT device takes no ``host`` or ``port``: its records are inert
         and nothing on it names an address. The consumer subscribes to the
@@ -2155,6 +2171,8 @@ class AsyncXProxy:
         hub_version = str(getattr(self._proxy, "hub_version", "") or "")
         if transport == WIFI_TRANSPORT_MQTT:
             return await self._deploy_wifi_mqtt_device(normalized, hub_version)
+        if transport == WIFI_TRANSPORT_URL:
+            return await self._deploy_wifi_url_device(normalized, url, hub_version)
         if transport != WIFI_TRANSPORT_HTTP:
             raise ValueError(f"transport must be one of {WIFI_TRANSPORTS}, got {transport!r}")
         if host is None or port is None:
@@ -2296,6 +2314,168 @@ class AsyncXProxy:
             await self._resync_remote_after(f"deploy_wifi_device({normalized.name!r}, mqtt)")
             return deployment
         return await self._finish_wifi_deploy(deployment, normalized)
+
+    async def _deploy_wifi_url_device(
+        self, normalized: WifiDeviceSpec, url: Optional[str], hub_version: str
+    ) -> WifiDeployment:
+        if hub_version != HUB_VERSION_X2:
+            raise ValueError(f"the url transport exists on the X2 only; this hub is {hub_version or 'unknown'}")
+        base = normalize_wifi_url(url)
+        # The validated create writes request-text records; they are
+        # rewritten as URL records before the batch's one remote sync. A
+        # caller's own batch (to probe delivery first) is used as is.
+
+        async def _deploy() -> WifiDeployment:
+            http = await self.deploy_wifi_device(normalized, host=self.local_address(), port=X1_CALLBACK_PORT)
+            return await self._retarget_wifi_records(http, WIFI_TRANSPORT_URL, url=base)
+
+        if self._batch is not None:
+            return await _deploy()
+        async with self.batch_writes():
+            return await _deploy()
+
+    async def retarget_wifi_device(
+        self,
+        deployment: WifiDeployment,
+        *,
+        transport: str,
+        url: Optional[str] = None,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> WifiDeployment:
+        """Point a deployed X1S/X2 Wifi Device's records somewhere else, in place.
+
+        ``transport="url"`` (X2 only) rewrites every record as a URL record
+        calling ``url``; ``transport="http"`` rewrites them as request-text
+        records calling ``host:port`` (the ``/launch/`` paths a fresh
+        ``http`` deploy writes). Both kinds live on the same device, so the
+        device keeps its id, labels, favorites, bindings and activities;
+        only the records change, and the remote needs no sync. An ``mqtt``
+        device cannot switch (its class is fixed at create), nor can an X1
+        (its Roku replay calls port 8060 by firmware). Returns the new
+        :class:`WifiDeployment`.
+        """
+
+        hub_version = str(getattr(self._proxy, "hub_version", "") or deployment.hub_version or "")
+        if WIFI_TRANSPORT_MQTT in (deployment.transport, transport):
+            raise ValueError("an mqtt Wifi Device keeps its transport; deploy a new device instead")
+        if hub_version == HUB_VERSION_X1:
+            raise ValueError("an X1 Wifi Device always calls port 8060; it cannot be retargeted")
+        if transport == WIFI_TRANSPORT_URL:
+            if hub_version != HUB_VERSION_X2:
+                raise ValueError(f"the url transport exists on the X2 only; this hub is {hub_version or 'unknown'}")
+            return await self._retarget_wifi_records(deployment, WIFI_TRANSPORT_URL, url=normalize_wifi_url(url))
+        if transport != WIFI_TRANSPORT_HTTP:
+            raise ValueError(f"transport must be one of {WIFI_TRANSPORTS}, got {transport!r}")
+        if host is None or port is None:
+            raise ValueError("an http retarget needs the host and port the records call")
+        return await self._retarget_wifi_records(deployment, WIFI_TRANSPORT_HTTP, target=WifiTarget(host=host, port=port))
+
+    async def _retarget_wifi_records(
+        self,
+        deployment: WifiDeployment,
+        transport: str,
+        *,
+        url: str = "",
+        target: Optional[WifiTarget] = None,
+    ) -> WifiDeployment:
+        dev_lo = int(deployment.device_id) & 0xFF
+        slot_count = len(deployment.spec.normalized().slots)
+        if transport == WIFI_TRANSPORT_URL:
+            bodies = wifi_url_record_bodies(url, dev_lo, slot_count=slot_count)
+        else:
+            assert target is not None
+            action_id = str(await self.run(self._proxy._stable_hub_action_id) or "")
+            target = WifiTarget(host=target.host, port=target.port, action_id=action_id)
+            bodies = wifi_http_record_bodies(target, dev_lo, slot_count=slot_count)
+        what = f"retarget_wifi_device({dev_lo}, {transport})"
+        result = await self._write(what, self._proxy.rewrite_wifi_records, dev_lo, bodies)
+        await self._rebase_after_write(result, device_ids=(dev_lo,), force=True, reread_devices=(dev_lo,))
+        return WifiDeployment(
+            device_id=dev_lo,
+            spec=deployment.spec,
+            target=target if transport == WIFI_TRANSPORT_HTTP else None,
+            labels=deployment.labels,
+            hub_version=deployment.hub_version,
+            transport=transport,
+            url=url,
+        )
+
+    async def probe_wifi_delivery(
+        self,
+        deployment: WifiDeployment,
+        *,
+        arrived: Awaitable[Any],
+        timeout: float = 10.0,
+    ) -> WifiDeliveryProbe:
+        """Press slot 1 of a deployed Wifi Device and wait for it to arrive.
+
+        The library cannot see the consumer's ingress (its listener, its
+        webhook, its MQTT subscription), so the consumer passes ``arrived``:
+        an awaitable it completes when that press (device
+        ``deployment.device_id``, command :data:`WIFI_PROBE_COMMAND_ID`)
+        reaches it. The consumer should also hold back the slot's own
+        action for that one press. ``arrived`` is cancelled on timeout.
+
+        Inside :meth:`batch_writes` the probe runs before the batch's
+        remote sync, which is where a deploy should check delivery.
+        """
+
+        loop = asyncio.get_running_loop()
+        device_id = int(deployment.device_id) & 0xFF
+        started = loop.time()
+        sent = bool(await self.send(device_id, WIFI_PROBE_COMMAND_ID))
+        if not sent:
+            future = asyncio.ensure_future(arrived)
+            future.cancel()
+            return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=False, delivered=False)
+        try:
+            await asyncio.wait_for(arrived, timeout)
+        except asyncio.TimeoutError:
+            return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=False)
+        return WifiDeliveryProbe(
+            device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=True, latency_s=round(loop.time() - started, 3)
+        )
+
+    async def hub_mqtt_status(self, *, timeout: float = 3.0) -> Optional[bool]:
+        """Whether the X2 reports a connected MQTT broker.
+
+        ``None`` when the hub does not answer (another model, an older
+        firmware). The broker is the one set in the Sofabaton app or with
+        :meth:`set_hub_mqtt_broker`; the hub cannot report which one.
+        """
+
+        what = "hub_mqtt_status"
+        self._raise_if_cannot_fetch(what)
+        await self._wait_for_free_hub(what, DEFAULT_FETCH_TIMEOUT)
+        return await self.run(self._proxy.query_hub_mqtt_status, timeout=timeout)
+
+    async def set_hub_mqtt_broker(self, *, host: str, port: int, username: str, password: str) -> bool:
+        """Point the X2 at an MQTT broker and return its verdict.
+
+        ``host`` is the broker's IPv4 address as the hub reaches it (resolve
+        names first); username and password take up to 60 characters each.
+        Returns ``True`` when the hub connected, ``False`` when it tried
+        and could not (wrong address, port or login, or a network in the
+        way). Replaces the hub's current broker, which the hub cannot
+        report, so this cannot be undone from here. ``ValueError`` before
+        anything is sent for values the hub could not take or another
+        model; :class:`HubRejectedError` when the hub gave no verdict. The
+        password is never logged.
+        """
+
+        hub_version = str(getattr(self._proxy, "hub_version", "") or "")
+        if hub_version != HUB_VERSION_X2:
+            raise ValueError(f"the broker setup exists on the X2 only; this hub is {hub_version or 'unknown'}")
+        result = await self._write(
+            "set_hub_mqtt_broker",
+            self._proxy.set_hub_mqtt_broker,
+            broker_ip=host,
+            broker_port=port,
+            username=username,
+            password=password,
+        )
+        return bool(result.get("connected"))
 
     async def update_wifi_device(
         self,

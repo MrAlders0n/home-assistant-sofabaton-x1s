@@ -304,6 +304,8 @@ def test_select_wifi_command_transport_matrix():
         )
         fake._wifi_mqtt_mac = lambda: SofabatonHub._wifi_mqtt_mac(fake)
         fake.wifi_mqtt_available = lambda: SofabatonHub.wifi_mqtt_available(fake)
+        fake.wifi_webhook_available = lambda: SofabatonHub.wifi_webhook_available(fake)
+        fake._direct_wifi_transport = lambda: SofabatonHub._direct_wifi_transport(fake)
         return SofabatonHub._select_wifi_command_transport(fake, payload)
 
     # Deployed records keep their transport unless the desired one differs

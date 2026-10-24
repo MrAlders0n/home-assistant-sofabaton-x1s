@@ -287,7 +287,8 @@ def set_command_payload(
     """Replace the stored payload of an existing command (an in-place overwrite).
 
     The command's label, library type and button code are preserved by the
-    engine; only the bytes change. ``payload`` is an :class:`IrPayload` on
+    engine; only the bytes change. A ``wifi_ip`` command's type follows its
+    kind instead (request text or :meth:`NetworkCommand.url`). ``payload`` is an :class:`IrPayload` on
     an IR device, or a :class:`NetworkCommand` / :class:`CommandRecord` of
     the device's class (the executor re-encodes a network command's
     structured form through the canonical writer; a record's bytes are
@@ -302,9 +303,16 @@ def set_command_payload(
             continue
         previous = row.get("restore_data") if isinstance(row.get("restore_data"), dict) else {}
         if isinstance(payload, NetworkCommand):
+            # A wifi_ip record's type follows its kind (request text 0x1C,
+            # URL 0x21): an edit may switch kinds, so the payload decides.
+            record_type = (
+                payload.library_type
+                if payload.device_class == DEVICE_CLASS_WIFI_IP
+                else previous.get("library_type", payload.library_type)
+            )
             row["restore_data"] = {
                 "transport": "hub_code_record",
-                "library_type": int(previous.get("library_type", payload.library_type)) & 0xFF,
+                "library_type": int(record_type) & 0xFF,
                 "button_code": int(previous.get("button_code", 0)) & 0xFFFFFFFFFFFF,
                 "data_hex": payload.blob.hex(),
                 "decoded": payload.decoded,

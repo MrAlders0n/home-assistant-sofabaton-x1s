@@ -111,6 +111,13 @@ OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites map
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_SET_HUB_NAME = 0x0030  # payload: GB2312-encoded hub name bytes
 FAMILY_HUB_NAME_REPLY = 0x31  # H→A variable-length hub-name reply family
+# X2 hub's own MQTT broker link (not benched yet, see the Wifi webhook
+# transport plan, gates B5/B11). Setup payload: [len BE16] + broker IPv4 +
+# port BE16 + hub MAC + username and password, each a char count and
+# UTF-16BE text. The hub answers family 0x74 [1 connected | 0 failed].
+FAMILY_HUB_MQTT_SETUP = 0x73
+FAMILY_HUB_MQTT_STATUS = 0x74  # A→H empty: is the hub connected to a broker?
+OP_HUB_MQTT_STATUS_QUERY = 0x0074
 OP_FIND_REMOTE = 0x0023  # payload: empty; triggers the remote buzzer (X1/X1S)
 OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
 # Identical across X1, X1S, X2. The hub commonly disconnects after the ack; clients
@@ -310,6 +317,7 @@ OPNAMES: Dict[int, str] = {
     OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_SET_HUB_NAME: "SET_HUB_NAME",
     OP_FIND_REMOTE: "FIND_REMOTE",
+    OP_HUB_MQTT_STATUS_QUERY: "HUB_MQTT_STATUS_QUERY",
     OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_REMOTE_SYNC: "REMOTE_SYNC",
@@ -502,6 +510,8 @@ FAMILY_NAMES: Dict[int, str] = {
     FAMILY_DEVBTNS: "COMMANDS",
     FAMILY_FAV_ORDER_REQ: "FAV_ORDER_REQ",
     FAMILY_FAV_ORDER_RESP: "FAV_ORDER_RESP",
+    FAMILY_HUB_MQTT_SETUP: "HUB_MQTT_SETUP",
+    FAMILY_HUB_MQTT_STATUS: "HUB_MQTT_STATUS",
 }
 
 
@@ -527,6 +537,9 @@ DEVICE_CLASS_CODE_WIFI_IP = 0x1C
 DEVICE_CLASS_CODE_RF_433 = 0x1D
 DEVICE_CLASS_CODE_RF_315 = 0x1E
 DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
+# Not a device class: the code type of an X2 URL command record, stored on
+# an ordinary wifi_ip device (bench-validated 2026-10-24).
+WIFI_URL_RECORD_CODE = 0x21
 
 DEVICE_CLASS_BY_CODE: Dict[int, str] = {
     DEVICE_CLASS_CODE_BLUETOOTH: DEVICE_CLASS_BLUETOOTH,
@@ -644,6 +657,7 @@ __all__ = [
     "DEVICE_CLASS_CODE_RF_433",
     "DEVICE_CLASS_CODE_RF_315",
     "DEVICE_CLASS_CODE_WIFI_MQTT",
+    "WIFI_URL_RECORD_CODE",
     "DEVICE_CLASS_BY_CODE",
     "DEVICE_CLASS_ALIASES",
     "PUBLIC_DEVICE_CLASSES",
@@ -660,6 +674,9 @@ __all__ = [
     "OP_REQ_ACTIVITY_MAP",
     "OP_DELETE_DEVICE",
     "OP_SET_HUB_NAME",
+    "FAMILY_HUB_MQTT_SETUP",
+    "FAMILY_HUB_MQTT_STATUS",
+    "OP_HUB_MQTT_STATUS_QUERY",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
     "OP_REMOTE_SYNC",

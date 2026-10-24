@@ -248,8 +248,12 @@ class _FakeHub:
         roku_server_enabled=False,
         version="X1S",
         local_address=None,
+        local_port=None,
+        local_scheme=None,
     ) -> None:
         self.local_address = local_address
+        self.local_port = local_port
+        self.local_scheme = local_scheme
         self.hass = hass
         self.entry_id = entry_id
         self.name = name

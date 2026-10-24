@@ -33,9 +33,10 @@ Design rules (mirrors docs/protocol/command-blob-decoders.md):
   (raw learned-IR / database) blobs return ``None`` so the caller
   keeps the existing raw-hex behavior.
 
-The X2's ``wifi_https`` record (code type 0x21) has a reader/writer pair
-here as well; it is not registered under a device class yet (see its
-section).
+A ``wifi_ip`` device on the X2 may also hold URL records (code type 0x21,
+``render_wifi_https_blob_body`` / ``parse_wifi_https_blob_body``); the
+``wifi_ip`` decoder reads both kinds, and decoded fields with a ``url``
+key are the URL kind.
 
 This module does not import anything from the rest of the integration
 and has no I/O. It is safe to import from both the device-backup path
@@ -418,8 +419,8 @@ def _encode_wifi_ip(decoded: Dict[str, Any]) -> bytes:
 #
 # Unlike ``wifi_ip`` there is no IPv4/port prefix and no request text: the
 # URL names the target, ``https`` included. These records live on an
-# ordinary ``wifi_ip`` device, which is why they are not registered under a
-# device class of their own here.
+# ordinary ``wifi_ip`` device, so the ``wifi_ip`` decoder reads them too
+# (below) instead of a device class of their own.
 
 WIFI_HTTPS_METHODS: Tuple[str, ...] = ("GET", "POST", "PUT")
 _WIFI_HTTPS_SCHEMES = ("http://", "https://")
@@ -529,6 +530,33 @@ def parse_wifi_https_blob_body(data: Any) -> Dict[str, Any]:
         "body": body,
         "trailer_hex": _bytes_to_hex(raw[total:]),
     }
+
+
+# A ``wifi_ip`` device holds either record kind: the request-text record
+# (code type 0x1C, X1S/X2) or the URL record (0x21, X2). The decoded fields
+# tell them apart: ``url`` names the URL kind.
+
+
+def _decode_wifi_ip_record(data: bytes) -> Dict[str, Any]:
+    try:
+        return _decode_wifi_ip(data)
+    except ValueError:
+        return parse_wifi_https_blob_body(data)
+
+
+def _encode_wifi_ip_record(decoded: Dict[str, Any]) -> bytes:
+    if "url" not in decoded:
+        return _encode_wifi_ip(decoded)
+    trailer = bytes.fromhex(str(decoded.get("trailer_hex") or "").replace(" ", ""))
+    return (
+        render_wifi_https_blob_body(
+            url=str(decoded["url"]),
+            method=str(decoded["method"]),
+            headers=[tuple(pair) for pair in decoded.get("headers") or ()],
+            body=str(decoded.get("body") or ""),
+        )
+        + trailer
+    )
 
 
 # ---- wifi_roku (class 0x0A) ----------------------------------------------
@@ -1055,7 +1083,7 @@ def _encode_wifi_mqtt(decoded: Dict[str, Any]) -> bytes:
 
 
 _DECODERS: Dict[str, Callable[[bytes], Dict[str, Any]]] = {
-    DEVICE_CLASS_WIFI_IP: _decode_wifi_ip,
+    DEVICE_CLASS_WIFI_IP: _decode_wifi_ip_record,
     DEVICE_CLASS_WIFI_ROKU: _decode_wifi_roku,
     DEVICE_CLASS_WIFI_HUE: _decode_wifi_hue_like,
     DEVICE_CLASS_WIFI_SONOS: _decode_wifi_hue_like,
@@ -1064,7 +1092,7 @@ _DECODERS: Dict[str, Callable[[bytes], Dict[str, Any]]] = {
 }
 
 _ENCODERS: Dict[str, Callable[[Dict[str, Any]], bytes]] = {
-    DEVICE_CLASS_WIFI_IP: _encode_wifi_ip,
+    DEVICE_CLASS_WIFI_IP: _encode_wifi_ip_record,
     DEVICE_CLASS_WIFI_ROKU: _encode_wifi_roku,
     DEVICE_CLASS_WIFI_HUE: _encode_wifi_hue_like,
     DEVICE_CLASS_WIFI_SONOS: _encode_wifi_hue_like,
@@ -1181,6 +1209,21 @@ def format_decoded_for_display(decoded_block: Dict[str, Any]) -> str:
     fields = decoded_block.get("fields")
     if not isinstance(fields, dict):
         return ""
+
+    if class_name == DEVICE_CLASS_WIFI_IP and "url" in fields:
+        lines = [
+            "url: {0}".format(fields.get("url", "")),
+            "method: {0}".format(fields.get("method", "")),
+        ]
+        for pair in fields.get("headers") or ():
+            key, value = (list(pair) + ["", ""])[:2]
+            lines.append("header: {0}: {1}".format(key, value))
+        body = str(fields.get("body") or "")
+        if body:
+            lines.append("body:")
+            for line in body.split("\n"):
+                lines.append("  {0}".format(line))
+        return "\n".join(lines)
 
     if class_name == DEVICE_CLASS_WIFI_IP:
         lines = [

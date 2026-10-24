@@ -54,13 +54,15 @@ import {
 } from "@mdi/js";
 
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
+import { deliveryFailed, formatLatency, targetPort } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery";
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
 import { Coalescer, FOLLOW_MAX_WAIT_MS, needsReload, versionAsLoaded, type LoadedVersion } from "../cache-follow";
 import type { HubContext } from "../panel-context";
 import type { PanelStream, StreamMessage } from "../panel-stream";
-import { firmwareFloor, type Gate } from "../panel-selectors";
+import { activeJob, firmwareFloor, type Gate } from "../panel-selectors";
 import { FIRMWARE_BLOCK_CSS, renderFirmwareBlock } from "../components/firmware-block";
+import { OPERATION_PROGRESS_CSS, jobStepMessage, renderOperationProgress } from "../components/operation-progress";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import {
@@ -101,6 +103,7 @@ import {
 
 const S = TOOLS_CARD_STRINGS.wifiCommands;
 const A = TOOLS_CARD_STRINGS.activities;
+const D = TOOLS_CARD_STRINGS.wifiDelivery;
 
 // Where the card speaks of Home Assistant Actions, the panel speaks of the event stream.
 const T = {
@@ -123,6 +126,13 @@ const T = {
   callsBack: (where: string) => `Presses call ${where} and arrive on the event stream.`,
   x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
   leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them.",
+  // The delivery test (the card's "How presses reach Home Assistant", for this server).
+  deliveryTitle: "How presses reach the server",
+  notDelivered: "Button presses don't reach the server yet.",
+  allowListener: (hubIp: string, target: string, port: string) =>
+    `The hub (${hubIp}) calls ${target}. Allow TCP from the hub to port ${port} on this server's host; with Docker, publish port ${port}.`,
+  allowMqtt: (broker: string) => `The hub must publish to the same broker this server uses${broker ? ` (${broker})` : ""}, and the broker must let it.`,
+  delivered: (seconds: string) => `Presses arrive (${seconds} s).`,
 };
 
 const BUTTON_ICONS: Record<string, string> = {
@@ -139,6 +149,9 @@ const BUTTON_GROUP_TITLES = { navigation: S.navigationGroup, transport: S.transp
 export const WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
 
 interface CreateState { name: string; transport: string; busy: boolean; error: string }
+/** What a job this view started is for: a sync or a redeploy puts the progress view in the detail's place. */
+type WorkingKind = "create" | "sync" | "redeploy" | "test" | "delete";
+type Delivery = NonNullable<WifiDeviceView["delivery"]>;
 interface DeleteState { key: string; busy: boolean; error: string; referenced: boolean }
 interface SlotEditState { index: number; edit: SlotEdit; advanced: boolean; error: string }
 interface ActivityOption { id: number; name: string }
@@ -171,6 +184,9 @@ export class SbPanelWifiDevices extends LitElement {
     _confirmClear: { state: true },
     _leave: { state: true },
     _working: { state: true },
+    _workingKind: { state: true },
+    _deletingKey: { state: true },
+    _testResult: { state: true },
     stream: { attribute: false },
     _syncError: { state: true },
     _flashTick: { state: true },
@@ -180,6 +196,7 @@ export class SbPanelWifiDevices extends LitElement {
     PANEL_BASE_CSS,
     EDITOR_CSS,
     FIRMWARE_BLOCK_CSS,
+    OPERATION_PROGRESS_CSS,
     css`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
@@ -219,6 +236,12 @@ export class SbPanelWifiDevices extends LitElement {
       .wifi-notice .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
       .wifi-notices { display: grid; gap: 8px; }
       .wifi-notices:empty { display: none; }
+      /* -- the delivery test (the card's delivery panel) ----------------------------------------- */
+      .wifi-delivery { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel); }
+      .wifi-delivery-head { display: flex; align-items: center; gap: 10px; }
+      .wifi-delivery-title { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: var(--sbp-text); }
+      .wifi-delivery-head .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
+      .wifi-delivery-ok { font-size: 12px; color: color-mix(in srgb, var(--sbp-ok) 70%, var(--sbp-text)); }
 
       /* -- the press glow (the card's .wifi-ir-flash, same 720 ms as the dock's sweep) ---------- */
       .wifi-ir-flash { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sbp-accent) 75%, transparent), inset 0 0 14px color-mix(in srgb, var(--sbp-accent) 22%, transparent), 0 0 14px color-mix(in srgb, var(--sbp-accent) 30%, transparent); opacity: 0; animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
@@ -361,6 +384,11 @@ export class SbPanelWifiDevices extends LitElement {
   private _leave: (() => void) | null = null;
   /** A job this view started and follows: the text the header's button shows. */
   private _working: string | null = null;
+  private _workingKind: WorkingKind | null = null;
+  /** The device being deleted: the confirm is closed, its row says "Deleting…" (the card's way). */
+  private _deletingKey: string | null = null;
+  /** A Test again run from here, shown once when it passed. */
+  private _testResult: { key: string; delivery: Delivery } | null = null;
   private _syncError: string | null = null;
   private _flashTick = 0;
 
@@ -565,10 +593,11 @@ export class SbPanelWifiDevices extends LitElement {
   }
 
   /** Start a job, follow it, reload. Resolves with the finished job, or null with the error said. */
-  private async _runJob(label: string, start: () => Promise<ApiResponse<JobView>>): Promise<{ job: JobView | null; error: string | null }> {
+  private async _runJob(label: string, start: () => Promise<ApiResponse<JobView>>, kind: WorkingKind): Promise<{ job: JobView | null; error: string | null }> {
     const hubId = this._hubId;
     if (!hubId) return { job: null, error: "no hub" };
     this._working = label;
+    this._workingKind = kind;
     try {
       const started = await start();
       if (started.status !== 202 || !started.body) return { job: null, error: problemText(started) };
@@ -579,6 +608,7 @@ export class SbPanelWifiDevices extends LitElement {
       return { job: null, error: String(err) };
     } finally {
       this._working = null;
+      this._workingKind = null;
     }
   }
 
@@ -629,7 +659,7 @@ export class SbPanelWifiDevices extends LitElement {
       return;
     }
     this._create = { ...state, busy: true, error: "" };
-    const { job, error } = await this._runJob(S.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport));
+    const { job, error } = await this._runJob(S.createDeviceBusy, () => this.api.createWifiDevice(hubId, specFromDraft({ ...draftFromSpec(null), name }), state.transport), "create");
     if (error) {
       this._create = { ...state, busy: false, error: `${S.createDeviceFailed}: ${error}` };
       await this._load();
@@ -657,8 +687,12 @@ export class SbPanelWifiDevices extends LitElement {
     const state = this._delete;
     const hubId = this._hubId;
     if (!state || !hubId || state.busy) return;
-    this._delete = { ...state, busy: true, error: "" };
+    // The card's way: the confirm closes first and the row narrates; the dialog only
+    // comes back for a reference warning or an error.
+    this._delete = null;
+    this._deletingKey = state.key;
     this._working = S.deleteDeviceBusy;
+    this._workingKind = "delete";
     let error: string | null = null;
     try {
       const started = await this.api.removeWifiDevice(hubId, state.key, state.referenced);
@@ -679,6 +713,8 @@ export class SbPanelWifiDevices extends LitElement {
       error = String(err);
     } finally {
       this._working = null;
+      this._workingKind = null;
+      this._deletingKey = null;
     }
     if (error) {
       this._delete = { ...state, busy: false, error: `${S.deleteDeviceFailed}: ${error}` };
@@ -794,7 +830,7 @@ export class SbPanelWifiDevices extends LitElement {
     // A button this draft took from another Wifi Device is cleared from that device's spec too (the
     // card does the same on save); left there, that device's next sync would take the button back.
     const cleanups = buttonCleanups(this._devices, device.key, draft);
-    const { error } = await this._runJob(S.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)));
+    const { error } = await this._runJob(S.actionButtonSyncing, () => this.api.updateWifiDevice(hubId, device.key, specFromDraft(draft)), "sync");
     if (error) {
       this._syncError = error;
       await this._load();
@@ -803,7 +839,7 @@ export class SbPanelWifiDevices extends LitElement {
     // The server's record is the new baseline.
     this._draftFor = null;
     for (const cleanup of cleanups) {
-      const result = await this._runJob(S.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec));
+      const result = await this._runJob(S.syncingDeviceNamed(cleanup.device.spec.name), () => this.api.updateWifiDevice(hubId, cleanup.device.key, cleanup.spec), "sync");
       if (result.error) this._say(T.cleanupFailed(cleanup.device.spec.name, result.error), false);
     }
     await this._load();
@@ -815,8 +851,21 @@ export class SbPanelWifiDevices extends LitElement {
     const hubId = this._hubId;
     if (!device || !hubId || this._locked) return;
     this._syncError = null;
-    const { error } = await this._runJob(`${T.redeploy}…`, () => this.api.redeployWifiDevice(hubId, device.key));
+    const { error } = await this._runJob(`${T.redeploy}…`, () => this.api.redeployWifiDevice(hubId, device.key), "redeploy");
     if (error) this._syncError = error;
+    await this._load();
+  };
+
+  /** Test again: the deploy's test press on its own; the verdict lands on the record (and in the dock). */
+  private _testDelivery = async (): Promise<void> => {
+    const device = this._device;
+    const hubId = this._hubId;
+    if (!device || !hubId || this._locked || device.stale || device.device_id == null) return;
+    this._testResult = null;
+    const { job, error } = await this._runJob(D.testing, () => this.api.testWifiDelivery(hubId, device.key), "test");
+    if (error) this._syncError = error;
+    const delivery = (job?.result as { delivery?: Delivery | null } | null)?.delivery ?? null;
+    if (delivery) this._testResult = { key: device.key, delivery };
     await this._load();
   };
 
@@ -886,7 +935,7 @@ export class SbPanelWifiDevices extends LitElement {
           : devices.length
             ? html`<div class="device-list">
                 ${devices.map((device) => {
-                  const deleting = this._delete?.busy === true && this._delete.key === device.key;
+                  const deleting = this._deletingKey === device.key;
                   const status = deviceStatus(device, { deleting });
                   const statusIcon = status.tone === "sync-ok" ? mdiCheckCircleOutline : status.tone === "sync-error" ? mdiAlertCircleOutline : mdiProgressClock;
                   const open = (): void => { if (!deleting) this._navigate(device.key); };
@@ -921,11 +970,14 @@ export class SbPanelWifiDevices extends LitElement {
   // -- render: the detail view -------------------------------------------------------------------------------------------
 
   private _renderSyncButton(device: WifiDeviceView): TemplateResult {
+    // Another job holds the hub (another view, another client): the card's "Busy".
+    const externallyLocked = !this._working && (this.ctx ? !this.ctx.free : false);
     if (device.stale) {
-      return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? T.redeploy}</button>`;
+      return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-redeploy" type="button" ?disabled=${this._locked} @click=${this._redeploy}>${this._working ?? (externallyLocked ? S.actionButtonBusy : T.redeploy)}</button>`;
     }
     const dirty = this.hasUnsyncedChanges();
     if (this._working) return html`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${this._working}</button>`;
+    if (externallyLocked) return html`<button class="detail-sync-btn" id="wifi-sync" type="button" disabled>${S.actionButtonBusy}</button>`;
     if (!dirty) return html`<button class="detail-sync-btn detail-sync-btn--state-ok" id="wifi-sync" type="button" disabled>${S.actionButtonUpToDate}</button>`;
     return html`<button class="detail-sync-btn sync-btn-primary" id="wifi-sync" type="button" ?disabled=${!this._canSync(device)} @click=${() => void this._sync()}>${S.actionButtonSyncToHub}</button>`;
   }
@@ -1009,11 +1061,40 @@ export class SbPanelWifiDevices extends LitElement {
       </div>`;
   }
 
+  /** The delivery test's verdict: quiet when presses arrive, the flow to allow when they do not, Test again either way. */
+  private _renderDelivery(device: WifiDeviceView): TemplateResult | typeof nothing {
+    if (device.device_id == null || device.stale) return nothing;
+    const delivery = device.delivery ?? null;
+    const failed = deliveryFailed(delivery);
+    const last = this._testResult?.key === device.key ? this._testResult.delivery : null;
+    const passed = !failed && last?.status === "delivered";
+    let guidance = "";
+    if (failed && delivery?.status === "not_delivered") {
+      const hubIp = delivery.hub_ip || this.ctx?.hub?.config?.host || "?";
+      guidance = device.transport === "mqtt"
+        ? T.allowMqtt(delivery.target ?? "")
+        : T.allowListener(hubIp, delivery.target || (device.target ? `http://${device.target.host}:${device.target.port}` : "?"), targetPort(delivery.target ?? "") || String(device.target?.port ?? "8060"));
+    }
+    return html`
+      <div class="wifi-delivery" id="wifi-delivery">
+        <div class="wifi-delivery-head">
+          <span class="wifi-delivery-title">${T.deliveryTitle}</span>
+          <button class="btn" id="wifi-test-delivery" type="button" ?disabled=${this._locked} @click=${() => void this._testDelivery()}>${this._workingKind === "test" ? D.testing : D.testAgain}</button>
+        </div>
+        ${failed
+          ? html`<div class="wifi-notice" id="wifi-delivery-failed" role="alert">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy"><b>${delivery?.status === "not_sent" ? D.notSent : T.notDelivered}</b>${guidance ? html` ${guidance}` : nothing}</span></div>`
+          : nothing}
+        ${passed ? html`<div class="wifi-delivery-ok" id="wifi-delivery-ok">${T.delivered(formatLatency(last?.latency_s))}</div>` : nothing}
+      </div>`;
+  }
+
   private _renderDetail(device: WifiDeviceView, draft: WifiDraft): TemplateResult {
     const press = this._activePress();
     const target = device.target ? `${device.target.host}:${device.target.port}` : "";
     const mqttNotice = mqttProblem(device, this._mqtt);
     const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
+    // This view's own sync or redeploy: the card's deploy animation stands in the detail's place.
+    const deploying = this._workingKind === "sync" || this._workingKind === "redeploy";
     return html`
       <div class="tab-panel--detail" id="wifi-device-detail" data-key=${device.key}>
         <div class="detail-view">
@@ -1027,6 +1108,25 @@ export class SbPanelWifiDevices extends LitElement {
               <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
             </div>
           </div>
+          ${deploying
+            ? html`<div class="detail-scroll">${renderOperationProgress({
+                id: "wifi-syncing",
+                mode: "wifi-deploy",
+                title: S.deployingTitle,
+                message: jobStepMessage(activeJob(this.ctx?.hub)) || TOOLS_CARD_STRINGS.backendState.wifiSyncing,
+              })}</div>`
+            : this._renderDetailBody(device, draft, { press, target, mqttNotice, now })}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderDetailBody(
+    device: WifiDeviceView,
+    draft: WifiDraft,
+    { press, target, mqttNotice, now }: { press: ReturnType<SbPanelWifiDevices["_activePress"]>; target: string; mqttNotice: string | null; now: string },
+  ): TemplateResult {
+    return html`
           <div class="detail-scroll">
             <div class="wifi-notices">
               ${this._syncError ? html`<div class="wifi-notice error" id="wifi-sync-error">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S.syncMessageFailed} ${this._syncError}</span></div>` : nothing}
@@ -1036,14 +1136,13 @@ export class SbPanelWifiDevices extends LitElement {
               ${mqttNotice ? html`<div class="wifi-notice error" id="wifi-mqtt-notice">${icon(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${mqttNotice}</span></div>` : nothing}
               ${device.transport === "mqtt" ? nothing : this._renderListenerNotice()}
             </div>
+            ${this._renderDelivery(device)}
             ${this._renderPowerLines(draft)}
             <div class="command-grid" id="wifi-slots">
               ${draft.slots.map((_slot, index) => this._renderSlot(draft, index, this._flash(Boolean(press && pressMatchesSlot(press, device, index)), press?.at ?? 0)))}
             </div>
             <div class="callback-line" id="wifi-callback-line">${device.transport === "mqtt" ? T.arrivesOverMqtt(device.mqtt_topic ?? "<MAC>/up") : T.callsBack(target)}${device.device_id != null ? html` DevID <code>${device.device_id}</code>.` : nothing}${supportsPowerInput(this._hubVersion) ? nothing : html` ${T.x1Note}`}</div>
           </div>
-        </div>
-      </div>
     `;
   }
 

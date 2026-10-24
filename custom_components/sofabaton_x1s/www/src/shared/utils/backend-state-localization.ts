@@ -1,7 +1,7 @@
 import type { BackupProgressEvent } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
 
-type BackendOperation =
+export type BackendOperation =
   | "backup_export"
   | "backup_restore"
   | "cache_refresh"
@@ -26,7 +26,7 @@ function conversionDetail(value: unknown): string | null {
   return /^[A-Za-z0-9_ ()-]{1,40}$/.test(trimmed) ? trimmed : null;
 }
 
-type ProgressLike = Partial<BackupProgressEvent> & {
+export type ProgressLike = Partial<BackupProgressEvent> & {
   current_step?: number | null;
 };
 
@@ -77,6 +77,9 @@ export function localizeWifiSyncFailure(value: unknown): string {
     case "retarget_failed": return S.syncFailedRetarget;
     case "writes_refused": return S.syncFailedWritesRefused;
     case "inplace_failed": return S.syncFailedRejected;
+    case "rewrite_failed": return S.syncFailedRewrite;
+    case "mqtt_not_connected": return S.syncFailedMqttNotConnected;
+    case "hub_mqtt_not_connected": return S.syncFailedHubMqttNotConnected;
     case "not_found": return S.syncFailedNotFound;
     default: return S.syncFailedGeneric;
   }
@@ -192,7 +195,8 @@ type WifiPhaseKey =
   | "wifiStarting" | "wifiReadingDevice" | "wifiEnablingDevice" | "wifiDisablingDevice"
   | "wifiValidatingActivities" | "wifiCreatingDevice" | "wifiDeletingDevice"
   | "wifiAddingToActivities" | "wifiMovingReferences" | "wifiApplyingFavorites" | "wifiApplyingBindings"
-  | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiUpdatedInPlace"
+  | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiCheckingBroker" | "wifiMovingDelivery"
+  | "wifiTestingDelivery" | "wifiUpdatedInPlace"
   | "wifiAlreadyCurrent" | "wifiDeviceRemoved" | "wifiComplete";
 
 /**
@@ -285,6 +289,9 @@ export const WIFI_DEPLOY_PHASES: Record<string, WifiPhaseKey> = {
   applying_bindings: "wifiApplyingBindings",
   refreshing_maps: "wifiRefreshingMaps",
   resyncing_remote: "wifiResyncingRemote",
+  checking_broker: "wifiCheckingBroker",
+  moving_delivery: "wifiMovingDelivery",
+  testing_delivery: "wifiTestingDelivery",
   updated_in_place: "wifiUpdatedInPlace",
   already_current: "wifiAlreadyCurrent",
   device_removed: "wifiDeviceRemoved",

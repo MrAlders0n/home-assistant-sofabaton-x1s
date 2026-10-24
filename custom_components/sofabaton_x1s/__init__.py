@@ -24,6 +24,8 @@ from .const import (
     DEFAULT_HUB_LISTEN_BASE,
     CONF_MAC,
     CONF_LOCAL_ADDRESS,
+    CONF_LOCAL_PORT,
+    CONF_LOCAL_SCHEME,
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
@@ -49,6 +51,7 @@ from . import operations
 
 from . import runtime
 from . import sidebar_panel
+from . import wifi_webhook
 
 
 from .ws_backup import (  # noqa: F401
@@ -102,6 +105,11 @@ from .ws_wifi import (  # noqa: F401
     _ws_set_hub_event_actions,
     _ws_get_command_sync_progress,
     _ws_run_command_sync,
+    _ws_get_wifi_delivery,
+    _ws_test_wifi_delivery,
+    _ws_move_wifi_device_to_direct,
+    _ws_get_hub_mqtt_status,
+    _ws_set_hub_mqtt_broker,
     _hub_mqtt_available,
     _ws_list_command_devices,
     _ws_create_command_device,
@@ -203,6 +211,11 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_command_transport)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_run_command_sync)
+    websocket_api.async_register_command(hass, _ws_get_wifi_delivery)
+    websocket_api.async_register_command(hass, _ws_test_wifi_delivery)
+    websocket_api.async_register_command(hass, _ws_move_wifi_device_to_direct)
+    websocket_api.async_register_command(hass, _ws_get_hub_mqtt_status)
+    websocket_api.async_register_command(hass, _ws_set_hub_mqtt_broker)
     websocket_api.async_register_command(hass, _ws_list_command_devices)
     websocket_api.async_register_command(hass, _ws_create_command_device)
     websocket_api.async_register_command(hass, _ws_delete_command_device)
@@ -419,6 +432,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             opts.get(CONF_LOCAL_ADDRESS),
         )
         local_address = None
+    local_port = opts.get(CONF_LOCAL_PORT)
+    local_scheme = opts.get(CONF_LOCAL_SCHEME)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
     roku_server_enabled = opts.get(CONF_ROKU_SERVER_ENABLED, False)
     roku_listen_port = opts.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT)
@@ -441,6 +456,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         roku_server_enabled=roku_server_enabled,
         version=version,
         local_address=local_address,
+        local_port=local_port if isinstance(local_port, int) and 0 < local_port < 65536 else None,
+        local_scheme=local_scheme if local_scheme in ("http", "https") else None,
     )
 
     cache_store = await runtime._async_get_persistent_cache_store(hass)
@@ -466,6 +483,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # integration loaded (the persisted banner MAC covers a restart
     # before the hub's first TCP connect).
     await hub.async_update_activity_state_ingress()
+    # Webhook press ingress (X2 direct delivery): registered when a
+    # webhook deploy made this hub's webhook id.
+    await wifi_webhook.async_setup_hub_webhook(hass, entry.entry_id)
 
     # ← important: tell HA to call us when options change
     entry.async_on_unload(
@@ -576,6 +596,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.exception("[%s] Failed to persist cache for hub %s during unload", DOMAIN, hub.entry_id)
             await hub.async_stop_wifi_mqtt_ingress()
             await hub.async_stop_activity_state_ingress()
+            wifi_webhook.async_unregister_hub_webhook(hass, entry.entry_id)
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()

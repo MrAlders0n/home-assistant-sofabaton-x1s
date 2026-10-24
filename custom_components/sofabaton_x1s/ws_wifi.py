@@ -20,6 +20,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
+    HUB_VERSION_X2,
     signal_hub_events,
     signal_ip_commands,
 )
@@ -33,13 +34,18 @@ from .command_config import (
     normalize_activity_event_actions,
     normalize_hub_event_actions,
     normalize_wifi_transport,
+    url_origin,
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
+    WIFI_TRANSPORT_WEBHOOK,
     wifi_device_requires_listener,
+    wifi_transport_family,
     wifi_transport_switch_pending,
 )
+from . import hub_mqtt_link
 from . import runtime
 from .wifi_deploy import wifi_sync_failure
+from .wifi_webhook import async_webhook_base_url
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -166,6 +172,7 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
         connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
         return
     payload["mqtt_available"] = _hub_mqtt_available(hass, hub)
+    payload["webhook_available"] = _hub_webhook_available(hub)
     payload["transport_switch_pending"] = wifi_transport_switch_pending(
         payload, mqtt_available=payload["mqtt_available"]
     )
@@ -220,6 +227,7 @@ async def _ws_set_command_transport(hass: HomeAssistant, connection, msg: dict[s
         hub.entry_id, device_key=device_key, roku_listen_port=roku_listen_port
     )
     payload["mqtt_available"] = mqtt_available
+    payload["webhook_available"] = _hub_webhook_available(hub)
     payload["transport_switch_pending"] = wifi_transport_switch_pending(
         payload, mqtt_available=mqtt_available
     )
@@ -454,6 +462,242 @@ async def _ws_run_command_sync(hass: HomeAssistant, connection, msg: dict[str, A
     connection.send_result(msg["id"], result if isinstance(result, dict) else {})
 
 
+def _move_to_direct_available(hub: Any, payload: dict[str, Any]) -> bool:
+    """An X2 Wifi Device on the listener that can move to Home Assistant's
+    webhook (one click, in place; never automatic)."""
+
+    return (
+        _hub_webhook_available(hub)
+        and isinstance(payload.get("deployed_device_id"), int)
+        and normalize_wifi_transport(payload.get("deployed_transport")) == WIFI_TRANSPORT_HTTP
+        and wifi_transport_family(payload.get("requested_transport")) == WIFI_TRANSPORT_HTTP
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/delivery",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_wifi_delivery(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """How presses of one Wifi Device reach Home Assistant: the deployed
+    transport, what the hub calls (the webhook's origin, never its id; the
+    listener's address and port; Home Assistant's broker), the hub's own
+    address, the last delivery check, and whether the address the records
+    call is out of date (a webhook device after a local address change)."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
+    device_key = str(msg.get("device_key") or "")
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id, device_key=device_key, roku_listen_port=roku_listen_port
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+    deployed = isinstance(payload.get("deployed_device_id"), int)
+    transport = (
+        normalize_wifi_transport(payload.get("deployed_transport")) if deployed else None
+    )
+    target = ""
+    target_stale = False
+    if transport == WIFI_TRANSPORT_WEBHOOK:
+        current = await async_webhook_base_url(hass, hub)
+        target = url_origin(current) or str(payload.get("deployed_target") or "")
+        target_stale = bool(current) and current != store.get_deployed_url(
+            hub.entry_id, str(payload.get("device_key") or device_key)
+        )
+    elif transport == WIFI_TRANSPORT_MQTT:
+        broker = hub_mqtt_link.ha_mqtt_broker(hass)
+        target = f"{broker['host']}:{broker['port']}" if broker and broker["host"] else ""
+    elif transport == WIFI_TRANSPORT_HTTP:
+        address = await hass.async_add_executor_job(hub.local_address_in_use)
+        port = payload.get("deployed_request_port") or roku_listen_port
+        target = f"http://{address}:{int(port)}"
+    connection.send_result(
+        msg["id"],
+        {
+            "device_key": str(payload.get("device_key") or device_key),
+            "transport": transport,
+            "target": target,
+            "target_stale": target_stale,
+            "hub_ip": str(getattr(hub, "host", "") or ""),
+            "delivery": payload.get("delivery"),
+            "webhook_available": _hub_webhook_available(hub),
+            "move_available": _move_to_direct_available(hub, payload),
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/test_delivery",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws(persist=False)
+async def _ws_test_wifi_delivery(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """ "Test again": press slot 1 of a deployed Wifi Device (no Action
+    runs) and answer with the delivery check, also stored on the device."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    try:
+        delivery = await hub.async_test_wifi_delivery(str(msg.get("device_key") or ""))
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "No deployed Wifi Device to test")
+        return
+    except HomeAssistantError as err:
+        _send_sync_failure(connection, msg["id"], err)
+        return
+    connection.send_result(msg["id"], delivery)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_sync/move_to_direct",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws(persist=False)
+async def _ws_move_wifi_device_to_direct(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """ "Move to direct delivery": an X2 Wifi Device on the listener moves to
+    Home Assistant's webhook, in place (same device, references kept), then
+    the delivery test runs as after any deploy."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await runtime._async_get_command_config_store(hass)
+    roku_listen_port = runtime._resolve_roku_listen_port(hass, hub.entry_id)
+    device_key = str(msg.get("device_key") or "").strip()
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id, device_key=device_key, roku_listen_port=roku_listen_port
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+    if not _move_to_direct_available(hub, payload):
+        connection.send_error(
+            msg["id"],
+            "not_supported",
+            "Only an X2 Wifi Device delivering to the listener can move to direct delivery",
+        )
+        return
+    try:
+        result = await hub.async_sync_command_config(
+            command_payload=payload,
+            request_port=roku_listen_port,
+            device_key=str(payload.get("device_key") or device_key),
+            device_name=str(payload.get("device_name") or "").strip() or "Home Assistant",
+            move_to_direct=True,
+        )
+    except Exception as err:  # noqa: BLE001 - every failure answers with a code
+        if not isinstance(err, HomeAssistantError):
+            _LOGGER.exception("[%s] Wifi Device move to direct delivery raised", hub.entry_id)
+        _send_sync_failure(connection, msg["id"], err)
+        return
+    if hub.roku_server_enabled and not await _async_wifi_listener_needed(hass, hub.entry_id):
+        await hub.async_set_roku_server_enabled(False)
+    connection.send_result(msg["id"], result if isinstance(result, dict) else {})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_mqtt/status",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_hub_mqtt_status(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Both ends of an X2's MQTT broker link (Home Assistant's MQTT
+    connection and the hub's own), plus what the broker setup form
+    prefills. Never a password."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    connection.send_result(msg["id"], await hub_mqtt_link.async_broker_link_state(hass, hub))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_mqtt/setup",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("host"): str,
+        vol.Required("port"): vol.All(int, vol.Range(min=1, max=65535)),
+        vol.Optional("use_ha_login", default=True): bool,
+        vol.Optional("username"): str,
+        vol.Optional("password"): str,
+    }
+)
+@websocket_api.async_response
+@runtime._hub_write_ws(persist=False)
+async def _ws_set_hub_mqtt_broker(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Point an X2 at an MQTT broker (replaces whatever broker it had; the
+    hub cannot report the old one) and answer with its verdict and the
+    link state after it. The login is Home Assistant's own MQTT login
+    unless ``use_ha_login`` is off; the password is never stored."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    if getattr(hub, "version", None) != HUB_VERSION_X2:
+        connection.send_error(msg["id"], "not_supported", "Only an X2 hub has a broker setting")
+        return
+    try:
+        connected = await hub_mqtt_link.async_point_hub_at_broker(
+            hass,
+            hub,
+            host=str(msg.get("host") or ""),
+            port=int(msg["port"]),
+            username=msg.get("username"),
+            password=msg.get("password"),
+            use_ha_login=bool(msg.get("use_ha_login", True)),
+        )
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    if connected is None:
+        connection.send_error(msg["id"], "hub_no_answer", "The hub gave no answer to the broker setup")
+        return
+    connection.send_result(
+        msg["id"],
+        {"connected": connected, **await hub_mqtt_link.async_broker_link_state(hass, hub)},
+    )
+
+
+def _hub_webhook_available(hub: Any) -> bool:
+    """Whether "Direct" on this hub is Home Assistant's own webhook (X2)
+    rather than the bundled listener."""
+
+    checker = getattr(hub, "wifi_webhook_available", None)
+    return bool(checker()) if callable(checker) else False
+
+
 def _hub_mqtt_available(hass: HomeAssistant, hub: Any) -> bool:
     """Whether the create flow may offer the MQTT transport for this hub.
 
@@ -507,6 +751,7 @@ async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[st
             "devices": payload,
             "max_devices": MAX_WIFI_DEVICES,
             "mqtt_available": _hub_mqtt_available(hass, hub),
+            "webhook_available": _hub_webhook_available(hub),
         },
     )
 
@@ -693,6 +938,8 @@ def _wifi_events_state_payload(
         "deployed_transport": record_state.get("deployed_transport"),
         "transport_switch_pending": transport_switch_pending,
         "mqtt_available": mqtt_available,
+        "webhook_available": _hub_webhook_available(hub),
+        "delivery": record_state.get("delivery"),
     }
 
 

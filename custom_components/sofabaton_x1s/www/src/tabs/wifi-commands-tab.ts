@@ -4,11 +4,15 @@ import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } 
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
 import { phraseNameStyles, phraseWithName } from "../components/phrase-name";
+import { renderWifiDeliveryPanel, wifiDeliveryStyles, type WifiDeliveryBusy } from "../components/wifi-delivery-panel";
+import { HubBrokerFormController, hubBrokerFormStyles } from "../components/hub-broker-form";
 import type {
   ControlPanelHubState,
   HassLike,
   HubEventFireEvent,
   WifiCommandSyncState,
+  WifiDelivery,
+  WifiDeliveryInfo,
   WifiDeviceSummary,
   WifiEvent,
   WifiEventsListResponse,
@@ -18,6 +22,7 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import { localizeBackendProgress, localizeWifiSyncFailure } from "../shared/utils/backend-state-localization";
+import { deliveryFailed } from "../shared/utils/wifi-delivery";
 import {
   findRunningWifiDevice,
   selectedDeviceOwnsPendingSync,
@@ -29,6 +34,8 @@ import { TOOLS_CARD_STRINGS } from "../strings";
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
+// The reserved Wifi Events record's key (command_config.WIFI_EVENTS_DEVICE_KEY).
+const WIFI_EVENTS_DEVICE_KEY = "haevents";
 
 const ID = {
   UP: 174,
@@ -256,7 +263,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     _creatingDevice: { state: true },
     _maxWifiDevices: { state: true },
     _mqttAvailable: { state: true },
+    _webhookAvailable: { state: true },
     _newDeviceTransport: { state: true },
+    _deliveryInfo: { state: true },
+    _eventsDeliveryInfo: { state: true },
+    _deliveryBusy: { state: true },
+    _deliveryError: { state: true },
+    _deliveryLastTest: { state: true },
     _hubEventActions: { state: true },
     _activityEventActions: { state: true },
     _wifiEventsRows: { state: true },
@@ -282,7 +295,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     lastHubEvent: { attribute: false },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, wifiDeliveryStyles, hubBrokerFormStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -385,6 +398,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     .transport-option-name { font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
     .transport-option-hint { font-size: 12px; color: var(--secondary-text-color); }
     .transport-choice-note { font-size: 11px; color: var(--secondary-text-color); }
+    .transport-option-check { font-size: 12px; color: var(--secondary-text-color); margin-top: 4px; }
+    .transport-option-check.problem { color: var(--warning-color, #b58a00); }
+    .transport-option-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
     .device-card-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
@@ -854,7 +870,20 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _maxWifiDevices = 5;
   // The MQTT option shows only when the backend reports X2 + MQTT integration.
   private _mqttAvailable = false;
-  private _newDeviceTransport: "mqtt" | "http" = "mqtt";
+  // "Direct" is Home Assistant's own webhook (X2) rather than the listener.
+  private _webhookAvailable = false;
+  // New devices default to Direct (decision 2); "http" is the Direct wish.
+  private _newDeviceTransport: "mqtt" | "http" = "http";
+  // How presses of the selected device (and of the Wifi Events device)
+  // reach Home Assistant, and the Test again / Move work on them.
+  private _deliveryInfo: WifiDeliveryInfo | null = null;
+  private _eventsDeliveryInfo: WifiDeliveryInfo | null = null;
+  private _deliveryBusy: { key: string; kind: Exclude<WifiDeliveryBusy, null> } | null = null;
+  private _deliveryError: { key: string; message: string } | null = null;
+  private _deliveryLastTest: { key: string; delivery: WifiDelivery } | null = null;
+  // The hub's MQTT broker link (the create dialog's MQTT option) and the
+  // form that points the hub at a broker.
+  private readonly _brokerForm = new HubBrokerFormController(this, () => this.hass);
   private _hubEventActions: Record<HubEventKey, WifiCommandAction> = this._defaultHubEventActions();
   private _activityEventActions: Record<string, ActivityEventEntry> = {};
   // ── WIFI EVENTS group (docs/internal/wifi-events-plan.md §5) ────────
@@ -1099,6 +1128,10 @@ class SofabatonWifiCommandsTab extends LitElement {
                     ${this._commandsSaveError
                       ? html`<div class="section-subtitle wifi-events-stale" role="alert"><span class="wifi-events-stale-error">${this._commandsSaveError}</span></div>`
                       : nothing}
+                    ${this._renderDeliveryPanel(
+                      selectedDevice.device_key,
+                      this._deliveryInfo?.device_key === selectedDevice.device_key ? this._deliveryInfo : null,
+                    )}
                     ${this._renderDevicePowerRows()}
                     <div class="command-grid">
                       ${(() => {
@@ -1418,8 +1451,141 @@ class SofabatonWifiCommandsTab extends LitElement {
   ): void {
     this._wifiEventsRows = state?.events ?? [];
     const deviceId = state?.device_id;
+    const previousDeviceId = this._wifiEventsDeviceId;
     this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
     this._wifiEventsRecordNeedsSync = Boolean(state?.record_needs_sync);
+    if (this._wifiEventsDeviceId == null) {
+      this._eventsDeliveryInfo = null;
+    } else if (!this._eventsDeliveryInfo || previousDeviceId !== this._wifiEventsDeviceId) {
+      void this._loadDeliveryInfo(WIFI_EVENTS_DEVICE_KEY);
+    }
+  }
+
+  // ── How presses reach Home Assistant ────────────────────────────────────
+  //
+  // One panel per deployed device (and the Wifi Events device): the path
+  // the hub uses, Test again, and when it applies the failed test's
+  // guidance, Move to direct delivery and Update the hub.
+
+  private _renderDeliveryPanel(deviceKey: string, info: WifiDeliveryInfo | null) {
+    const events = deviceKey === WIFI_EVENTS_DEVICE_KEY;
+    return renderWifiDeliveryPanel({
+      info,
+      busy: this._deliveryBusy?.key === deviceKey ? this._deliveryBusy.kind : null,
+      locked: this._hubCommandLocked() || this._remoteUnavailable() || this._deliveryBusy !== null,
+      lastTest: this._deliveryLastTest?.key === deviceKey ? this._deliveryLastTest.delivery : null,
+      error: this._deliveryError?.key === deviceKey ? this._deliveryError.message : "",
+      onTest: () => { void this._testDelivery(deviceKey); },
+      onMove: () => { void (events ? this._moveEventsDeviceToDirect() : this._startCommandConfigSync("move")); },
+      onUpdate: () => { void (events ? this._updateEventsDevice() : this._startCommandConfigSync("sync")); },
+    });
+  }
+
+  /** Read how a deployed device's presses travel; a device the hub does not
+   *  hold yet has no panel. */
+  private async _loadDeliveryInfo(deviceKey: string) {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass || !deviceKey) return;
+    const events = deviceKey === WIFI_EVENTS_DEVICE_KEY;
+    if (!events) {
+      const device = this._wifiDevices.find((item) => item.device_key === deviceKey);
+      if (typeof device?.deployed_device_id !== "number") {
+        if (this._deliveryInfo?.device_key === deviceKey) this._deliveryInfo = null;
+        return;
+      }
+    }
+    try {
+      const info = await this.api().getWifiDelivery(hubEntryId, deviceKey);
+      if (hubEntryId !== String(this.hub?.entry_id || "").trim()) return;
+      if (events) this._eventsDeliveryInfo = info;
+      else if (deviceKey === this._selectedDeviceKey) this._deliveryInfo = info;
+    } catch (_error) {
+      if (events) this._eventsDeliveryInfo = null;
+      else if (deviceKey === this._selectedDeviceKey) this._deliveryInfo = null;
+    }
+  }
+
+  /** Test again: the deploy's test press on its own (no Action runs). */
+  private async _testDelivery(deviceKey: string) {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass || this._deliveryBusy || this._hubCommandLocked()) return;
+    const D = TOOLS_CARD_STRINGS.wifiDelivery;
+    this._deliveryBusy = { key: deviceKey, kind: "test" };
+    this._deliveryError = null;
+    this._deliveryLastTest = null;
+    this._setSharedHubCommandBusy(true, D.testing, hubEntryId);
+    try {
+      const delivery = await this.api().testWifiDelivery(hubEntryId, deviceKey);
+      this._deliveryLastTest = { key: deviceKey, delivery };
+    } catch (error) {
+      const code = String((error as { code?: unknown } | null)?.code ?? "");
+      this._deliveryError = {
+        key: deviceKey,
+        message: code === "busy" || code === "sync_in_progress" || code === "not_found"
+          ? localizeWifiSyncFailure(error)
+          : D.testFailed,
+      };
+    } finally {
+      this._deliveryBusy = null;
+      this._setSharedHubCommandBusy(false, null, hubEntryId);
+    }
+    await this._loadDeliveryInfo(deviceKey);
+    if (deviceKey !== WIFI_EVENTS_DEVICE_KEY) await this._loadWifiDevices(true);
+  }
+
+  /** Move the Wifi Events device to direct delivery: in place, like a user
+   *  device's move; its events and their references stay. */
+  private async _moveEventsDeviceToDirect() {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass || this._deliveryBusy || this._hubCommandLocked()) return;
+    const D = TOOLS_CARD_STRINGS.wifiDelivery;
+    this._deliveryBusy = { key: WIFI_EVENTS_DEVICE_KEY, kind: "move" };
+    this._deliveryError = null;
+    this._deliveryLastTest = null;
+    this._setSharedHubCommandBusy(true, D.moving, hubEntryId);
+    try {
+      const result = await this.api().moveWifiDeviceToDirect(hubEntryId, WIFI_EVENTS_DEVICE_KEY);
+      this._announceDeployResult(result?.delivery, D.movedDock, hubEntryId);
+    } catch (error) {
+      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
+    } finally {
+      this._deliveryBusy = null;
+      this._setSharedHubCommandBusy(false, null, hubEntryId);
+    }
+    await this._loadWifiEventsRows();
+    await this._loadDeliveryInfo(WIFI_EVENTS_DEVICE_KEY);
+  }
+
+  /** Update the hub: the Wifi Events device's records follow Home
+   *  Assistant's current address (its sync rewrites them in place). */
+  private async _updateEventsDevice() {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    if (!hubEntryId || !this.hass || this._deliveryBusy || this._hubCommandLocked()) return;
+    this._deliveryBusy = { key: WIFI_EVENTS_DEVICE_KEY, kind: "update" };
+    this._deliveryError = null;
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, hubEntryId);
+    try {
+      const state = await this.api().syncWifiEvents(hubEntryId);
+      this._applyWifiEventsState(state);
+      this._announceDeployResult(state?.delivery, TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully, hubEntryId);
+    } catch (error) {
+      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
+    } finally {
+      this._deliveryBusy = null;
+      this._setSharedHubCommandBusy(false, null, hubEntryId);
+    }
+    await this._loadDeliveryInfo(WIFI_EVENTS_DEVICE_KEY);
+  }
+
+  /** The dock line after a deploy: as before when presses arrive; when the
+   *  test press did not, the deploy still landed and the dock says so (the
+   *  device's panel names what to allow). */
+  private _announceDeployResult(delivery: WifiDelivery | null | undefined, successLabel: string, hubEntryId: string) {
+    if (deliveryFailed(delivery)) {
+      this.showCompletion?.({ tone: "error", label: TOOLS_CARD_STRINGS.wifiDelivery.syncedNotDeliveredDock }, hubEntryId);
+      return;
+    }
+    this.showCompletion?.({ tone: "success", label: successLabel }, hubEntryId);
   }
 
   // ── Delivery method pill (read-only) ───────────────────────────────────
@@ -1447,7 +1613,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!opts.mqttAvailable && opts.transport !== "mqtt") return nothing;
     const S = TOOLS_CARD_STRINGS.wifiCommands;
     const title = opts.deployed && !opts.pending ? S.transportPillDeployedTitle : S.transportPillPreviewTitle;
-    return html`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? "MQTT" : "HTTP"}</span>`;
+    const D = TOOLS_CARD_STRINGS.wifiDelivery;
+    return html`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? D.mqttShort : D.directShort}</span>`;
   }
 
   private async _loadWifiEventsRows(): Promise<void> {
@@ -1679,6 +1846,9 @@ class SofabatonWifiCommandsTab extends LitElement {
           ${this._renderConfiguredPill(configuredCount, events.length)}
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
+        ${orphaned || this._wifiEventsDeviceId == null
+          ? nothing
+          : this._renderDeliveryPanel(WIFI_EVENTS_DEVICE_KEY, this._eventsDeliveryInfo)}
         ${orphaned ? this._renderWifiEventsStaleNotice() : nothing}
         ${recordNeedsSync ? html`<div class="section-subtitle wifi-events-stale">${W.wifiEventsRecordNeedsSyncNotice}</div>` : nothing}
         ${events.length ? html`
@@ -1980,7 +2150,7 @@ class SofabatonWifiCommandsTab extends LitElement {
               ? html`
                   <div class="transport-choice">
                     <div class="transport-choice-label">${TOOLS_CARD_STRINGS.wifiCommands.transportLabel}</div>
-                    ${(["mqtt", "http"] as const).map(
+                    ${(["http", "mqtt"] as const).map(
                       (option) => html`
                         <label class="transport-option ${this._newDeviceTransport === option ? "selected" : ""}">
                           <input
@@ -1988,15 +2158,20 @@ class SofabatonWifiCommandsTab extends LitElement {
                             name="sb-new-device-transport"
                             .checked=${this._newDeviceTransport === option}
                             ?disabled=${this._creatingDevice}
-                            @change=${() => {
-                              this._newDeviceTransport = option;
-                            }}
+                            @change=${() => this._pickNewDeviceTransport(option)}
                           />
                           <span class="transport-option-copy">
-                            <span class="transport-option-name">${option === "mqtt" ? "MQTT" : "HTTP"}</span>
+                            <span class="transport-option-name">${option === "mqtt"
+                              ? TOOLS_CARD_STRINGS.wifiDelivery.mqttName
+                              : TOOLS_CARD_STRINGS.wifiDelivery.directName}</span>
                             <span class="transport-option-hint">${option === "mqtt"
-                              ? TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint
-                              : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                              ? this._webhookAvailable
+                                ? TOOLS_CARD_STRINGS.wifiDelivery.mqttWebhookHint
+                                : TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint
+                              : this._webhookAvailable
+                                ? TOOLS_CARD_STRINGS.wifiDelivery.directWebhookHint
+                                : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                            ${option === "mqtt" && this._newDeviceTransport === "mqtt" ? this._renderMqttLinkCheck() : nothing}
                           </span>
                         </label>
                       `,
@@ -2010,11 +2185,63 @@ class SofabatonWifiCommandsTab extends LitElement {
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" ?disabled=${this._creatingDevice} @click=${this._closeCreateDeviceModal}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice} @click=${this._createWifiDevice}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCreate}</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice || this._mqttChoiceBlocked()} @click=${this._createWifiDevice}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCreate}</button>
             </div>
           </div>
         </div>
       </div>
+      ${this._brokerForm.render()}
+    `;
+  }
+
+  /** Pick the new device's delivery; MQTT reads both ends of the broker
+   *  link first (once per dialog), so a device that cannot work is never
+   *  created (docs/internal/wifi-webhook-transport-plan.md §4.4). */
+  private _pickNewDeviceTransport(option: "mqtt" | "http") {
+    this._newDeviceTransport = option;
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (option === "mqtt" && entryId && this._brokerForm.loadedFor !== entryId) {
+      void this._brokerForm.load(entryId);
+    }
+  }
+
+  /** MQTT is chosen but one end of the broker link is known to be down
+   *  (or is still being read). */
+  private _mqttChoiceBlocked(): boolean {
+    if (this._newDeviceTransport !== "mqtt") return false;
+    if (this._brokerForm.loading) return true;
+    const state = this._brokerForm.state;
+    return state?.ha_connected === false || state?.hub_connected === false;
+  }
+
+  private _renderMqttLinkCheck() {
+    const D = TOOLS_CARD_STRINGS.wifiDelivery;
+    const state = this._brokerForm.state;
+    if (this._brokerForm.loading) return html`<span class="transport-option-check">${D.mqttChecking}</span>`;
+    if (state?.ha_connected === false) {
+      return html`<span class="transport-option-check problem" role="alert">${D.mqttHaNotConnected}</span>`;
+    }
+    if (state?.hub_connected !== false) return nothing;
+    const entryId = String(this.hub?.entry_id || "").trim();
+    return html`
+      <span class="transport-option-check problem" role="alert">${D.mqttHubNotConnected}</span>
+      <span class="transport-option-actions">
+        <button
+          class="dialog-btn dialog-btn-primary transport-setup-btn"
+          ?disabled=${this._creatingDevice}
+          @click=${(event: Event) => {
+            event.preventDefault();
+            this._brokerForm.openFor(entryId, {
+              onUseDirect: () => { this._newDeviceTransport = "http"; },
+            });
+          }}
+        >${D.setUpNow}</button>
+        <button
+          class="dialog-btn transport-use-direct-btn"
+          ?disabled=${this._creatingDevice}
+          @click=${(event: Event) => { event.preventDefault(); this._newDeviceTransport = "http"; }}
+        >${D.useDirectInstead}</button>
+      </span>
     `;
   }
 
@@ -2416,6 +2643,11 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._wifiEventsRecordNeedsSync = false;
       this._wifiEventsStaleConfirm = false;
       this._wifiEventsStaleError = "";
+      this._deliveryInfo = null;
+      this._eventsDeliveryInfo = null;
+      this._deliveryError = null;
+      this._deliveryLastTest = null;
+      this._brokerForm.reset();
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
     const deviceListLoaded = await this._loadWifiDevices(true);
@@ -2790,6 +3022,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       const result = await this.api().getWifiCommandDevices(hubEntryId);
       if (hubEntryId !== String(this.hub?.entry_id || "").trim()) return false;
       this._mqttAvailable = Boolean(result?.mqtt_available);
+      this._webhookAvailable = Boolean(result?.webhook_available);
       this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
       if (this._selectedDeviceKey && this._syncState.status !== "idle") {
         this._wifiDevices = this._wifiDevices.map((device) =>
@@ -3468,8 +3701,12 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _selectWifiDevice(deviceKey: string) {
     this._selectedDeviceKey = String(deviceKey || "").trim();
+    this._deliveryInfo = null;
+    this._deliveryError = null;
+    this._deliveryLastTest = null;
     void this._loadCommandConfigFromBackend(true);
     void this._loadCommandSyncProgress(true);
+    void this._loadDeliveryInfo(this._selectedDeviceKey);
   }
 
   private _goBackToDeviceList = () => {
@@ -3498,8 +3735,10 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _openCreateDeviceModal = () => {
     if (this._hubCommandLocked()) return;
     this._newDeviceName = "";
-    this._newDeviceTransport = "mqtt";
+    this._newDeviceTransport = "http";
     this._deviceMutationError = "";
+    // The broker link is read again for every dialog: it may have changed.
+    this._brokerForm.reset();
     this._createDeviceModalOpen = true;
   };
 
@@ -3582,10 +3821,17 @@ class SofabatonWifiCommandsTab extends LitElement {
     await this._startCommandConfigSync();
   };
 
-  private async _startCommandConfigSync() {
+  /** Deploy the selected device (`sync`), or move it off the listener onto
+   *  Home Assistant's webhook (`move`: the same deploy, records rewritten in
+   *  place). Both end with the deploy's test press. */
+  private async _startCommandConfigSync(kind: "sync" | "move" = "sync") {
     const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!hubEntryId || !this.hass) return;
+    if (this._commandSyncRunning || this._hubCommandLocked()) return;
+    this._deliveryError = null;
+    this._deliveryLastTest = null;
+    if (kind === "move") this._deliveryBusy = { key: deviceKey, kind: "move" };
     this._syncState = {
       ...this._syncState,
       status: "running",
@@ -3614,9 +3860,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     const busyEntryId = String(this.hub?.entry_id || "").trim();
     this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
-      await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
-      this.showCompletion?.(
-        { tone: "success", label: TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully },
+      const result = kind === "move"
+        ? await this.api().moveWifiDeviceToDirect(hubEntryId, deviceKey)
+        : await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
+      this._announceDeployResult(
+        result?.delivery,
+        kind === "move"
+          ? TOOLS_CARD_STRINGS.wifiDelivery.movedDock
+          : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully,
         hubEntryId,
       );
       await this._refreshControlPanelState();
@@ -3640,8 +3891,10 @@ class SofabatonWifiCommandsTab extends LitElement {
     } finally {
       this._commandSyncRunning = false;
       this._commandSyncDeviceKey = null;
+      if (this._deliveryBusy?.key === deviceKey) this._deliveryBusy = null;
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
+      await this._loadDeliveryInfo(deviceKey);
       await this._refreshControlPanelState();
       this._setSharedHubCommandBusy(false, null, busyEntryId);
     }

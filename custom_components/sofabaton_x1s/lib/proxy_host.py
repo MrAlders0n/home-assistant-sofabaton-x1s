@@ -86,6 +86,13 @@ class _WireHost(Protocol):
     ) -> tuple[int, bytes] | None: ...
     def can_issue_commands(self) -> bool: ...
     def clear_ack_queue(self) -> None: ...
+    def wait_for_ack_family_low(
+        self,
+        family_low: int,
+        *,
+        timeout: float = ...,
+        not_before: float | None = ...,
+    ) -> tuple[int, bytes] | None: ...
     def enqueue_cmd(
         self,
         opcode: int,
@@ -372,6 +379,7 @@ class _OpsHost(Protocol):
         button_code: int,
         ack_timeout: float = ...,
     ) -> dict[str, Any] | None: ...
+    def _ensure_device_commands_cached(self, dev_lo: int, *, timeout: float = ...) -> bool: ...
     def persist_command_record(
         self,
         *,

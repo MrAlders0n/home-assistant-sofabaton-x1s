@@ -872,6 +872,17 @@
             "title": "Adopted",
             "type": "boolean"
           },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the last delivery check; null before the first"
+          },
           "deployed": {
             "title": "Deployed",
             "type": "boolean"
@@ -1293,6 +1304,77 @@
           "password"
         ],
         "title": "Credentials",
+        "type": "object"
+      },
+      "DeliveryView": {
+        "description": "The last delivery check of a Wifi Device: did a press from the hub\nreach this server? Every deploy, update and redeploy ends with a test\npress (slot 1, short) that no client sees as a press event; ``POST\n.../test-delivery`` runs it again, and a real press marks it delivered.",
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "hub_ip": {
+            "default": "",
+            "description": "the hub's address, where the traffic starts",
+            "title": "Hub Ip",
+            "type": "string"
+          },
+          "latency_s": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "from the test press to its arrival",
+            "title": "Latency S"
+          },
+          "source": {
+            "default": "",
+            "description": "where the press arrived from (empty over mqtt)",
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "description": "not_delivered: the hub sent the press, nothing arrived; not_sent: the hub did not take it",
+            "enum": [
+              "delivered",
+              "not_delivered",
+              "not_sent"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "default": "",
+            "description": "what the hub calls: the listener's address, or the broker",
+            "title": "Target",
+            "type": "string"
+          },
+          "transport": {
+            "description": "http or mqtt",
+            "title": "Transport",
+            "type": "string"
+          },
+          "via": {
+            "description": "a test press, or a real press that arrived",
+            "enum": [
+              "test",
+              "press"
+            ],
+            "title": "Via",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "transport",
+          "checked_at",
+          "via"
+        ],
+        "title": "DeliveryView",
         "type": "object"
       },
       "Device": {
@@ -14352,6 +14434,119 @@
           }
         ],
         "summary": "Deploy a stale Wifi Device again from its stored spec (a job)",
+        "tags": [
+          "callbacks"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/wifi-devices/{key}/test-delivery": {
+      "post": {
+        "description": "Press slot 1 of the device over the hub session and wait for it at this\nserver's ingress. The press is not a press event. The verdict lands in the\nrecord's ``delivery`` (``not_delivered``: a firewall, a VLAN, a wrong\naddress, or a broker the hub does not share).",
+        "operationId": "testWifiDeviceDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No valid credential (once access is set up)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Refused: another website's request, or a token on an admin route"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "tokenHeader": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Test that the Wifi Device's presses reach the server (a job); the result is the record",
         "tags": [
           "callbacks"
         ]

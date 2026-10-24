@@ -16,6 +16,8 @@ from .const import (
     DOMAIN,
     CONF_HEX_LOGGING_ENABLED,
     CONF_LOCAL_ADDRESS,
+    CONF_LOCAL_PORT,
+    CONF_LOCAL_SCHEME,
     CONF_PROXY_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
     HUB_VERSION_X1,
@@ -69,6 +71,8 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         roku_server_enabled: bool = False,
         version: str | None = None,
         local_address: str | None = None,
+        local_port: int | None = None,
+        local_scheme: str | None = None,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -128,6 +132,10 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         self.proxy_enabled: bool = proxy_enabled
         # Manual "Home Assistant IP address" for this hub; None = automatic.
         self.local_address: str | None = local_address
+        # Port and scheme an X2 calls Home Assistant's webhook on; None =
+        # Home Assistant's own. Only set alongside a manual address.
+        self.local_port: int | None = local_port if local_address else None
+        self.local_scheme: str | None = local_scheme if local_address else None
         self.hex_logging_enabled: bool = hex_logging_enabled
         self.roku_server_enabled: bool = roku_server_enabled
         # store mac so service can find us by mac
@@ -150,6 +158,10 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
         # X2 with the MQTT integration loaded (no store refcount).
         self._mqtt_activity_unsub: Any = None
         self._mqtt_activity_topic: str | None = None
+        # Delivery tests waiting for their press, by hub device id.
+        self._wifi_probes: dict[int, asyncio.Future] = {}
+        # When this hub last connected to a broker we pointed it at.
+        self._hub_mqtt_connected_at: float | None = None
         self._last_hub_event: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
@@ -450,24 +462,40 @@ class SofabatonHub(HubProxyEventsMixin, WifiDeployMixin, HubOpsMixin, HubFetchMi
 
         return self._proxy.get_routed_local_ip()
 
-    async def async_set_local_address(self, address: str | None) -> None:
+    async def async_set_local_address(
+        self,
+        address: str | None,
+        *,
+        port: int | None = None,
+        scheme: str | None = None,
+    ) -> None:
         """Set the manual local address; None or blank returns to automatic.
 
-        Raises ValueError for anything but a dotted-decimal IPv4 address.
+        ``port`` and ``scheme`` (``http``/``https``) only change the URL an
+        X2 calls Home Assistant's webhook on; they need a manual address
+        and are cleared with it. Raises ValueError for anything but a
+        dotted-decimal IPv4 address.
         """
 
         await self.hass.async_add_executor_job(self._proxy.set_local_address, address)
         self.local_address = self._proxy.local_address
+        self.local_port = int(port) if port and self.local_address else None
+        self.local_scheme = scheme if scheme in ("http", "https") and self.local_address else None
         self._log.debug(
             "[%s] Local address set to %s", self.entry_id, self.local_address or "automatic"
         )
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         if entry:
             new_options = entry.options.copy()
-            if self.local_address is None:
-                new_options.pop(CONF_LOCAL_ADDRESS, None)
-            else:
-                new_options[CONF_LOCAL_ADDRESS] = self.local_address
+            for key, value in (
+                (CONF_LOCAL_ADDRESS, self.local_address),
+                (CONF_LOCAL_PORT, self.local_port),
+                (CONF_LOCAL_SCHEME, self.local_scheme),
+            ):
+                if value is None:
+                    new_options.pop(key, None)
+                else:
+                    new_options[key] = value
             if new_options != entry.options:
                 self.hass.config_entries.async_update_entry(entry, options=new_options)
         async_dispatcher_send(self.hass, signal_hub(self.entry_id))

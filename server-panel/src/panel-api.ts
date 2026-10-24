@@ -608,6 +608,11 @@ export class PanelApi {
     return this.request<JobView>("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/redeploy`);
   }
 
+  /** Test again: the deploy's test press on its own (a job; the press is no press event). The result is the record, `delivery` included. */
+  testWifiDelivery(hubId: string, key: string): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/wifi-devices/${encodeURIComponent(key)}/test-delivery`);
+  }
+
   // -- backup and restore ------------------------------------------------------------
 
   /** Read a full, restorable bundle from the hub (a job); `deviceIds` limits it to those devices, without activities. */

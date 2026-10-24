@@ -37,6 +37,8 @@ const OFFICE = {
   active_job: null,
   last_job: null,
 };
+// A second hub that passes its gates (OFFICE is disabled: the shell blocks its views).
+const BEDROOM = { ...LIVING, hub_id: "cb383539684b", config: { host: "192.168.1.70", name: "Bedroom", hub_version: "X1S", mac: "CB:38:35:39:68:4B" } };
 const SEEN_NEW = {
   key: "cb383539684b",
   config: {
@@ -797,8 +799,8 @@ test.describe("control panel, shell", () => {
     const { sockets } = await mockServer(page, state);
     await page.goto(PAGE);
     // The HA card's way: nothing dims or covers the view; its write controls are disabled and the dock tells why.
-    await expect(page.locator("#dock-status")).toHaveText("Writing device 8 · 3/12");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#dock-status")).toHaveText("Writing device 8 (3/12)");
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
     expect(await page.locator("#stage-wrap").evaluate((el) => getComputedStyle(el).opacity)).toBe("1");
     await expect(page.locator("#catalog-refresh-all")).toBeDisabled();
@@ -809,15 +811,15 @@ test.describe("control panel, shell", () => {
 
     // The other hub is not blocked by this hub's job.
     await pickHub(page, "192.168.1.60");
-    await expect(page.locator("#blocked-scrim")).toContainText("Hub unavailable");
-    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
+    await expect(page.locator("#blocked-state")).toContainText("Hub unavailable");
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
     await pickHub(page, "e26a44861b45");
 
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
     state.hubs[0].last_job = job({ status: "done", finished_at: new Date().toISOString() });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#add-entity")).toBeEnabled();
     await expect(page.locator("#dock-status")).toHaveText("Restore completed.");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
@@ -856,20 +858,20 @@ test.describe("control panel, shell", () => {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(running.active_job) });
     });
     await page.goto(PAGE);
-    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12");
+    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub (3/12)");
     await expect(page.locator("#dock-progress")).toHaveAttribute("data-indeterminate", "false");
     await expect(page.locator("#dock-progress")).toHaveAttribute("style", /width: 25%/);
     await expect(page.locator("#dock-cancel")).toHaveCount(0);
     await page.evaluate((hubId) => document.querySelector("sofabaton-server-panel").store.cancelActiveJob(hubId), LIVING.hub_id);
     await expect.poll(() => calls.some((c) => c.key === `DELETE /hubs/${LIVING.hub_id}/jobs/j1`)).toBe(true);
-    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub · 3/12 · cancelling");
+    await expect(page.locator("#dock-status")).toHaveText("Refreshing the hub (3/12) · cancelling");
     await expect.poll(() => sockets.length).toBe(1);
     state.hubs[0].active_job = null;
     state.hubs[0].last_job = job({ kind: "refresh", cancellable: true, status: "cancelled", finished_at: "2026-09-17T10:00:09Z" });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: state.hubs[0].last_job }));
     await expect(page.locator("#dock-status")).toHaveText("Operation cancelled.");
     await expect(page.locator("#dock-progress")).toHaveCount(0);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
   });
 
   test("a stopped apply is offered for resume or discard in the dock", async ({ page }) => {
@@ -898,7 +900,7 @@ test.describe("control panel, shell", () => {
     await page.click("#dock-resume");
     await expect.poll(() => calls.some((c) => c.key === `POST /hubs/${LIVING.hub_id}/applies/ap1/resume`)).toBe(true);
     await expect(page.locator("#dock-status")).toHaveText("Resuming the apply");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#add-entity")).toBeDisabled();
   });
 
@@ -913,12 +915,12 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#dock-flash")).toHaveAttribute("title", "short press: Lights");
     sockets[0].send(JSON.stringify({ type: "press", seq: 8, hub_id: LIVING.hub_id, device_id: 61, command_id: 4, slot: 3, label: "Curtains", press_type: "long", resolution: "deployed", transport: "http", source: "hub", received_at: "t" }));
     await expect(page.locator("#dock-flash")).toHaveAttribute("data-seq", "8");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
 
     sockets[0].close();
     await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Live updates paused, reconnecting");
     await expect(page.locator("#stream-state")).toHaveClass(/lost/);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect.poll(() => sockets.length).toBeGreaterThan(1);
     await expect(page.locator("#stream-state")).toHaveAttribute("aria-label", "Event stream live");
   });
@@ -990,7 +992,7 @@ test.describe("control panel, shell", () => {
     await expect(page.locator("#view-hub")).toBeVisible();
     await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
     await page.route(`**${API}/hubs`, (route) => route.abort("connectionrefused"));
-    await expect(page.locator("#blocked-scrim")).toContainText("The server is not answering", { timeout: 15_000 });
+    await expect(page.locator("#blocked-state")).toContainText("The server is not answering", { timeout: 15_000 });
     await expect(page.locator("#dock-status")).toHaveText("The server is not answering");
     // The picker and dock agree that connection status is unknown while the server is unreachable.
     await expect(chip(page).locator(".dot")).toHaveClass(/off/);
@@ -1004,7 +1006,7 @@ test.describe("control panel, shell", () => {
     await expect(options(page).nth(0).locator(".dot")).toHaveClass(/off/);
     await page.keyboard.press("Escape");
     await page.unroute(`**${API}/hubs`);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.locator("#blocked-state")).toHaveCount(0, { timeout: 15_000 });
     await expect(chip(page).locator(".dot")).toHaveClass(/ok/);
     await expect(page.locator("#dock-pill .dock-pill-half").nth(0)).toHaveAttribute("title", "hub connected");
     await expect(page.locator("#dock-pill .dock-pill-half").nth(1)).toHaveAttribute("title", "the app is not connected");
@@ -1093,7 +1095,7 @@ test.describe("control panel, views", () => {
   });
 
   test("the remote tab mounts the card for the selected hub; the layout subtab edits its document live", async ({ page }, testInfo) => {
-    const state = { hubs: [LIVING, OFFICE], seen: [], document: { show_dpad: false } };
+    const state = { hubs: [LIVING, OFFICE, BEDROOM], seen: [], document: { show_dpad: false } };
     const { calls } = await mockServer(page, state);
     await page.goto(`${PAGE}#/e26a44861b45/remote/card`);
     await expect(page.locator("#view-remote")).toBeVisible();
@@ -1149,10 +1151,14 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#remote-doc")).toHaveValue("");
 
     // Picking another hub re-targets the card and the editor.
-    await pickHub(page, "192.168.1.60");
+    await pickHub(page, BEDROOM.hub_id);
     await page.click('#subtabs button[data-sub="card"]');
-    await expect.poll(() => calls.some((c) => c.key === "GET /hubs/192.168.1.60/ui/remote-card")).toBe(true);
-    await expect(page.locator("#remote-banner")).toBeVisible();
+    await expect.poll(() => calls.some((c) => c.key === `GET /hubs/${BEDROOM.hub_id}/ui/remote-card`)).toBe(true);
+    // A disabled hub: the shell's blocked state stands in the tab's place, and the card reads nothing.
+    await pickHub(page, OFFICE.hub_id);
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
+    await expect(page.locator("#view-remote sofabaton-virtual-remote")).toHaveCount(0);
+    expect(calls.some((c) => c.key === `GET /hubs/${OFFICE.hub_id}/ui/remote-card`)).toBe(false);
   });
 
   test("the remote card scales to fit between the docks, whatever the viewport's height", async ({ page }, testInfo) => {
@@ -1528,7 +1534,7 @@ test.describe("control panel, views", () => {
   });
 
   test("remote editor retains failed saves and ignores responses after switching hubs", async ({ page }) => {
-    const state = { hubs: [LIVING, OFFICE], seen: [], document: { show_dpad: false } };
+    const state = { hubs: [LIVING, BEDROOM], seen: [], document: { show_dpad: false } };
     await mockServer(page, state);
     await page.goto(`${PAGE}#/e26a44861b45/remote/layout`);
     await page.locator("sb-panel-remote-editor summary").filter({ hasText: "Layout options" }).click();
@@ -1551,7 +1557,7 @@ test.describe("control panel, views", () => {
     const pending = page.waitForRequest((r) => r.method() === "PUT");
     await page.click("#remote-save");
     await pending;
-    await pickHub(page, OFFICE.hub_id);
+    await pickHub(page, BEDROOM.hub_id);
     // The save has not landed, so the layout is still unsaved: leaving asks (CR-F5a-4).
     await page.click("#leave-go");
     await expect(page.locator('sb-panel-remote-editor [data-group="dpad"] input')).not.toBeChecked();
@@ -2590,7 +2596,7 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#add-confirm")).toHaveText("Creating…");
     await expect(page.locator("#add-confirm")).toBeDisabled();
     await expect(page.locator("#add-name")).toBeDisabled();
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await expect(page.locator("#stage-wrap")).not.toHaveAttribute("inert", "");
     const cover = await page.locator(".cache-modal-backdrop").evaluate((el) => {
       const r = el.getBoundingClientRect();
@@ -2612,7 +2618,7 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-deleting .progress-message")).toHaveText("Removing this activity from the hub…");
     await expect(editor.locator("#delete-dialog")).toHaveCount(0);
     await expect(editor.locator("#activity-editor")).toHaveCount(0);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await page.screenshot({ path: shot(testInfo, "busy-deleting") });
     end("del1", { status: "failed", error: { type: "hub_disconnected", title: "Hub disconnected", status: 503, detail: "the hub went away" } });
     await expect(editor.locator("#editor-delete-error")).toContainText("Delete failed: the hub went away");
@@ -2627,7 +2633,7 @@ test.describe("control panel, views", () => {
     await editor.locator("#editor-sync").click();
     await expect(editor.locator("#editor-syncing .progress-title")).toHaveText("Syncing to your hub");
     await expect(editor.locator("#editor-syncing .progress-message")).toHaveText("Writing the name (1/4)");
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
     await page.screenshot({ path: shot(testInfo, "busy-syncing") });
     snapshot.activities[1].device.name = "Games";
     end("sync1");
@@ -2705,15 +2711,16 @@ test.describe("control panel, integrated picker", () => {
       await chip(page).click();
       await page.getByRole("button", { name: "Manage Living room", exact: true }).click();
       await page.getByRole("group", { name: "Actions for Living room", exact: true }).getByRole("button", { name: "Enable", exact: true }).click();
-      await expect(page.locator("#blocked-scrim")).toContainText("Waiting for the hub to connect");
+      await expect(page.locator("#blocked-state")).toContainText("Waiting for the hub to connect");
       hub().status = { ...CONTROL };
       for (const ws of sockets) ws.send(JSON.stringify({ type: "hub_event", hub_id: LIVING.hub_id, event: { kind: "catalog_ready", seq: 1 } }));
-      await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+      await expect(page.locator("#blocked-state")).toHaveCount(0);
     };
 
     await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/activities`);
-    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
-    await expect(page.locator("#catalog-notice")).toContainText("hub_disabled");
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
+    // The blocked state stands in the view's place: the view has not read anything yet.
+    await expect(page.locator("#catalog-notice")).toHaveCount(0);
     await enable();
     await expect(page.locator("#catalog-rows .entity-block")).toHaveCount(1);
     await expect(page.locator("#catalog-rows .entity-name-label")).toHaveText("Watch TV");
@@ -2724,7 +2731,7 @@ test.describe("control panel, integrated picker", () => {
     hub().status = null;
     await page.goto(`${PAGE}#/${LIVING.hub_id}/hub/devices/1`);
     await page.reload();
-    await expect(page.locator("#blocked-scrim")).toContainText("This hub is disabled");
+    await expect(page.locator("#blocked-state")).toContainText("This hub is disabled");
     await enable();
     await expect(page.locator("#editor-refresh")).toBeVisible();
   });
@@ -3007,9 +3014,9 @@ test.describe("control panel, backup", () => {
     await expect(view.locator("#backup-progress")).toContainText("Creating backup");
     await expect(view.locator("#backup-progress")).toContainText("Backing up device 1");
     await expect(view.locator(".backup-drawer-sub")).toHaveText("The hub is creating your backup.");
-    await expect(page.locator("#dock-status")).toHaveText("Backing up device 1 · 0/1");
+    await expect(page.locator("#dock-status")).toHaveText("Backing up device 1 (0/1)");
     // The progress card is the busy state; nothing is layered over it.
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);
+    await expect(page.locator("#blocked-state")).toHaveCount(0);
 
     push({ status: "done", finished_at: new Date().toISOString(), result: result() });
     await expect(view.locator("#backup-complete")).toContainText("Backup completed");
@@ -3435,7 +3442,7 @@ test.describe("control panel, wifi commands", () => {
     await expect(block).toContainText("Automation unavailable");
     await expect(block).toContainText("running firmware version 2. Version 5 or newer is required");
     await expect(view(page).locator("#wifi-add")).toHaveCount(0);
-    await expect(page.locator("#blocked-scrim")).toHaveCount(0);         // not a gate: the shell does not scrim
+    await expect(page.locator("#blocked-state")).toHaveCount(0);         // not a gate: the shell does not scrim
     await page.screenshot({ path: shot(testInfo, "wifi-firmware-block") });
 
     // The hub row says the firmware is fine now: the roster takes the block's place.
@@ -3727,6 +3734,81 @@ test.describe("control panel, wifi commands", () => {
     await dialog.locator("#wifi-delete-submit").click();
     await expect(view(page).locator(".device-card")).toHaveCount(1);
     expect(calls.filter((c) => c.key === "delete").map((c) => c.force)).toEqual([false, true]);
+  });
+
+  test("the delivery test: a failed one names the flow to allow, Test again passes it, a sync runs in place and another job reads Busy", async ({ page }, testInfo) => {
+    const failed = { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: null, latency_s: null, checked_at: "t", via: "test" };
+    const { calls, world, sockets } = await wifiServer(page, [wifiDevice({ delivery: failed })]);
+    await page.route(`${H}/wifi-devices/*/test-delivery`, (route) => {
+      const key = route.request().url().split("/").slice(-2)[0];
+      calls.push({ key: "test", device: key });
+      const delivery = { ...failed, status: "delivered", source: "192.168.1.50", latency_s: 0.05 };
+      world.devices = world.devices.map((d) => (d.key === key ? { ...d, delivery } : d));
+      world.results.test_wifi_delivery = { delivery };
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "test_wifi_delivery", kind: "test_wifi_delivery", status: "queued" })) });
+    });
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    const delivery = detail.locator("#wifi-delivery");
+    await expect(delivery.locator(".wifi-delivery-title")).toHaveText("How presses reach the server");
+    await expect(delivery.locator("#wifi-delivery-failed")).toContainText("Button presses don't reach the server yet.");
+    await expect(delivery.locator("#wifi-delivery-failed")).toContainText("The hub (192.168.1.50) calls http://192.168.1.10:8060. Allow TCP from the hub to port 8060");
+    await page.screenshot({ path: shot(testInfo, "wifi-delivery-failed") });
+
+    await delivery.locator("#wifi-test-delivery").click();
+    await expect(delivery.locator("#wifi-delivery-ok")).toHaveText("Presses arrive (0.1 s).");
+    await expect(delivery.locator("#wifi-delivery-failed")).toHaveCount(0);
+    expect(calls.filter((c) => c.key === "test")).toEqual([{ key: "test", device: "a1b2c3d4" }]);
+
+    // A sync: the card's deploy animation stands in the detail's place while the job runs.
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    await page.route(`${H}/jobs/update_wifi_device`, async (route) => {
+      if (await Promise.race([held.then(() => true), new Promise((r) => setTimeout(() => r(false), 50))])) return route.fallback();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "update_wifi_device", kind: "update_wifi_device", status: "running" })) });
+    });
+    await detail.locator('.slot-btn[data-slot="3"]').click();
+    await view(page).locator("#wifi-slot-name").fill("Scene");
+    await view(page).locator("#wifi-slot-name").press("Enter");
+    await detail.locator("#wifi-sync").click();
+    await expect(detail.locator("#wifi-syncing .progress-title")).toHaveText("Deploying Wifi Commands");
+    await expect(detail.locator("#wifi-syncing .progress-message")).toHaveText("Syncing Wifi Commands…");
+    await expect(detail.locator("#wifi-slots")).toHaveCount(0);
+    await page.screenshot({ path: shot(testInfo, "wifi-syncing") });
+    release();
+    await expect(detail.locator("#wifi-slots")).toBeVisible();
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+
+    // Another job holds the hub: the header button reads Busy, as on the card.
+    await expect.poll(() => sockets.length).toBe(1);
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: job({ job_id: "other", kind: "refresh" }) }));
+    await expect(detail.locator("#wifi-sync")).toHaveText("Busy");
+    await expect(detail.locator("#wifi-sync")).toBeDisabled();
+    await expect(delivery.locator("#wifi-test-delivery")).toBeDisabled();
+  });
+
+  test("a sync whose test press does not arrive says so in the dock; a passed test is a plain success", async ({ page }) => {
+    const failed = { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: null, latency_s: null, checked_at: "t", via: "test" };
+    const { calls, sockets } = await wifiServer(page, [wifiDevice({ delivery: failed })]);
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
+    const detail = view(page).locator("#wifi-device-detail");
+    await detail.locator('.slot-btn[data-slot="3"]').click();
+    await view(page).locator("#wifi-slot-name").fill("Scene");
+    await view(page).locator("#wifi-slot-name").press("Enter");
+    await expect(detail.locator('.slot-btn[data-slot="3"] .slot-name')).toHaveText("Scene");
+    await detail.locator("#wifi-sync").click();
+    await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
+    await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
+    await expect(detail.locator("#wifi-delivery-failed")).toBeVisible();
+    // The job's end reaches the dock over the event stream.
+    await expect.poll(() => sockets.length).toBe(1);
+    const finished = (kind, status) => job({ job_id: kind, kind, status: "done", finished_at: new Date().toISOString(), result: { delivery: { ...failed, status } } });
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: finished("update_wifi_device", "not_delivered") }));
+    await expect(page.locator("#dock-status")).toHaveText("Synced, but button presses don't reach the server yet.");
+    await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
+    sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: finished("test_wifi_delivery", "delivered") }));
+    await expect(page.locator("#dock-status")).toHaveText("Delivery tested.");
+    await expect(page.locator("#bottom-dock")).toHaveClass(/dock--success/);
   });
 
   test("a pending create offers no Sync: neither in the header nor in the leave dialog", async ({ page }) => {

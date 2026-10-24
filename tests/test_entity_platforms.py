@@ -261,6 +261,35 @@ def test_the_local_address_entity_sets_and_clears_the_manual_address(monkeypatch
         loop.close()
 
 
+def test_the_local_address_entity_takes_a_webhook_port_and_scheme(monkeypatch):
+    """address:port (and a scheme) only change where an X2 calls Home
+    Assistant's webhook; they go with the manual address."""
+    loop = asyncio.new_event_loop()
+    try:
+        hub, entry, entity, _signals = _local_address_entity(monkeypatch, loop)
+
+        loop.run_until_complete(entity.async_set_value("https://192.0.2.99:8443"))
+        assert entry.options == {"local_address": "192.0.2.99", "local_port": 8443, "local_scheme": "https"}
+        assert (hub.local_address, hub.local_port, hub.local_scheme) == ("192.0.2.99", 8443, "https")
+        # The engine (proxy, listener callbacks) takes the address only.
+        assert hub._proxy.transport.local_address == "192.0.2.99"
+        assert entity.native_value == "https://192.0.2.99:8443"
+
+        loop.run_until_complete(entity.async_set_value("192.0.2.99:8124"))
+        assert entry.options == {"local_address": "192.0.2.99", "local_port": 8124}
+        assert entity.native_value == "192.0.2.99:8124"
+
+        loop.run_until_complete(entity.async_set_value(""))
+        assert entry.options == {}
+        assert (hub.local_port, hub.local_scheme) == (None, None)
+        assert entity.native_value == "192.0.2.10"
+
+        with pytest.raises(HomeAssistantError):
+            loop.run_until_complete(entity.async_set_value("192.0.2.99:99999"))
+    finally:
+        loop.close()
+
+
 def test_the_local_address_entity_rejects_anything_but_ipv4(monkeypatch):
     loop = asyncio.new_event_loop()
     try:

@@ -6,7 +6,9 @@ import logging
 import re
 import secrets
 from copy import deepcopy
+from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -277,39 +279,90 @@ def count_configured_command_slots(
 
 
 #: Wifi-device transport values; see docs/protocol/wifi-commands.md.
+#: ``http`` is the integration's own listener (and, as a *requested* value,
+#: the user's "Direct to Home Assistant" choice), ``mqtt`` the hub's broker,
+#: ``webhook`` (X2 only, deployed value) URL records calling Home
+#: Assistant's own webhook endpoint. A user only ever requests ``http`` or
+#: ``mqtt``; which direct path a deploy writes follows the hub model.
 WIFI_TRANSPORT_HTTP = "http"
 WIFI_TRANSPORT_MQTT = "mqtt"
+WIFI_TRANSPORT_WEBHOOK = "webhook"
+_DEPLOYED_TRANSPORTS = (WIFI_TRANSPORT_HTTP, WIFI_TRANSPORT_MQTT, WIFI_TRANSPORT_WEBHOOK)
 
 
 def normalize_wifi_transport(value: Any) -> str:
-    """Normalize a stored transport value; anything unrecognized is HTTP.
+    """Normalize a stored (deployed) transport value; anything unrecognized is HTTP.
 
     Absent ⇒ ``"http"`` is the compatibility rule: every record that
     predates the MQTT transport work deployed over HTTP.
     """
 
+    text = str(value or "").strip().lower()
+    return text if text in _DEPLOYED_TRANSPORTS else WIFI_TRANSPORT_HTTP
+
+
+def normalize_requested_transport(value: Any) -> str:
+    """Normalize a requested transport: ``mqtt`` or ``http`` ("Direct")."""
+
     return (
         WIFI_TRANSPORT_MQTT
-        if str(value or "").strip().lower() == WIFI_TRANSPORT_MQTT
+        if normalize_wifi_transport(value) == WIFI_TRANSPORT_MQTT
         else WIFI_TRANSPORT_HTTP
     )
+
+
+def wifi_transport_family(value: Any) -> str:
+    """``mqtt`` or ``http``: the two delivery choices a user can make.
+
+    The listener and the webhook are both "Direct to Home Assistant", so
+    moving between them is never a transport switch.
+    """
+
+    return normalize_requested_transport(value)
+
+
+def url_origin(url: Any) -> str | None:
+    """``<scheme>://<host>:<port>`` of a stored webhook URL, or None."""
+
+    parts = urlsplit(str(url or ""))
+    if not parts.scheme or not parts.hostname:
+        return None
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+    except ValueError:
+        return None
+    return f"{parts.scheme}://{parts.hostname}:{port}"
+
+
+def hash_listen_port_for_transport(transport: Any, roku_listen_port: int) -> int:
+    """The listener port a commands hash is computed with for a transport:
+    0 for MQTT, the listener's port otherwise.
+
+    Webhook records carry no listener port either, but they hash like the
+    listener's: both are "Direct", so moving a device from one to the
+    other ("Move to direct delivery") leaves its hash and the hub's brand
+    alone and needs no remote sync. The price is that a listener port
+    change offers a sync for webhook devices too.
+    """
+
+    return 0 if normalize_wifi_transport(transport) == WIFI_TRANSPORT_MQTT else int(roku_listen_port)
 
 
 def record_hash_listen_port(record: dict[str, Any], roku_listen_port: int) -> int:
     """The listener port a record's commands hash must be computed with.
 
-    MQTT records carry no listener port, so their hash must not move
-    with it: hash with a constant 0 whenever the record's effective
-    transport is MQTT (deployed wins; the create-flow request decides
-    for undeployed records). All-HTTP stores hash byte-identically to
-    pre-MQTT builds. Every hash computation for a store record MUST go
-    through this helper or listing and deployed hashes drift apart.
+    MQTT records carry no listener port, so their hash must not move with
+    it: hash with a constant 0 whenever the record's effective transport
+    is MQTT (deployed wins; the create-flow request decides for undeployed
+    records). All-HTTP stores hash byte-identically to pre-MQTT builds.
+    Every hash computation for a store record MUST go through this helper
+    or listing and deployed hashes drift apart.
     """
 
-    effective_transport = normalize_wifi_transport(
-        record.get("deployed_transport") or record.get("requested_transport")
+    return hash_listen_port_for_transport(
+        record.get("deployed_transport") or record.get("requested_transport"),
+        roku_listen_port,
     )
-    return 0 if effective_transport == WIFI_TRANSPORT_MQTT else int(roku_listen_port)
 
 
 def map_wifi_mqtt_key(key_id: Any, slot_count: int) -> tuple[int, str] | None:
@@ -349,7 +402,7 @@ def wifi_device_requires_listener(config_payload: dict[str, Any]) -> bool:
     deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "").strip()
     if not (isinstance(deployed_device_id, int) or bool(deployed_commands_hash)):
         return False
-    return normalize_wifi_transport(config_payload.get("deployed_transport")) != WIFI_TRANSPORT_MQTT
+    return normalize_wifi_transport(config_payload.get("deployed_transport")) == WIFI_TRANSPORT_HTTP
 
 
 def wifi_transport_switch_pending(
@@ -370,8 +423,8 @@ def wifi_transport_switch_pending(
     deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "").strip()
     if not (isinstance(deployed_device_id, int) or bool(deployed_commands_hash)):
         return False
-    deployed = normalize_wifi_transport(config_payload.get("deployed_transport"))
-    requested = normalize_wifi_transport(config_payload.get("requested_transport"))
+    deployed = wifi_transport_family(config_payload.get("deployed_transport"))
+    requested = wifi_transport_family(config_payload.get("requested_transport"))
     if requested == deployed:
         return False
     if requested == WIFI_TRANSPORT_MQTT and not mqtt_available:
@@ -516,8 +569,17 @@ def _default_device_payload(
         "requested_transport": WIFI_TRANSPORT_HTTP,
         # What the deploy actually wrote; None until first deploy (absent
         # and legacy records both read back as HTTP via
-        # normalize_wifi_transport). Never rewritten by an in-place sync.
+        # normalize_wifi_transport). Never rewritten by an in-place sync,
+        # except "Move to direct delivery" (http -> webhook, same device).
         "deployed_transport": None,
+        # The webhook base URL a ``webhook`` deploy wrote into the records
+        # (scheme, address, port, webhook id); None for other transports.
+        "deployed_url": None,
+        # The last delivery check: did a press from the hub reach Home
+        # Assistant? Written by the deploy's test press and by "Test
+        # again"; a real press that arrives marks it delivered. None
+        # until first checked.
+        "delivery": None,
     }
 
 
@@ -552,11 +614,15 @@ def _normalize_device_payload(
     payload["deployed_request_port"] = (
         int(deployed_request_port) if isinstance(deployed_request_port, int) else None
     )
-    payload["requested_transport"] = normalize_wifi_transport(device.get("requested_transport"))
+    payload["requested_transport"] = normalize_requested_transport(device.get("requested_transport"))
     deployed_transport = device.get("deployed_transport")
     payload["deployed_transport"] = (
         normalize_wifi_transport(deployed_transport) if deployed_transport is not None else None
     )
+    deployed_url = str(device.get("deployed_url") or "").strip()
+    payload["deployed_url"] = deployed_url or None
+    delivery = device.get("delivery")
+    payload["delivery"] = dict(delivery) if isinstance(delivery, dict) else None
     return payload
 
 
@@ -622,8 +688,8 @@ class CommandConfigStore:
                 deployed_raw = device.get("deployed_transport")
                 if deployed_raw is None:
                     continue
-                deployed = normalize_wifi_transport(deployed_raw)
-                if normalize_wifi_transport(device.get("requested_transport")) == deployed:
+                deployed = wifi_transport_family(deployed_raw)
+                if wifi_transport_family(device.get("requested_transport")) == deployed:
                     continue
                 _LOGGER.debug(
                     "[%s] aligning requested_transport of %s with deployed %s",
@@ -757,12 +823,16 @@ class CommandConfigStore:
             "deployed_device_id": device.get("deployed_device_id"),
             "deployed_commands_hash": str(device.get("deployed_commands_hash") or ""),
             "deployed_request_port": device.get("deployed_request_port"),
-            "requested_transport": normalize_wifi_transport(device.get("requested_transport")),
+            "requested_transport": normalize_requested_transport(device.get("requested_transport")),
             "deployed_transport": (
                 normalize_wifi_transport(device.get("deployed_transport"))
                 if device.get("deployed_transport") is not None
                 else None
             ),
+            # Where a webhook deploy's records call, without the webhook id
+            # (the id is the webhook's secret: get_deployed_url).
+            "deployed_target": url_origin(device.get("deployed_url")),
+            "delivery": deepcopy(device.get("delivery")) if isinstance(device.get("delivery"), dict) else None,
         }
 
     async def async_list_hub_devices(
@@ -908,6 +978,7 @@ class CommandConfigStore:
         commands_hash: str = "",
         request_port: int | None = None,
         deployed_transport: str | None = None,
+        deployed_url: str | None = None,
     ) -> None:
         """Persist the command list that was last successfully synced to the hub.
 
@@ -917,7 +988,8 @@ class CommandConfigStore:
         port the deployed callbacks were built with (gates the in-place
         re-sync path). ``deployed_transport`` records which transport the
         deploy wrote; ``None`` keeps the record's existing value so in-place
-        re-syncs never rewrite it.
+        re-syncs never rewrite it. ``deployed_url`` is the webhook base URL a
+        ``webhook`` deploy (or an in-place retarget) wrote; ``None`` keeps it.
         """
         hub_device = self._find_hub_device_record(entry_id, device_key)
         hub_device["deployed_commands"] = commands
@@ -927,12 +999,101 @@ class CommandConfigStore:
             int(request_port) if isinstance(request_port, int) else None
         )
         if deployed_transport is not None:
-            hub_device["deployed_transport"] = normalize_wifi_transport(deployed_transport)
+            transport = normalize_wifi_transport(deployed_transport)
+            hub_device["deployed_transport"] = transport
+            hub_device["deployed_url"] = (
+                str(deployed_url or "").strip() or None if transport == WIFI_TRANSPORT_WEBHOOK else None
+            )
         elif deployed_device_id is None and not str(commands_hash or "").strip():
             # The record is back to undeployed (zero-slot teardown): clear
             # the transport stamp so the next first deploy chooses fresh.
             hub_device["deployed_transport"] = None
+            hub_device["deployed_url"] = None
+            hub_device["delivery"] = None
+        elif deployed_url is not None:
+            hub_device["deployed_url"] = str(deployed_url).strip() or None
         await self._save()
+
+    def get_deployed_url(self, entry_id: str, device_key: str) -> str | None:
+        """The webhook base URL a device's records call (holds the webhook
+        id: for the deploy, never for a payload)."""
+
+        try:
+            hub_device = self._find_hub_device_record(entry_id, device_key)
+        except KeyError:
+            return None
+        return str(hub_device.get("deployed_url") or "").strip() or None
+
+    async def async_set_delivery(
+        self, entry_id: str, device_key: str, delivery: dict[str, Any] | None
+    ) -> None:
+        """Record the last delivery check of a Wifi Device (or clear it)."""
+
+        hub_device = self._find_hub_device_record(entry_id, device_key)
+        hub_device["delivery"] = deepcopy(delivery) if isinstance(delivery, dict) else None
+        await self._save()
+
+    async def async_mark_delivered(
+        self, entry_id: str, hub_device_id: int, *, transport: str, source_ip: str = ""
+    ) -> bool:
+        """A real press from ``hub_device_id`` arrived: the path works.
+
+        Writes only when the stored check says otherwise, so ordinary
+        presses never touch the store. Returns True when it wrote.
+        """
+
+        for device in self._hub_device_records(entry_id):
+            if device.get("deployed_device_id") != hub_device_id:
+                continue
+            current = device.get("delivery") if isinstance(device.get("delivery"), dict) else {}
+            if current.get("status") == "delivered":
+                return False
+            device["delivery"] = {
+                **current,
+                "status": "delivered",
+                "transport": normalize_wifi_transport(transport),
+                "source_ip": str(source_ip or ""),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "via": "press",
+            }
+            await self._save()
+            return True
+        return False
+
+    def get_webhook_id(self, entry_id: str) -> str | None:
+        """The hub's webhook id, if one was ever made."""
+
+        value = str(self._hub_record(entry_id).get("webhook_id") or "").strip()
+        return value or None
+
+    async def async_ensure_webhook_id(self, entry_id: str) -> str:
+        """The hub's webhook id, made on first use and kept for good.
+
+        32 hex characters (128 bits): short enough that every URL record
+        fits one hub record page, long enough to be unguessable.
+        """
+
+        existing = self.get_webhook_id(entry_id)
+        if existing:
+            return existing
+        webhook_id = secrets.token_hex(16)
+        self._hub_record(entry_id)["webhook_id"] = webhook_id
+        await self._save()
+        return webhook_id
+
+    def get_webhook_sources(self, entry_id: str) -> list[str]:
+        """Source addresses learned from deploy tests (a NAT between the
+        hub's network and Home Assistant's); the hub's own address is
+        always accepted besides these."""
+
+        sources = self._hub_record(entry_id).get("webhook_sources")
+        return [str(ip) for ip in sources] if isinstance(sources, list) else []
+
+    async def async_set_webhook_sources(self, entry_id: str, sources: list[str]) -> None:
+        cleaned = sorted({str(ip).strip() for ip in sources if str(ip).strip()})
+        if cleaned != self.get_webhook_sources(entry_id):
+            self._hub_record(entry_id)["webhook_sources"] = cleaned
+            await self._save()
 
     async def async_set_requested_transport(
         self,
@@ -952,8 +1113,8 @@ class CommandConfigStore:
         """
 
         hub_device = self._find_hub_device_record(entry_id, device_key)
-        normalized = normalize_wifi_transport(transport)
-        if normalize_wifi_transport(hub_device.get("requested_transport")) == normalized:
+        normalized = normalize_requested_transport(transport)
+        if normalize_requested_transport(hub_device.get("requested_transport")) == normalized:
             return False
         hub_device["requested_transport"] = normalized
         await self._save()
@@ -1466,6 +1627,7 @@ class CommandConfigStore:
                 "slot_count": WIFI_EVENTS_SLOT_COUNT,
                 "requested_transport": None,
                 "deployed_transport": None,
+                "delivery": None,
             }
         payload = self._payload_for_device(record, roku_listen_port=roku_listen_port)
         deployed_hash = str(payload.get("deployed_commands_hash") or "").strip()
@@ -1479,6 +1641,9 @@ class CommandConfigStore:
             # with wifi_transport_switch_pending().
             "requested_transport": payload.get("requested_transport"),
             "deployed_transport": payload.get("deployed_transport"),
+            # The last delivery check (the deploy's test press, Test again,
+            # or a real press).
+            "delivery": payload.get("delivery"),
             # The id offset of a long record from before the single-record
             # model: the card retargets references to one after the Sync
             # that retires them (wifi-events-single-record-plan §3.3).

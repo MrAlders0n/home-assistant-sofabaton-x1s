@@ -33,11 +33,19 @@ Nothing here talks to a hub.
 from __future__ import annotations
 
 import ipaddress
+import json
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional
 
+from .blob_decoders import render_wifi_https_blob_body, render_wifi_ip_blob_body
 from .hub_versions import HUB_VERSION_X1
-from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
+from .protocol_const import (
+    BUTTONNAME_BY_CODE,
+    DEVICE_CLASS_CODE_WIFI_IP,
+    WIFI_URL_RECORD_CODE,
+    ButtonName,
+)
 from .wifi_inplace_plan import (
     WIFI_COMMAND_LONG_PRESS_OFFSET,
     WIFI_COMMAND_SLOT_COUNT,
@@ -48,11 +56,19 @@ from .wifi_inplace_plan import (
 
 __all__ = [
     "DEFAULT_WIFI_BRAND",
+    "WIFI_PROBE_COMMAND_ID",
     "WIFI_TRANSPORT_HTTP",
     "WIFI_TRANSPORT_MQTT",
+    "WIFI_TRANSPORT_URL",
     "WIFI_TRANSPORTS",
     "WIFI_SLOT_COUNT",
     "X1_CALLBACK_PORT",
+    "WifiDeliveryProbe",
+    "normalize_wifi_url",
+    "wifi_http_record_bodies",
+    "wifi_record_url",
+    "wifi_url_record_bodies",
+    "wifi_url_record_body",
     "WifiSlotSpec",
     "WifiDeviceSpec",
     "WifiTarget",
@@ -73,10 +89,17 @@ X1_CALLBACK_PORT = 8060
 #: How a press leaves the hub. ``http``: every record calls the consumer's
 #: listener. ``mqtt`` (X2 only): the records are inert and the hub publishes
 #: ``{"device_id", "key_id"}`` to ``<MAC>/up`` on the broker set in the
-#: Sofabaton app; the consumer subscribes there. Fixed at deploy.
+#: Sofabaton app; the consumer subscribes there. ``url`` (X2 only): every
+#: record is a URL record (code type 0x21) calling the consumer's base URL,
+#: ``http`` or ``https`` (the hub checks no certificate), with the press in
+#: the query (:func:`wifi_record_url`). ``http`` and ``url`` records live on
+#: the same device class and switch in place; ``mqtt`` is fixed at deploy.
 WIFI_TRANSPORT_HTTP = "http"
 WIFI_TRANSPORT_MQTT = "mqtt"
-WIFI_TRANSPORTS = (WIFI_TRANSPORT_HTTP, WIFI_TRANSPORT_MQTT)
+WIFI_TRANSPORT_URL = "url"
+WIFI_TRANSPORTS = (WIFI_TRANSPORT_HTTP, WIFI_TRANSPORT_MQTT, WIFI_TRANSPORT_URL)
+#: The record a delivery probe presses: slot 1, short.
+WIFI_PROBE_COMMAND_ID = 1
 #: Label width the hub keeps (30 ASCII on X1, 60 UTF-16 bytes elsewhere);
 #: the spec caps at the shorter so labels round-trip on every hub.
 MAX_SLOT_LABEL_LEN = 30
@@ -381,7 +404,9 @@ class WifiDeployment:
 
     ``transport`` is how its presses leave the hub. An ``mqtt`` deployment
     has no callback ``target`` (``None``): nothing on the device names an
-    address, the hub publishes to its own broker.
+    address, the hub publishes to its own broker. A ``url`` deployment has
+    no ``target`` either; its records call ``url`` (the base URL, see
+    :func:`wifi_record_url`).
     """
 
     device_id: int
@@ -390,6 +415,7 @@ class WifiDeployment:
     labels: Mapping[int, str] = field(default_factory=dict)
     hub_version: str = ""
     transport: str = WIFI_TRANSPORT_HTTP
+    url: str = ""
 
     def __post_init__(self) -> None:
         transport = str(self.transport or WIFI_TRANSPORT_HTTP)
@@ -398,6 +424,10 @@ class WifiDeployment:
         object.__setattr__(self, "transport", transport)
         if transport == WIFI_TRANSPORT_HTTP and self.target is None:
             raise ValueError("an http deployment needs its callback target")
+        if transport == WIFI_TRANSPORT_URL:
+            object.__setattr__(self, "url", normalize_wifi_url(self.url))
+        else:
+            object.__setattr__(self, "url", "")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -407,6 +437,7 @@ class WifiDeployment:
             "labels": {str(int(cid)): str(label) for cid, label in sorted(self.labels.items())},
             "hub_version": self.hub_version,
             "transport": self.transport,
+            "url": self.url,
         }
 
     @classmethod
@@ -425,7 +456,125 @@ class WifiDeployment:
             labels={int(cid): str(label) for cid, label in labels_raw.items()},
             hub_version=str(data.get("hub_version") or ""),
             transport=transport,
+            url=str(data.get("url") or ""),
         )
+
+
+@dataclass(frozen=True)
+class WifiDeliveryProbe:
+    """What :meth:`AsyncXProxy.probe_wifi_delivery` found.
+
+    ``sent``: the hub took the press. ``delivered``: the consumer's own
+    ingress saw it arrive within the timeout; ``latency_s`` is the time
+    from the press to that arrival. A press that was sent but never
+    arrived means the hub cannot reach the consumer (a firewall, a VLAN,
+    a wrong address or port, a broker the consumer does not share).
+    """
+
+    device_id: int
+    command_id: int
+    sent: bool
+    delivered: bool
+    latency_s: Optional[float] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "device_id": self.device_id,
+            "command_id": self.command_id,
+            "sent": self.sent,
+            "delivered": self.delivered,
+            "latency_s": self.latency_s,
+        }
+
+
+def normalize_wifi_url(url: Any) -> str:
+    """The base URL a ``url`` deployment's records call, validated.
+
+    ``http://`` or ``https://`` with a host; the port, path and query are
+    kept as given (the press goes into the query, see
+    :func:`wifi_record_url`). A fragment is refused: the hub would send it.
+    """
+
+    text = str(url or "").strip()
+    parts = urllib.parse.urlsplit(text)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise ValueError(f"a url deployment needs an http:// or https:// URL with a host, got {url!r}")
+    if parts.fragment:
+        raise ValueError(f"the callback URL must not carry a fragment: {url!r}")
+    return text
+
+
+def wifi_record_url(base_url: str, device_id: int, command_index: int, press: str) -> str:
+    """The URL one record calls: ``base_url`` plus ``d``, ``s`` and ``p``.
+
+    ``d`` is the device id, ``s`` the 0-based slot index and ``p`` ``short``
+    or ``long``: the same three facts the ``http`` transport carries in its
+    ``/launch/<hub>/<device>/<slot>/<press>`` path. The hub identity is the
+    consumer's to put in ``base_url`` (a webhook id, a path).
+    """
+
+    base = normalize_wifi_url(base_url)
+    kind = "long" if str(press).lower() == "long" else "short"
+    query = urllib.parse.urlencode({"d": int(device_id) & 0xFF, "s": int(command_index), "p": kind})
+    return f"{base}{'&' if urllib.parse.urlsplit(base).query else '?'}{query}"
+
+
+def _press_rows(device_id: int, slot_count: int) -> list[tuple[int, int, str]]:
+    """``(command_id, slot index, press)`` for every record of a device:
+    shorts at ``1..N``, longs at ``N+1..2N`` (the long-record id law)."""
+
+    rows = [(index + 1, index, "short") for index in range(slot_count)]
+    rows += [(index + 1 + slot_count, index, "long") for index in range(slot_count)]
+    return rows
+
+
+def wifi_url_record_body(base_url: str, device_id: int, command_index: int, press: str) -> bytes:
+    """One URL record body: POST to :func:`wifi_record_url` with a small
+    JSON body carrying the same three facts as the query (the request
+    shape bench-validated on an X2, 2026-10-24, W2/W3)."""
+
+    kind = "long" if str(press).lower() == "long" else "short"
+    body = json.dumps({"d": int(device_id) & 0xFF, "s": int(command_index), "p": kind}, separators=(",", ":"))
+    return render_wifi_https_blob_body(
+        url=wifi_record_url(base_url, device_id, command_index, kind),
+        method="POST",
+        headers=[("Content-Type", "application/json")],
+        body=body,
+    )
+
+
+def wifi_url_record_bodies(base_url: str, device_id: int, *, slot_count: int = WIFI_SLOT_COUNT) -> dict[int, tuple[int, bytes]]:
+    """``command_id -> (code type, record body)`` for a ``url`` device with
+    a short and a long record per slot (:func:`wifi_url_record_body`)."""
+
+    return {
+        command_id: (WIFI_URL_RECORD_CODE, wifi_url_record_body(base_url, device_id, index, press))
+        for command_id, index, press in _press_rows(device_id, slot_count)
+    }
+
+
+def wifi_http_record_bodies(
+    target: WifiTarget, device_id: int, *, slot_count: int = WIFI_SLOT_COUNT
+) -> dict[int, tuple[int, bytes]]:
+    """``command_id -> (code type, record body)`` for an ``http`` device on
+    the X1S/X2: the request the create writes, ``POST
+    /launch/<action id>/<device>/<slot>/<press>`` to ``target``."""
+
+    if not target.action_id:
+        raise ValueError("the http records need the hub's action id in the target")
+    bodies: dict[int, tuple[int, bytes]] = {}
+    for command_id, index, press in _press_rows(device_id, slot_count):
+        bodies[command_id] = (
+            DEVICE_CLASS_CODE_WIFI_IP,
+            render_wifi_ip_blob_body(
+                host=target.host,
+                port=target.port,
+                method="POST",
+                path=f"/launch/{target.action_id}/{int(device_id) & 0xFF}/{index}/{press}",
+                content_type="application/x-www-form-urlencoded",
+            ),
+        )
+    return bodies
 
 
 def input_slots_from_spec(spec: WifiDeviceSpec) -> tuple[int, ...]:
