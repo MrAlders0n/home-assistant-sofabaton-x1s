@@ -30,6 +30,10 @@ const PANEL_ALLOWED: Record<string, "*" | string[]> = {
   "tabs/backup-state": "*",
   // The editors' three-way merge when the cache moves under them (the card's own, 2026-10-16).
   "tabs/bundle-rebase": "*",
+  // One progress vocabulary for the card and the panel (wifi webhook plan, wave 4).
+  "shared/utils/backend-state-localization": "*",
+  // The delivery test's verdict helpers (wifi webhook plan, wave 4).
+  "shared/utils/wifi-delivery": "*",
   // Renders the hub icon template too: only the pure picks.
   "shared/utils/control-panel-selectors": ["hubIcon", "creatableDeviceClasses"],
 };

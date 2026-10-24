@@ -12,6 +12,7 @@ hub.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Optional
 
 from sofabaton import (
@@ -104,6 +105,13 @@ class FakeProxy:
         self.wifi_update_error: Optional[BaseException] = None
         self.device_blocks: dict[int, dict] = {}
         self.device_commands: dict[int, list] = {}
+        # The delivery test: write batches opened, probes run (device ids), and
+        # what a probe does. ``probe_hook(deployment, arrived)`` stands in for
+        # the hub calling back (it may complete ``arrived``); without one the
+        # hub takes the press and nothing arrives.
+        self.batches = 0
+        self.probes: list[int] = []
+        self.probe_hook = None
         self.activities_data = [
             Activity(activity_id=101, name="Watch TV", active=False, needs_confirm=False),
             Activity(activity_id=102, name="Music", active=False, needs_confirm=False),
@@ -532,6 +540,27 @@ class FakeProxy:
         self._emit_snapshot_changed(device_ids=(new_id,))
         return WifiDeployment(device_id=new_id, spec=normalized, target=WifiTarget(host, port, self._action_id()),
                               labels=labels_from_spec(normalized), hub_version=self.model)
+
+    @contextlib.asynccontextmanager
+    async def batch_writes(self, *, send_remote_sync: bool = True):
+        self.batches += 1
+        yield None
+
+    async def probe_wifi_delivery(self, deployment, *, arrived, timeout: float = 10.0):
+        from sofabaton import WIFI_PROBE_COMMAND_ID, WifiDeliveryProbe
+        device_id = int(deployment.device_id)
+        self.probes.append(device_id)
+        future = asyncio.ensure_future(arrived)
+        if self.refuse:
+            future.cancel()
+            return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=False, delivered=False)
+        if self.probe_hook is not None:
+            await self.probe_hook(deployment, future)
+        await asyncio.sleep(0)
+        if future.done() and not future.cancelled():
+            return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=True, latency_s=0.05)
+        future.cancel()
+        return WifiDeliveryProbe(device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=False)
 
     async def update_wifi_device(self, deployment, spec, *, progress=None):
         from sofabaton import WifiDeployment
