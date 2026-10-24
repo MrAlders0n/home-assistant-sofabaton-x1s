@@ -568,4 +568,137 @@ test.describe("tools-card browser harness", () => {
     });
     expect(allText).not.toContain("Failed Activity validation");
   });
+
+  // How Wifi Command presses reach Home Assistant
+  // (docs/internal/wifi-webhook-transport-plan.md, wave 3).
+
+  test("a failed delivery test names the flow to allow, and Test again clears it", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-delivery-failed"));
+    const panelText = () => page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot?.querySelector("sofabaton-wifi-commands-tab")?.shadowRoot;
+      return root?.querySelector(".delivery-panel")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    });
+    await expect.poll(panelText).toContain("Button presses don't reach Home Assistant yet.");
+    expect(await panelText()).toContain("The hub calls Home Assistant at https://192.168.1.10:8123.");
+    expect(await panelText()).toContain("allow TCP from the hub (192.168.1.110) to 192.168.1.10:8123.");
+    expect(await page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
+      return root.querySelector(".delivery-panel a").getAttribute("href");
+    })).toContain("networking.md#optional--wifi-commands-and-wifi-events");
+    await page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
+      root.querySelector(".delivery-test-btn").click();
+    });
+    await expect.poll(panelText).toContain("Presses arrive (0.8 s).");
+    expect(await panelText()).not.toContain("don't reach");
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    expect(calls.some((call) => call.message?.type === "sofabaton_x1s/command_config/test_delivery")).toBe(true);
+  });
+
+  test("an X2 listener device moves to direct delivery in place", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-move-direct"));
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot
+      ?.querySelector("sofabaton-wifi-commands-tab")?.shadowRoot?.querySelector(".delivery-move-btn")));
+    await page.evaluate(() => {
+      window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab")
+        .shadowRoot.querySelector(".delivery-move-btn").click();
+    });
+    const dock = () => page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".card-bottom-dock-status")?.textContent?.trim() ?? "");
+    await expect.poll(dock).toBe("Wifi Device moved to direct delivery.");
+    const state = await page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
+      return {
+        path: root.querySelector(".delivery-path")?.textContent?.trim(),
+        move: Boolean(root.querySelector(".delivery-move-btn")),
+      };
+    });
+    expect(state).toEqual({ path: "The hub calls Home Assistant at https://192.168.1.10:8123.", move: false });
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    // One in-place move; never a plain sync that would replace the device.
+    expect(calls.filter((call) => call.message?.type === "sofabaton_x1s/command_sync/move_to_direct")).toHaveLength(1);
+    expect(calls.some((call) => call.message?.type === "sofabaton_x1s/command_sync/run")).toBe(false);
+  });
+
+  test("MQTT waits for the hub's broker, and Set it up connects it with Home Assistant's login", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-create-mqtt-no-broker"));
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot
+      ?.querySelector("sofabaton-wifi-commands-tab")?.shadowRoot?.querySelector(".transport-option")));
+    const dialog = () => page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
+      return {
+        options: [...root.querySelectorAll(".transport-option-name")].map((node) => node.textContent.trim()),
+        selected: root.querySelector(".transport-option.selected .transport-option-name")?.textContent?.trim(),
+        check: root.querySelector(".transport-option-check")?.textContent?.trim() ?? "",
+        createDisabled: Boolean(root.querySelector(".dialog-footer .dialog-btn-primary")?.disabled),
+      };
+    });
+    // Direct is the default.
+    expect(await dialog()).toEqual({
+      options: ["Direct to Home Assistant", "Through your MQTT broker"],
+      selected: "Direct to Home Assistant",
+      check: "",
+      createDisabled: false,
+    });
+    await page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
+      root.querySelectorAll(".transport-option input")[1].click();
+    });
+    await expect.poll(async () => (await dialog()).check).toBe("The hub isn't connected to an MQTT broker. Set it up now?");
+    expect((await dialog()).createDisabled).toBe(true);
+    await page.evaluate(() => {
+      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
+      root.querySelector(".transport-setup-btn").click();
+    });
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot
+      .querySelector("sofabaton-wifi-commands-tab").shadowRoot.querySelector(".broker-dialog")));
+    await page.evaluate(() => {
+      window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab")
+        .shadowRoot.querySelector(".broker-connect").click();
+    });
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot
+      .querySelector("sofabaton-wifi-commands-tab").shadowRoot.querySelector(".broker-done")));
+    await page.evaluate(() => {
+      window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab")
+        .shadowRoot.querySelector(".broker-done").click();
+    });
+    await expect.poll(async () => (await dialog()).createDisabled).toBe(false);
+    const setup = (await page.evaluate(() => window.__toolsCardHarness.getCalls()))
+      .find((call) => call.message?.type === "sofabaton_x1s/hub_mqtt/setup");
+    // Home Assistant's own login: the password never passes through the card.
+    expect(setup.message).toEqual({
+      type: "sofabaton_x1s/hub_mqtt/setup",
+      entry_id: "hub-1",
+      host: "192.168.1.10",
+      port: 1883,
+      use_ha_login: true,
+    });
+  });
+
+  test("the X2 Settings tab shows the hub's broker, and Change warns before replacing it", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("settings-x2-broker"));
+    const tile = () => page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".setting-broker")?.textContent?.replace(/\s+/g, " ").trim() ?? "");
+    await expect.poll(tile).toContain("The hub is not connected to an MQTT broker.");
+    expect(await tile()).toContain("Home Assistant's broker: core-mosquitto:1883.");
+    expect(await tile()).toContain("Set up");
+    await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".setting-broker").click());
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-dialog")));
+    // No broker yet: nothing to replace, no warning.
+    expect(await page.evaluate(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")))).toBe(false);
+    await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-connect").click());
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-done")));
+    await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-done").click());
+    await expect.poll(tile).toContain("The hub is connected to an MQTT broker.");
+    expect(await tile()).toContain("Change");
+    await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".setting-broker").click());
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")));
+    expect(await page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning").textContent.trim()))
+      .toContain("This replaces the hub's current broker setup");
+  });
 });

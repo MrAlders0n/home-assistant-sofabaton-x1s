@@ -39,6 +39,7 @@ import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderRenameDialog } from "./components/rename-dialog";
+import { HubBrokerFormController, hubBrokerFormStyles } from "./components/hub-broker-form";
 import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
 import {
   normalizeSidebarPanelName,
@@ -192,7 +193,7 @@ const previewStyles = css`
 `;
 
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles, previewStyles, phraseNameStyles];
+  static styles = [cardStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so
@@ -245,6 +246,8 @@ class SofabatonControlPanelCard extends LitElement {
   private _sidebarRenameDraft = "";
   private _sidebarRenameError = "";
   private _sidebarRenameBusy = false;
+  // Settings tab: an X2's MQTT broker line and its setup dialog.
+  private readonly _brokerForm = new HubBrokerFormController(this, () => this._snapshot?.hass ?? null);
   private _addDeviceBusy = false;
   private _addDeviceError: { error_code: string } | null = null;
   private _addDeviceClass = "";
@@ -441,6 +444,22 @@ class SofabatonControlPanelCard extends LitElement {
     }
 
     this._lastRenderedTab = this._snapshot.selectedTab;
+    this.syncBrokerLine();
+  }
+
+  /** The Settings tab reads an X2's broker link once per hub it shows (one
+   *  hub exchange); other tabs and models never ask. */
+  private syncBrokerLine() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id ?? "");
+    const wanted = this._snapshot.selectedTab === "settings"
+      && hub?.broker_setup_available === true
+      && entryId !== "";
+    if (!wanted) {
+      if (this._brokerForm.loadedFor && this._brokerForm.loadedFor !== entryId) this._brokerForm.reset();
+      return;
+    }
+    if (this._brokerForm.loadedFor !== entryId) void this._brokerForm.load(entryId);
   }
 
   private handleDocumentPointerDown(event: PointerEvent) {
@@ -1179,6 +1198,15 @@ class SofabatonControlPanelCard extends LitElement {
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
       onRenameSidebarPanel: () => this.openSidebarRename(),
+      broker: hub?.broker_setup_available === true
+        ? {
+            description: this._brokerForm.renderSettingDescription(),
+            connected: this._brokerForm.state?.hub_connected === true,
+            loading: this._brokerForm.loading,
+            // The setup answers with the link state after it: nothing to reload.
+            onOpen: () => this._brokerForm.openFor(hub.entry_id),
+          }
+        : null,
     });
 
     if (this._snapshot.selectedTab === "logs") {
@@ -1328,6 +1356,7 @@ class SofabatonControlPanelCard extends LitElement {
       <ha-card>
         ${this.renderHubRenameDialog()}
         ${this.renderSidebarRenameDialog()}
+        ${this._brokerForm.render()}
         <div class="card-inner" style=${heightStyle}>
           ${this.hostedInPanel()
             ? null

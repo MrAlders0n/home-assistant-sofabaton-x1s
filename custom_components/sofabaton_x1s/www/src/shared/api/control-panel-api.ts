@@ -12,6 +12,7 @@ import type {
   HubAction,
   HubEventActionsResponse,
   HubClickAction,
+  HubMqttLinkState,
   SidebarPanelMode,
   IrEmissionsEvent,
   IrEmitterConsumersResponse,
@@ -23,6 +24,8 @@ import type {
   SettingKey,
   WifiCommandConfigResponse,
   WifiCommandSyncState,
+  WifiDelivery,
+  WifiDeliveryInfo,
   WifiDeviceSummary,
   WifiDevicesListResponse,
   WifiEventCreateResponse,
@@ -403,10 +406,62 @@ export class ControlPanelApi {
    *  sync_command_config action: a failure comes back as a code the card
    *  shows in its dock, never as Home Assistant's error toast. */
   syncWifiCommandConfig(hubEntryId: string, deviceKey: string) {
-    return this.hass.callWS<Record<string, unknown>>({
+    return this.hass.callWS<{ delivery?: WifiDelivery | null } & Record<string, unknown>>({
       type: "sofabaton_x1s/command_sync/run",
       entry_id: hubEntryId,
       device_key: deviceKey,
+    });
+  }
+
+  /** How presses of one deployed Wifi Device reach Home Assistant (the
+   *  Wifi Events device included, key `haevents`). */
+  getWifiDelivery(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<WifiDeliveryInfo>({
+      type: "sofabaton_x1s/command_config/delivery",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  /** Test again: the deploy's test press on its own (no Action runs). */
+  testWifiDelivery(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<WifiDelivery>({
+      type: "sofabaton_x1s/command_config/test_delivery",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  /** Move an X2 device off the listener onto Home Assistant's webhook, in
+   *  place; answers like a sync (its `delivery` included). */
+  moveWifiDeviceToDirect(hubEntryId: string, deviceKey: string) {
+    return this.hass.callWS<{ delivery?: WifiDelivery | null } & Record<string, unknown>>({
+      type: "sofabaton_x1s/command_sync/move_to_direct",
+      entry_id: hubEntryId,
+      device_key: deviceKey,
+    });
+  }
+
+  getHubMqttStatus(hubEntryId: string) {
+    return this.hass.callWS<HubMqttLinkState>({
+      type: "sofabaton_x1s/hub_mqtt/status",
+      entry_id: hubEntryId,
+    });
+  }
+
+  /** Point an X2 at a broker; replaces whatever broker it had. With
+   *  `use_ha_login` the backend sends Home Assistant's own MQTT login. */
+  setHubMqttBroker(
+    hubEntryId: string,
+    broker: { host: string; port: number; useHaLogin: boolean; username?: string; password?: string },
+  ) {
+    return this.hass.callWS<HubMqttLinkState & { connected: boolean }>({
+      type: "sofabaton_x1s/hub_mqtt/setup",
+      entry_id: hubEntryId,
+      host: broker.host,
+      port: broker.port,
+      use_ha_login: broker.useHaLogin,
+      ...(broker.useHaLogin ? {} : { username: broker.username ?? "", password: broker.password ?? "" }),
     });
   }
 

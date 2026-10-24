@@ -607,7 +607,7 @@ test("the device pill previews a pending delivery wish and hides without MQTT", 
   const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 1, deployed_transport: "http", requested_transport: "http" };
   element._mqttAvailable = true;
   const deployed = JSON.stringify(element._renderTransportPill(device));
-  assert.match(deployed, /HTTP/);
+  assert.match(deployed, /Direct/);
   assert.doesNotMatch(deployed, /<button|<select/);
   const pending = JSON.stringify(element._renderTransportPill({ ...device, requested_transport: "mqtt", transport_switch_pending: true }));
   assert.match(pending, /MQTT/);

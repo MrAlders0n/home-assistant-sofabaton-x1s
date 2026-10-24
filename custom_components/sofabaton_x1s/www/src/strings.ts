@@ -401,6 +401,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     wifiApplyingBindings: "Applying activity button assignments…",
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts…",
     wifiResyncingRemote: "Resyncing the physical remote…",
+    wifiCheckingBroker: "Checking the MQTT broker link…",
+    wifiMovingDelivery: "Pointing the Wifi Device at Home Assistant…",
+    wifiTestingDelivery: "Testing that button presses reach Home Assistant…",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
     wifiDeviceRemoved: "Wifi Device removed — no commands configured.",
@@ -1047,6 +1050,9 @@ export const TOOLS_CARD_STRINGS_EN = {
     syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
+    syncFailedRewrite: "The hub did not take the new delivery address. Sync again.",
+    syncFailedMqttNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
+    syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
     syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
     syncShortRunning: "Syncing",
@@ -1184,6 +1190,83 @@ export const TOOLS_CARD_STRINGS_EN = {
       b: "B",
       c: "C",
     } as Record<string, string>,
+  },
+  // How Wifi Command presses reach Home Assistant: the delivery choice, the
+  // deploy's test press, Move to direct delivery, and an X2's MQTT broker.
+  wifiDelivery: {
+    directName: "Direct to Home Assistant",
+    mqttName: "Through your MQTT broker",
+    // Short names for the transport pills and the device editor's select.
+    directShort: "Direct",
+    mqttShort: "MQTT",
+    directWebhookHint: "The hub calls Home Assistant's own address. Nothing else to set up.",
+    mqttWebhookHint: "The hub publishes to the MQTT broker set in the Sofabaton app; Home Assistant must use the same broker.",
+    title: "How presses reach Home Assistant",
+    pathWebhook: (target: string) => `The hub calls Home Assistant at ${target}.`,
+    pathListener: (target: string) => `The hub calls this integration's listener at ${target}.`,
+    pathMqtt: (broker: string) => broker
+      ? `The hub publishes to its MQTT broker; Home Assistant listens on ${broker}.`
+      : "The hub publishes to its MQTT broker.",
+    allowWebhook: (hubIp: string, hostPort: string) =>
+      `If the hub is on another network or VLAN, allow TCP from the hub (${hubIp}) to ${hostPort}.`,
+    allowListener: (hubIp: string, port: string) =>
+      `Allow TCP from the hub (${hubIp}) to port ${port} on the Home Assistant host; with Docker, publish port ${port}.`,
+    allowMqtt: (broker: string) => broker
+      ? `The hub must reach the same broker Home Assistant uses (${broker}), and the broker must let it publish.`
+      : "The hub must reach the same broker Home Assistant uses, and the broker must let it publish.",
+    notDelivered: "Button presses don't reach Home Assistant yet.",
+    notSent: "The hub did not take the test press. Test again in a moment.",
+    delivered: (seconds: string) => `Presses arrive (${seconds} s).`,
+    testAgain: "Test again",
+    testing: "Testing…",
+    testFailed: "The test could not run. Try again.",
+    networkingGuide: "Networking guide",
+    targetStale: "Home Assistant's address changed since this device was synced.",
+    updateHub: "Update the hub",
+    moveHint:
+      "This device sends presses to the integration's listener on port 8060. Direct delivery calls Home Assistant's own address instead: no extra port to open, and https when Home Assistant uses it.",
+    moveButton: "Move to direct delivery",
+    moving: "Moving…",
+    movedDock: "Wifi Device moved to direct delivery.",
+    syncedNotDeliveredDock: "Synced, but button presses don't reach Home Assistant yet.",
+    // The create dialog's MQTT option, checked before anything is written.
+    mqttChecking: "Checking the broker link…",
+    mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
+    mqttHubNotConnected: "The hub isn't connected to an MQTT broker. Set it up now?",
+    setUpNow: "Set it up",
+    useDirectInstead: "Use Direct instead",
+    // The hub's broker (Settings tab line and the setup dialog).
+    brokerTitle: "MQTT broker",
+    brokerLoading: "Checking the hub's broker connection…",
+    brokerConnected: "The hub is connected to an MQTT broker.",
+    brokerNotConnected: "The hub is not connected to an MQTT broker.",
+    brokerUnknown: "The hub did not report its broker connection.",
+    brokerHa: (broker: string) => `Home Assistant's broker: ${broker}.`,
+    brokerHaNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
+    brokerSetUp: "Set up",
+    brokerChange: "Change",
+    brokerDialogTitle: "Connect the hub to an MQTT broker",
+    brokerIntro: "The hub publishes button presses to this broker. Enter the broker's address as the hub reaches it (IPv4).",
+    brokerHostLabel: "Broker address",
+    brokerPortLabel: "Port",
+    brokerTlsWarning: "Home Assistant's broker uses TLS on this port; the hub may not support it.",
+    brokerUseHaLogin: (username: string) => username
+      ? `Use Home Assistant's MQTT login (${username})`
+      : "Use Home Assistant's MQTT login",
+    brokerUseSeparateLogin: "Use a separate login",
+    brokerUsernameLabel: "Username",
+    brokerPasswordLabel: "Password",
+    brokerLoginNote: "The hub will hold this login. Home Assistant sends it to the hub and does not store it.",
+    brokerReplaceWarning:
+      "This replaces the hub's current broker setup, possibly the one the Sofabaton app or another MQTT integration relies on. The hub can't report its current setup, so this can't be undone here.",
+    brokerConnect: "Connect",
+    brokerConnecting: "Connecting. The hub tries for up to 15 seconds…",
+    brokerConnectedResult: "The hub is connected to the broker.",
+    brokerFailed: "The hub could not connect. Check the address, the port and the login, and that the hub's network can reach the broker.",
+    brokerNoAnswer: "The hub gave no answer. Try again.",
+    brokerHostRequired: "Enter the broker's IPv4 address.",
+    brokerTryAgain: "Try again",
+    brokerDone: "Done",
   },
 } as const;
 

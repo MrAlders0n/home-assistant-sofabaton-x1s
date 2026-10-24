@@ -939,7 +939,9 @@ class SofabatonActivitiesTab extends LitElement {
     const deviceKey = isEvents ? WIFI_EVENTS_DEVICE_KEY : managedWifiDeviceKey(brand);
     if (!deviceKey) return true;
     const hubId = this.hub.entry_id;
-    this._syncMessage = TOOLS_CARD_STRINGS.wifiCommands.transportSwitching(transport === "mqtt" ? "MQTT" : "HTTP");
+    this._syncMessage = TOOLS_CARD_STRINGS.wifiCommands.transportSwitching(
+      transport === "mqtt" ? TOOLS_CARD_STRINGS.wifiDelivery.mqttShort : TOOLS_CARD_STRINGS.wifiDelivery.directShort,
+    );
     const poll = setInterval(() => {
       void (async () => {
         try {
