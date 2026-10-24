@@ -45,16 +45,36 @@ from .devices import build_device_create_payload, parse_device_record
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
+    DEVICE_CLASS_CODE_WIFI_IP,
     DEVICE_CLASS_CODE_WIFI_MQTT,
+    DEVICE_CLASS_WIFI_IP,
     DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_BY_CODE,
     FAMILY_FAV_DELETE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_MACRO_LABELS,
+    WIFI_URL_RECORD_CODE,
     ButtonName,
     normalize_device_class,
 )
+
+
+def _wifi_ip_record_type(restore_data: Mapping[str, Any]) -> int | None:
+    """The code type a structured ``wifi_ip`` command demands, else ``None``.
+
+    A ``wifi_ip`` device holds request-text records (0x1C) and, on the X2,
+    URL records (0x21); an edit may switch kinds, so the decoded fields
+    decide, never the cached type of the record being replaced.
+    """
+
+    decoded = restore_data.get("decoded")
+    if not isinstance(decoded, Mapping) or normalize_device_class(decoded.get("class")) != DEVICE_CLASS_WIFI_IP:
+        return None
+    fields = decoded.get("fields")
+    if not isinstance(fields, Mapping):
+        return None
+    return WIFI_URL_RECORD_CODE if "url" in fields else DEVICE_CLASS_CODE_WIFI_IP
 
 if TYPE_CHECKING:
     from .proxy_host import _ProxyHost
@@ -1368,9 +1388,11 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
           cloned from a template command on the same device by the dialog.
         * raw hex — ``data_hex`` verbatim.
 
-        Non-IR records need a ``library_type``: it is cloned from the cached
-        record metadata of an existing command on the same device (a device's
-        commands share one codec) — refuse rather than guess when absent. No
+        Non-IR records need a ``library_type``: a structured ``wifi_ip``
+        command names its own (request text or URL record), every other one
+        is cloned from the cached record metadata of an existing command on
+        the same device (a device's commands share one codec) — refuse
+        rather than guess when absent. No
         canonical ``button_code`` is asserted; the hub assigns one on accept,
         and the sync epilogue's command-list refresh picks it up.
         """
@@ -1454,11 +1476,12 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             )
             return False
 
-        library_type: int | None = None
-        for meta in (self.state.command_metadata.get(dev_lo) or {}).values():
-            if isinstance(meta, Mapping) and meta.get("library_type") is not None:
-                library_type = int(meta.get("library_type", 0)) & 0xFF
-                break
+        library_type: int | None = _wifi_ip_record_type(restore_data)
+        if library_type is None:
+            for meta in (self.state.command_metadata.get(dev_lo) or {}).values():
+                if isinstance(meta, Mapping) and meta.get("library_type") is not None:
+                    library_type = int(meta.get("library_type", 0)) & 0xFF
+                    break
         if library_type is None:
             # First command on a device created empty (Hub tab "Add
             # device"): nothing to clone, so use the device's class code.
@@ -1525,7 +1548,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         preserved ``button_code`` / ``library_type`` come from
         ``state.command_metadata`` (populated by the command-list fetch the
         sync pre-flight runs), so bindings / macros that reference the
-        command's 48-bit code keep resolving.
+        command's 48-bit code keep resolving. A structured ``wifi_ip`` edit
+        names its own type instead (it may switch between request text and
+        a URL record).
         """
         device_id = int(payload.get("device_id") or 0)
         command_id = int(payload.get("command_id") or 0)
@@ -1580,7 +1605,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             )
             return False
         button_code = int(meta.get("button_code", 0)) & 0xFFFFFFFFFFFF
-        library_type = int(meta.get("library_type", 0x0D)) & 0xFF
+        library_type = _wifi_ip_record_type(restore_data)
+        if library_type is None:
+            library_type = int(meta.get("library_type", 0x0D)) & 0xFF
         command_name = str(payload.get("command_name") or "").strip()
         if not command_name:
             labels, _ = self.get_commands_for_entity(dev_lo, fetch_if_missing=False)

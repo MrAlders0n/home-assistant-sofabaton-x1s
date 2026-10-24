@@ -162,7 +162,9 @@ from . import edits  # noqa: F401
 
 # Managed wifi device value types (deploy / update through the facade).
 from .wifi_device import (  # noqa: F401
+    WIFI_PROBE_COMMAND_ID,
     WIFI_SLOT_COUNT,
+    WifiDeliveryProbe,
     WifiDeployment,
     WifiDeviceSpec,
     WifiSlotSpec,
@@ -289,7 +291,9 @@ _CURATED = [
     "CommandPayload",
     "edits",
     # managed wifi device value types
+    "WIFI_PROBE_COMMAND_ID",
     "WIFI_SLOT_COUNT",
+    "WifiDeliveryProbe",
     "WifiDeployment",
     "WifiDeviceSpec",
     "WifiSlotSpec",

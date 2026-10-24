@@ -88,6 +88,7 @@ from .remote_sync_frames import X2PairedDevice
 from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
+from .proxy_hub_mqtt import HubMqttMixin
 from .proxy_backup import CacheBackupMixin
 from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
@@ -260,7 +261,7 @@ def _normalize_mdns_instance(name: str) -> str:
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin, WriteBatchMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, ExchangeMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, HubMqttMixin, RestoreMixin, BackupExportMixin, WriteBatchMixin):
     def __init__(
         self,
         real_hub_ip: str,

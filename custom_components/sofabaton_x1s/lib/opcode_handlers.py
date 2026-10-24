@@ -21,6 +21,7 @@ from .protocol_const import (
     ButtonName,
     FAMILY_DEVBTNS,
     FAMILY_FAV_ORDER_RESP,
+    FAMILY_HUB_MQTT_STATUS,
     FAMILY_HUB_NAME_REPLY,
     FAMILY_MACROS,
     FAMILY_KEYMAP,
@@ -530,6 +531,15 @@ class HubNameReplyHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         proxy.notify_ack(frame.opcode, frame.payload)
+
+
+@register_handler(opcode_families_low=(FAMILY_HUB_MQTT_STATUS,), directions=("H→A",))
+class HubMqttStatusHandler(BaseFrameHandler):
+    """Queue the X2's broker-link verdicts (status query and setup) for
+    the waiting request."""
+
+    def handle(self, frame: FrameContext) -> None:
+        frame.proxy.notify_ack(frame.opcode, frame.payload)
 
 
 

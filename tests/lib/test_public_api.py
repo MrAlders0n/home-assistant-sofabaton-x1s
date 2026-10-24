@@ -148,7 +148,9 @@ CURATED_EXPORTS = {
     "CommandPayload",
     "edits",
     # managed wifi device value types
+    "WIFI_PROBE_COMMAND_ID",
     "WIFI_SLOT_COUNT",
+    "WifiDeliveryProbe",
     "WifiDeployment",
     "WifiDeviceSpec",
     "WifiSlotSpec",
