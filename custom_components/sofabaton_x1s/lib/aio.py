@@ -53,7 +53,7 @@ from .hub_versions import (
     firmware_is_unsupported,
 )
 from .commands import hub_command_label
-from .remote_sync_frames import per_item_sync_targets
+from .remote_sync_frames import entities_touched_by
 from .wifi_inplace_plan import (
     REFERENCED_RECORD_STEP_KINDS,
     baseline_snapshot_from_bundle,
@@ -272,6 +272,18 @@ class _FacadeBatch:
 
 # Sync step kinds after which every activity naming the device is read back.
 _COMMAND_RECORD_STEP_KINDS = REFERENCED_RECORD_STEP_KINDS
+
+
+def _spec_activity_ids(spec: WifiDeviceSpec) -> tuple[int, ...]:
+    """The activities a Wifi Device spec's slots name (favorites, buttons,
+    inputs): what a deploy touches besides the new device."""
+
+    ids: list[int] = []
+    for slot in spec.normalized().slots:
+        ids.extend(int(a) & 0xFF for a in slot.activities)
+        if slot.input_activity_id is not None:
+            ids.append(int(slot.input_activity_id) & 0xFF)
+    return tuple(dict.fromkeys(ids))
 
 
 def _sync_succeeded(result: Any) -> bool:
@@ -2095,6 +2107,11 @@ class AsyncXProxy:
         await self._rebase_after_write(
             result, device_ids=(dev_lo,), reread_activities=removed.impacted_activity_ids, force=True
         )
+        # The X1/X1S list a deleted device only after a full sync; the X2
+        # drops it alone but the activities it cascaded into need a re-read.
+        await self._sync_remotes_after(
+            f"remove_device({dev_lo})", deleted=(dev_lo,), touched=removed.impacted_activity_ids
+        )
         return removed
 
     async def remove_activity(self, activity_id: int) -> None:
@@ -2107,6 +2124,7 @@ class AsyncXProxy:
             raise ValueError(f"{act_lo} is not an activity id (activities start at 101)")
         result = await self._write(f"remove_activity({act_lo})", self._proxy.delete_device, act_lo)
         await self._rebase_after_write(result, activity_ids=(act_lo,), force=True)
+        await self._sync_remotes_after(f"remove_activity({act_lo})", deleted=(act_lo,))
 
     # -- managed wifi devices (callbacks plan, C0b / C0c) ---------------------
 
@@ -2242,7 +2260,10 @@ class AsyncXProxy:
         try:
             return await self._update_wifi_device(deployment, spec, remote_sync=False)
         finally:
-            await self._resync_remote_after(f"deploy_wifi_device({spec.name!r})")
+            await self._sync_remotes_after(
+                f"deploy_wifi_device({spec.name!r})",
+                created=(deployment.device_id,), touched=_spec_activity_ids(spec),
+            )
 
     async def _repair_x1_quick_access(self, activity_ids: Iterable[int]) -> tuple[int, ...]:
         """X1: rewrite each activity's quick-access order that leaves out a
@@ -2263,22 +2284,6 @@ class AsyncXProxy:
             if result is True:
                 repaired.append(act)
         return tuple(repaired)
-
-    async def _resync_remote_after(self, what: str) -> None:
-        """The physical remote-sync trigger closing a multi-write operation.
-
-        Inside :meth:`batch_writes` the engine defers it to the batch end.
-        Never raises: the configuration writes stand without it and
-        ``resync_remote`` can be retried alone.
-        """
-
-        try:
-            sent = bool(await self.run(self._proxy.resync_remote))
-        except Exception:  # noqa: BLE001 - the trigger is best-effort
-            _LOG.warning("%s: the remote-sync trigger raised", what, exc_info=True)
-            return
-        if not sent:
-            _LOG.warning("%s: the remote-sync trigger was not sent", what)
 
     async def _deploy_wifi_mqtt_device(self, normalized: WifiDeviceSpec, hub_version: str) -> WifiDeployment:
         if hub_version != HUB_VERSION_X2:
@@ -2311,7 +2316,9 @@ class AsyncXProxy:
         if bare is normalized:
             # The restore pipeline behind the mqtt create sends no trigger
             # of its own.
-            await self._resync_remote_after(f"deploy_wifi_device({normalized.name!r}, mqtt)")
+            await self._sync_remotes_after(
+                f"deploy_wifi_device({normalized.name!r}, mqtt)", created=(device_id,)
+            )
             return deployment
         return await self._finish_wifi_deploy(deployment, normalized)
 
@@ -2608,9 +2615,8 @@ class AsyncXProxy:
             async with self._holding_hub("a callback device write"):
                 repaired = await self._repair_x1_quick_access({*desired.activities, *referencing})
             if repaired:
+                # The repair's own order write synced each activity (per-item).
                 await self._rebase_after_write({"status": "success"}, force=True, reread_activities=repaired)
-                if remote_sync:
-                    await self._resync_remote_after(what)
             return updated
 
         # Asked before the write, on the cache the baseline read just filled.
@@ -2649,35 +2655,42 @@ class AsyncXProxy:
                 completed_steps=int(data.get("completed_steps") or 0),
                 message=str(data.get("message") or "") or None,
             )
-        # Reads first, trigger last (a hub starting a remote rebuild may not
-        # finish a read): a rename-only plan gets the device's per-item sync,
-        # anything else, or a per-item sync the hub does not ack, the full one.
-        if remote_sync and not await self._sync_remote_items(what, per_item_sync_targets(plan.steps, dev_lo)):
-            await self._resync_remote_after(what)
+        # Reads first, sync last (a hub starting a remote rebuild may not
+        # finish a read): a per-item sync of each entity the plan changed for
+        # the remotes, but those a favorite or keymap step already synced; an
+        # in-place update never creates or deletes one.
+        if remote_sync:
+            synced = set(result.get("item_synced") or ())
+            touched_items = [e for e in entities_touched_by(plan.steps, dev_lo) if e not in synced]
+            await self._sync_remotes_after(what, touched=touched_items)
         return updated
 
-    async def _sync_remote_items(self, what: str, targets: Optional[tuple[int, ...]]) -> bool:
-        """Per-item remote syncs closing a write, after its read-back.
+    async def _sync_remotes_after(
+        self,
+        what: str,
+        *,
+        created: Iterable[int] = (),
+        touched: Iterable[int] = (),
+        deleted: Iterable[int] = (),
+    ) -> None:
+        """The remote syncs closing a write (engine ``sync_remotes_after_write``:
+        per-item, order-only or full, whichever covers it). Never raises:
+        the configuration writes stand without it, and ``resync_remote``
+        can be retried alone."""
 
-        ``targets`` is :func:`per_item_sync_targets`' answer: None means only
-        a full sync covers the write (returns False, the caller sends it);
-        otherwise each entity gets its own per-item sync. Any sync the hub
-        does not ack returns False, so the caller falls back to the full
-        sync.
-        """
-
-        if targets is None:
-            return False
-        for entity in targets:
-            try:
-                sent = bool(await self._run_draining(self._proxy.sync_remote_entity, entity))
-            except Exception:  # noqa: BLE001 - the full sync is the fallback
-                _LOG.warning("%s: the per-item remote sync of %s raised", what, entity, exc_info=True)
-                return False
-            if not sent:
-                _LOG.warning("%s: the per-item remote sync of %s was not acked", what, entity)
-                return False
-        return True
+        created, touched, deleted = tuple(created), tuple(touched), tuple(deleted)
+        if not (created or touched or deleted):
+            return
+        try:
+            sent = bool(await self._run_draining(
+                functools.partial(self._proxy.sync_remotes_after_write,
+                                  created=created, touched=touched, deleted=deleted, origin=what)
+            ))
+        except Exception:  # noqa: BLE001 - the sync is best-effort
+            _LOG.warning("%s: the remote sync raised", what, exc_info=True)
+            return
+        if not sent:
+            _LOG.warning("%s: the remote sync was not sent", what)
 
     async def _check_order(self, kind: str, ordered_ids: Sequence[int]) -> tuple[int, ...]:
         ids = tuple(int(i) & 0xFF for i in ordered_ids)
@@ -3537,8 +3550,8 @@ _R_ENTITY_RESTORE = (
     "engine call stays reachable through .sync"
 )
 _R_ITEM_SYNC = (
-    "per-item remote sync step composed by the Wifi update paths (facade and "
-    "Home Assistant); not a consumer-facing write"
+    "remote syncs composed by the write paths (facade and Home Assistant) "
+    "after each write; not a consumer-facing write"
 )
 _R_REMOTE_SYNC_BENCH = (
     "X2 paired-device rows for the targeted remote-sync bench (bench_333); "
@@ -3553,7 +3566,7 @@ def _reasons(reason: str, names: Iterable[str]) -> dict[str, str]:
 ENGINE_ONLY: dict[str, str] = {
     **_reasons(_R_ENTITY_RESTORE, ("restore_device", "restore_activity")),
     **_reasons(_R_REMOTE_SYNC_BENCH, ("x2_paired_devices",)),
-    **_reasons(_R_ITEM_SYNC, ("sync_remote_entity",)),
+    **_reasons(_R_ITEM_SYNC, ("sync_remote_entity", "sync_remotes_after_write")),
     **_reasons(
         _R_TRANSPORT,
         (

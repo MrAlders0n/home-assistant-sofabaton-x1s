@@ -111,13 +111,16 @@ def test_entity_sync_none_sends_nothing_and_reports_success(monkeypatch) -> None
     assert sent == []
 
 
-def test_entity_sync_is_never_deferred_by_a_write_batch(monkeypatch) -> None:
+def test_entity_sync_is_deferred_to_the_batch_end(monkeypatch) -> None:
     engine, sent = _engine("X2", monkeypatch)
     engine.begin_write_batch()
     assert engine._send_entity_sync_step(0x66, "favorite-commit-65[act=0x66]") is True
+    assert engine._send_entity_sync_step(0x66, "keymap-commit-65[act=0x66]") is True
+    assert sent == []
     summary = engine.end_write_batch()
+    # Once, at the end, however many steps asked for it.
     assert sent == [(0x65, b"\x66")]
-    assert summary["remote_sync_requests"] == 0
+    assert summary["remote_sync_requests"] == 0 and summary["remote_sync_kind"] == "item"
 
 
 @pytest.mark.parametrize("hub_version, payload", [("X1S", b""), ("X2", bytes.fromhex("00 00 ff 00"))])
@@ -148,39 +151,169 @@ def test_order_trigger_native_form_sends_the_x2_its_order_sync(monkeypatch, hub_
     assert sent == [(0x64, payload), (0x64, full)]
 
 
-def test_order_trigger_inside_a_batch_coalesces_into_the_full_trigger(monkeypatch) -> None:
+def test_x2_order_trigger_inside_a_batch_stays_the_order_sync(monkeypatch) -> None:
     engine, sent = _engine("X2", monkeypatch)
     engine.order_sync_form = write_batch.ORDER_SYNC_NATIVE
     enqueued: list = []
     monkeypatch.setattr(engine, "enqueue_cmd", lambda opcode, payload=b"", **kw: enqueued.append((opcode, payload)) or True)
     engine.begin_write_batch()
     assert engine._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00, purpose="order")
+    assert engine._send_remote_sync_step("device-sort-remote-sync", ack_first_byte=0x00, purpose="order")
     assert sent == []
-    assert engine.end_write_batch()["remote_sync"] == "sent"
-    assert enqueued == [(0x0364, b"\xff\xff\xff")]
+    summary = engine.end_write_batch()
+    # One order-only sync for both reorders; no full broadcast.
+    assert summary["remote_sync"] == "sent" and summary["remote_sync_kind"] == "order"
+    assert sent == [(0x64, bytes.fromhex("00 00 ff 00"))] and enqueued == []
 
 
 # -- per-item sync after a write plan, find-remote target ---------------------
 
 class _PlanStep:
-    def __init__(self, kind: str) -> None:
+    def __init__(self, kind: str, activity_id: int | None = None) -> None:
         self.kind = kind
-        self.payload = {}
+        self.payload = {} if activity_id is None else {"activity_id": activity_id}
 
 
-@pytest.mark.parametrize("kinds, expected", [
-    (["command_rename", "command_rename"], (12,)),
-    (["command_payload"], (12,)),
-    (["command_rename", "favorite_add"], None),
-    (["binding_write"], None),
-    (["member_replay", "command_rename"], None),
-    (["command_rename", "command_rename", "wifi_head_commit"], (12,)),
-    (["wifi_head_commit"], (12,)),
-    (["wifi_power_config"], None),
-    ([], None),
+@pytest.mark.parametrize("steps, expected", [
+    ([("command_rename", None), ("command_rename", None)], (12,)),
+    ([("command_rename", None), ("favorite_add", 101), ("binding_write", 12)], (12, 101)),
+    ([("member_replay", 102), ("wifi_power_config", 102)], (102,)),
+    ([("wifi_head_commit", None), ("device_rename", None)], ()),
+    ([("activity_rename", 101), ("idle_behavior", None)], ()),
+    ([], ()),
 ])
-def test_per_item_sync_targets_only_covers_command_record_rewrites(kinds, expected) -> None:
-    assert frames.per_item_sync_targets([_PlanStep(k) for k in kinds], 0x10C) == expected
+def test_entities_touched_by_skips_remote_neutral_steps(steps, expected) -> None:
+    plan = [_PlanStep(kind, act) for kind, act in steps]
+    assert frames.entities_touched_by(plan, 0x10C) == expected
+
+
+# -- sync_remotes_after_write: the per-model rule (bench_333) -------------------
+
+def _rule_engine(hub_version: str, monkeypatch):
+    engine, sent = _engine(hub_version, monkeypatch)
+    full: list = []
+    monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: full.append("full") or True)
+    return engine, sent, full
+
+
+def test_x2_create_sends_the_order_sync_then_per_item(monkeypatch) -> None:
+    engine, sent, full = _rule_engine("X2", monkeypatch)
+    assert engine.sync_remotes_after_write(created=(0x0A,), touched=(0x6B,)) is True
+    assert sent == [(0x64, bytes.fromhex("00 00 ff 00")), (0x65, b"\x0a"), (0x65, b"\x6b")]
+    assert full == []
+
+
+def test_x2_create_without_the_order_form_sends_the_full_sync_only(monkeypatch) -> None:
+    engine, sent, full = _rule_engine("X2", monkeypatch)
+    engine.order_sync_form = write_batch.ORDER_SYNC_FULL
+    assert engine.sync_remotes_after_write(created=(0x0A,), touched=(0x6B,)) is True
+    # The broadcast rebuilds everything: no per-item syncs after it.
+    assert full == ["full"] and sent == []
+
+
+@pytest.mark.parametrize("hub_version", ["X1", "X1S"])
+def test_x1_family_create_or_delete_sends_the_full_sync_only(monkeypatch, hub_version) -> None:
+    engine, sent, full = _rule_engine(hub_version, monkeypatch)
+    assert engine.sync_remotes_after_write(created=(0x0A,), touched=(0x6B,)) is True
+    assert engine.sync_remotes_after_write(deleted=(0x0A,), touched=(0x6B,)) is True
+    assert full == ["full", "full"] and sent == []
+
+
+def test_x2_delete_needs_only_the_touched_per_item_syncs(monkeypatch) -> None:
+    engine, sent, full = _rule_engine("X2", monkeypatch)
+    assert engine.sync_remotes_after_write(deleted=(0x0A,), touched=(0x6B, 0x0A)) is True
+    # The deleted device itself is never synced; renames and deletes need nothing else.
+    assert sent == [(0x65, b"\x6b")] and full == []
+
+
+@pytest.mark.parametrize("hub_version", ["X1", "X1S", "X2"])
+def test_content_edits_get_per_item_syncs_on_every_model(monkeypatch, hub_version) -> None:
+    engine, sent, full = _rule_engine(hub_version, monkeypatch)
+    assert engine.sync_remotes_after_write(touched=(0x0A, 0x65, 0x0A)) is True
+    assert sent == [(0x65, b"\x0a"), (0x65, b"\x65")] and full == []
+
+
+def test_an_unacked_partial_sync_falls_back_to_the_full_sync(monkeypatch) -> None:
+    engine, _sent, full = _rule_engine("X2", monkeypatch)
+    monkeypatch.setattr(engine, "_send_step", lambda **kw: _Step(ok=False))
+    assert engine.sync_remotes_after_write(touched=(0x0A,)) is True
+    assert full == ["full"]
+
+
+def test_editor_close_skips_entities_a_step_already_synced(monkeypatch) -> None:
+    engine, sent, _full = _rule_engine("X2", monkeypatch)
+    engine._begin_item_sync_tracking()
+    # A favorite write's own commit already synced the activity.
+    assert engine._send_entity_sync_step(0x65, "favorite-commit-65[act=0x65]")
+    plan = [_PlanStep("favorite_add", 0x65), _PlanStep("macro_write", 0x65), _PlanStep("activity_rename", 0x65)]
+    assert engine._sync_remotes_after_edit(0x65, plan, "activity-sync") is True
+    assert sent == [(0x65, b"\x65")]
+    # A plan with only renames needs no sync at all.
+    engine._begin_item_sync_tracking()
+    assert engine._sync_remotes_after_edit(0x0A, [_PlanStep("device_rename")], "device-sync") is True
+    assert sent == [(0x65, b"\x65")]
+
+
+# -- write batch with order-only and per-item requests ----------------------------
+
+def test_x2_batch_sends_the_order_sync_before_the_deferred_per_item_syncs(monkeypatch) -> None:
+    engine, sent, full = _rule_engine("X2", monkeypatch)
+    engine.begin_write_batch()
+    assert engine._send_entity_sync_step(0x65, "favorite-commit-65[act=0x65]")
+    assert engine.sync_remotes_after_write(created=(0x0A,), touched=(0x65,))
+    assert sent == [], "nothing goes out while the batch is open"
+    summary = engine.end_write_batch()
+    assert sent == [(0x64, bytes.fromhex("00 00 ff 00")), (0x65, b"\x65"), (0x65, b"\x0a")]
+    assert (summary["remote_sync"], summary["remote_sync_kind"], summary["item_syncs"]) == ("sent", "order", 2)
+    assert full == []
+
+
+def test_batch_full_request_covers_the_partial_ones(monkeypatch) -> None:
+    engine, sent = _engine("X2", monkeypatch)
+    enqueued: list = []
+    monkeypatch.setattr(engine, "enqueue_cmd", lambda opcode, payload=b"", **kw: enqueued.append((opcode, payload)) or True)
+    engine.begin_write_batch()
+    engine.sync_remotes_after_write(touched=(0x65,))
+    assert engine.resync_remote() is True          # e.g. a restore inside the batch
+    summary = engine.end_write_batch()
+    assert summary["remote_sync_kind"] == "full" and sent == []
+    assert enqueued == [(0x0364, b"\xff\xff\xff")]
+
+
+def test_x1s_batch_order_request_becomes_the_full_sync(monkeypatch) -> None:
+    engine, sent, _full = _rule_engine("X1S", monkeypatch)
+    engine.begin_write_batch()
+    assert engine._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00, purpose="order")
+    assert engine._send_entity_sync_step(0x65, "favorite-commit-65[act=0x65]")
+    summary = engine.end_write_batch()
+    # The X1S has no order-only form: its full trigger covers the per-item request.
+    assert sent == [(0x64, b"")] and summary["remote_sync_kind"] == "full"
+
+
+def test_batch_of_only_per_item_requests_sends_just_those(monkeypatch) -> None:
+    engine, sent, full = _rule_engine("X1S", monkeypatch)
+    engine.begin_write_batch()
+    engine.sync_remotes_after_write(touched=(0x0A, 0x65))
+    summary = engine.end_write_batch()
+    assert sent == [(0x65, b"\x0a"), (0x65, b"\x65")] and full == []
+    assert summary["remote_sync_kind"] == "item" and summary["remote_sync_requests"] == 0
+
+
+def test_x2_batch_drops_the_per_item_sync_of_an_entity_deleted_later(monkeypatch) -> None:
+    engine, sent, full = _rule_engine("X2", monkeypatch)
+    engine.begin_write_batch()
+    # A device delete re-syncs the activity it cascaded into, then the
+    # activity itself is deleted (a teardown, or one document apply).
+    engine.sync_remotes_after_write(deleted=(0x04,), touched=(0x6A,))
+    engine.sync_remotes_after_write(deleted=(0x6A,))
+    summary = engine.end_write_batch()
+    assert sent == [] and full == [] and summary["remote_sync"] == "not_needed"
+    # An id deleted and then created again in one batch is synced as new.
+    engine.begin_write_batch()
+    engine.sync_remotes_after_write(deleted=(0x0A,))
+    engine.sync_remotes_after_write(created=(0x0A,))
+    engine.end_write_batch()
+    assert sent == [(0x64, bytes.fromhex("00 00 ff 00")), (0x65, b"\x0a")]
 
 
 @pytest.mark.parametrize("hub_version", ["X1", "X1S", "X2"])

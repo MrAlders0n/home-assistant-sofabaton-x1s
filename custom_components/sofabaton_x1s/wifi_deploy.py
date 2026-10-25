@@ -50,7 +50,7 @@ from .lib.wifi_inplace_plan import (
     wifi_membership_order_steps,
 )
 from .lib.protocol_const import ButtonName
-from .lib.remote_sync_frames import per_item_sync_targets
+from .lib.remote_sync_frames import entities_touched_by
 from .command_config import (
     COMMAND_BRAND_PREFIX,
     LEGACY_COMMAND_BRAND_PREFIX,
@@ -1052,6 +1052,9 @@ class WifiDeployMixin:
                         exc_info=True,
                     )
                 raise WifiSyncError("inplace_failed", f"In-place sync failed: {message}")
+            item_synced = set(result.get("item_synced") or ())
+        else:
+            item_synced = set()
 
         # X1: heal order tables that leave a live favorite or macro out
         # (see _async_repair_x1_quick_access), before the re-warm reads them.
@@ -1143,11 +1146,11 @@ class WifiDeployMixin:
                 step_name=None,
                 message="Resyncing physical remote",
             )
-            # A rename-only plan needs just the device re-read by the remote
-            # (seconds); anything structural still needs the full sync.
-            targets = per_item_sync_targets(plan.steps, dev_id) if plan.steps else None
-            if not await self.async_sync_remote_items(targets):
-                await self.async_resync_remote()
+            # A per-item sync of each entity the plan changed for the remotes
+            # (seconds, bench_333); renames reach them alone, and a favorite
+            # or keymap step or an X1 order repair synced its activity itself.
+            touched = [e for e in entities_touched_by(plan.steps, dev_id) if e not in item_synced]
+            await self.async_sync_remotes_after_write(touched=touched)
 
         self._set_command_sync_progress(
             device_key=normalized_device_key,
@@ -2620,7 +2623,15 @@ class WifiDeployMixin:
             phase="resyncing_remote",
             message="Resyncing physical remote",
         )
-        await self.async_resync_remote()
+        # A create: the order-only sync then per-item syncs of the device and
+        # the activities it is used in on the X2, the full sync on the X1/X1S.
+        referencing = await self.hass.async_add_executor_job(
+            self._proxy.activities_referencing_device, wifi_device_id
+        )
+        await self.async_sync_remotes_after_write(
+            created=(wifi_device_id,),
+            touched=tuple(dict.fromkeys((*run.referencing_act_ids, *referencing))),
+        )
 
         # The HTTP listener follows the store the same way the zero-slot
         # teardown already does: a deploy that moved the last listener

@@ -1000,6 +1000,12 @@ def _update_engine(monkeypatch, dep, *, hub_version="X1S", device=None, run_resu
     monkeypatch.setattr(engine, "run_wifi_inplace_plan", fake_run)
     monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: trace.append("resync") or True)
     monkeypatch.setattr(engine, "sync_remote_entity", lambda entity: trace.append(("item", entity)) or True)
+
+    def sync_after(*, created=(), touched=(), deleted=(), origin=""):
+        trace.append(("sync", tuple(created), tuple(touched), tuple(deleted)))
+        return True
+
+    monkeypatch.setattr(engine, "sync_remotes_after_write", sync_after)
     return engine, runs
 
 
@@ -1047,12 +1053,8 @@ def test_update_wifi_device_renames_records_in_place(monkeypatch) -> None:
         await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Go"), _WifiSlotSpec("Pause"))))
         # A rename-only update closes with the device's per-item remote sync, after the read-back;
         # no full trigger.
-        assert engine.trace[engine.trace.index("run"):] == ["run", ("device", 12), ("activity", 101), ("item", 12)]
-        # A per-item sync the hub does not ack falls back to the full trigger.
-        monkeypatch.setattr(engine, "sync_remote_entity", lambda entity: engine.trace.append(("item", entity)) and False)
-        engine.trace.clear()
-        await proxy.update_wifi_device(dep, _WifiDeviceSpec(name="Server", slots=(_WifiSlotSpec("Run"), _WifiSlotSpec("Pause"))))
-        assert engine.trace[-2:] == [("item", 12), "resync"]
+        assert engine.trace[engine.trace.index("run"):] == [
+            "run", ("device", 12), ("activity", 101), ("sync", (), (12,), ())]
 
     asyncio.run(main())
 
@@ -1076,7 +1078,9 @@ def test_update_wifi_device_applies_slot_references_and_checks_the_activities(mo
         # The engine's favorite write drops the activity's favorites and leaves the re-read to its
         # caller: after the run the device and the activity written to are read back (found live
         # 2026-09-21: a deploy left the Hub tab counting 0 favorites).
-        assert engine.trace == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101), "resync"]
+        assert engine.trace[:5] == [("device", 12), ("activity", 101), "run", ("device", 12), ("activity", 101)]
+        # Closed by per-item syncs of the device (its device-page binding) and the activity.
+        assert engine.trace[5:] == [("sync", (), (12, 101), ())]
 
         # An activity the hub does not have is declined before anything is planned or written.
         runs.clear()
@@ -1084,6 +1088,23 @@ def test_update_wifi_device_applies_slot_references_and_checks_the_activities(mo
         with pytest.raises(errors.WifiUpdateDeclined) as caught:
             await proxy.update_wifi_device(dep, gone)
         assert caught.value.reason == "activity" and "150" in str(caught.value) and runs == []
+
+    asyncio.run(main())
+
+
+def test_update_wifi_device_skips_the_closing_sync_of_an_entity_a_step_synced(monkeypatch) -> None:
+    async def main():
+        dep = _deployment()
+        # The favorite step's own commit synced the activity per item.
+        done = {"status": "success", "completed_steps": 3, "total_steps": 3, "counters": {}, "item_synced": [101]}
+        engine, _runs = _update_engine(monkeypatch, dep, run_result=done)
+        proxy = aio.AsyncXProxy.wrap(engine)
+        routed = _WifiDeviceSpec(name="Server", slots=(
+            _WifiSlotSpec("Play", favorite=True, button=0xB6, activities=(101,)), _WifiSlotSpec("Pause")))
+
+        await proxy.update_wifi_device(dep, routed)
+
+        assert engine.trace[-1] == ("sync", (), (12,), ())
 
     asyncio.run(main())
 
@@ -1411,7 +1432,8 @@ def test_write_batch_without_requests_sends_nothing_and_reports_not_needed(monke
     enqueued: list = []
     monkeypatch.setattr(engine, "enqueue_cmd", lambda *a, **kw: enqueued.append(a) or True)
     engine.begin_write_batch()
-    assert engine.end_write_batch() == {"remote_sync": "not_needed", "remote_sync_requests": 0, "origins": []}
+    assert engine.end_write_batch() == {"remote_sync": "not_needed", "remote_sync_kind": None,
+                                        "remote_sync_requests": 0, "item_syncs": 0, "origins": []}
     assert enqueued == []
 
 
@@ -1694,7 +1716,7 @@ def test_backup_with_an_empty_or_out_of_range_id_list_is_refused_not_widened() -
 def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
     """X1: after the plan (and even with nothing to write) the update checks
     each activity's quick-access order and rewrites one an older restore left
-    short; what it rewrote is read back and closed by one remote sync. The
+    short; what it rewrote is read back (the rewrite synced it itself). The
     X1S keeps macros outside its order table: never checked there."""
 
     async def main():
@@ -1718,10 +1740,13 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
 
             await proxy.update_wifi_device(dep, routed)
             if expect_repairs:
-                assert engine.trace[engine.trace.index("run"):] == [
-                    "run", ("repair", 101), ("device", 12), ("activity", 101), "resync"]
+                assert engine.trace[engine.trace.index("run"):engine.trace.index("run") + 4] == [
+                    "run", ("repair", 101), ("device", 12), ("activity", 101)]
             else:
                 assert repairs == []
+            # The favorite's activity gets its per-item sync; no full trigger.
+            assert engine.trace[-1][0] == "sync" and 101 in engine.trace[-1][2]
+            assert "resync" not in engine.trace
 
             # Nothing to write: an X1 still heals, then re-reads and resyncs.
             engine.trace.clear()
@@ -1729,9 +1754,11 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
             await proxy.update_wifi_device(dep, _WifiDeviceSpec.from_dict(dep.spec.to_dict()))
             assert len(runs) == 1
             if expect_repairs:
+                # The repair's own order write synced the activity: nothing more is sent.
                 assert repairs == [101]
-                assert engine.trace[-3:] == [("repair", 101), ("activity", 101), "resync"]
+                assert engine.trace[-2:] == [("repair", 101), ("activity", 101)]
             else:
-                assert repairs == [] and "resync" not in engine.trace
+                assert repairs == []
+            assert "resync" not in engine.trace and not any(t[0] == "sync" for t in engine.trace if isinstance(t, tuple))
 
     asyncio.run(main())

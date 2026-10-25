@@ -21,7 +21,7 @@ shows, matched against the wall-clock times printed here.
                                 swap J Sync and J Sync 2 (real activities keep
                                 their places)
     c3 order-sync               0x0464 [00 00 FF][00]
-    c4 edit KIND [--sync none|legacy|native]
+    c4 edit KIND [--sync none|legacy|native|auto]
                                 KIND: favorite | binding | activity-rename |
                                 command-rename | multi-rename (slots 4+5);
                                 each run toggles the edit
@@ -29,6 +29,13 @@ shows, matched against the wall-clock times printed here.
                                 activity, device, new or an id; several go out
                                 back to back, each after the previous ack
     c6 create|delete            a lone "J New" activity, no member, no trigger
+                                (c4 edit / c6 with --sync auto: the shipped path,
+                                default forms, no batch, so the write's own
+                                closing remote sync goes out; sync_frames lists it)
+    c6 deploy-wifi2             a second MQTT Wifi device "J Sync W2" with a favorite in
+                                J Sync 2, no sync frame at all (create + references)
+    c6 create-device|delete-device
+                                an empty IR device "J Sync IR", no trigger
     info                        read-only: remote info 0x002E (X1/X1S), raw + decoded
     c7 [--kick OP:PAYLOAD]      busy query 0x0003 every --interval s (>= 10 on
                                 the X2, >= 5 elsewhere); --probe info re-reads
@@ -52,6 +59,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import copy
 import dataclasses
 import json
@@ -85,6 +93,8 @@ OP_BUSY_QUERY = 0x0003
 SANDBOX_ACTIVITY = "J Sync"
 SANDBOX_ACTIVITY_2 = "J Sync 2"
 NEW_ACTIVITY = "J New"
+NEW_DEVICE = "J Sync IR"
+SANDBOX_WIFI_2 = "J Sync W2"
 SANDBOX_WIFI = "J Sync W"
 # Wifi slot command ids: shorts 1..10 (the slot index).
 FAV_SLOT, RED_SLOT, ADD_SLOT, RENAME_SLOT = 1, 2, 3, 4
@@ -425,7 +435,9 @@ def chunk_c4_frame() -> None:
         sys.exit("c4 frame x1|x2 ENTITY[,ENTITY...]  (activity | device | new | <id>)")
     act, _act2, wifi = sandbox_ids()
     new = load_state().get("new_activity")
-    aliases = {"activity": act, "device": wifi, "new": new}
+    state = load_state()
+    aliases = {"activity": act, "device": wifi, "new": new, "activity2": _act2,
+               "newdev": state.get("new_device"), "device2": (state.get("wifi2") or {}).get("device_id")}
     entities = []
     for which in ARGS.args[2].split(","):
         entity = aliases[which] if which in aliases else int(which, 0)
@@ -643,7 +655,8 @@ async def sandbox_up(proxy) -> None:
         acts = await proxy.activities(refresh=True)
         step("activity_order", order=[[a.activity_id, a.name] for a in acts])
     step("sandbox_up", activity=state["activity"], activity_2=state["activity_2"],
-         wifi_device=deployment.device_id, triggers=len(TAPE.triggers_after(start)))
+         wifi_device=deployment.device_id, triggers=len(TAPE.triggers_after(start)),
+         sync_frames=_sync_frames_after(start))
 
 
 async def sandbox_down(proxy) -> None:
@@ -653,7 +666,8 @@ async def sandbox_down(proxy) -> None:
         return
     start = TAPE.mark("sandbox_down")["mono"]
     async with proxy.batch_writes():
-        for dev in [int((state.get("wifi") or {}).get("device_id") or 0)]:
+        for dev in [int((state.get("wifi") or {}).get("device_id") or 0), int(state.get("new_device") or 0),
+                    int((state.get("wifi2") or {}).get("device_id") or 0)]:
             if dev:
                 try:
                     await proxy.remove_device(dev)
@@ -684,11 +698,10 @@ async def sandbox_down(proxy) -> None:
         problem(f"J entities left: {left}")
     else:
         STATE_PATH.unlink(missing_ok=True)
-    # Deletes ask for no trigger, so the batch may close silently: the remotes
-    # must still lose the J entries. The trigger is the last thing sent.
-    if not TAPE.triggers_after(start):
-        await resync(proxy)
-    step("sandbox_down", triggers=len(TAPE.triggers_after(start)), clean=not left)
+    # The batch end sends what the deletes need (the X1/X1S full sync; on
+    # the X2 nothing, the remotes drop deleted entities alone).
+    step("sandbox_down", triggers=len(TAPE.triggers_after(start)), clean=not left,
+         sync_frames=_sync_frames_after(start))
 
 
 async def resync(proxy) -> None:
@@ -758,17 +771,36 @@ def _toggle_binding(activity: dict, wifi: int) -> str:
     return "added Green binding (J Three)"
 
 
+def _edit_scope(proxy):
+    """The write's scope: ``--sync auto`` runs it as the card and panel do
+    (no batch, so its own closing remote sync goes out), otherwise inside a
+    batch that sends nothing."""
+
+    if ARGS.sync == "auto":
+        return contextlib.nullcontext()
+    return proxy.batch_writes(send_remote_sync=False)
+
+
+def _sync_frames_after(start: float) -> list[str] | str:
+    """The remote-sync frames (families 0x64 / 0x65) sent since ``start``."""
+
+    frames = [f"{r['op']} {r['payload']}" for r in TAPE.dump() if r["dir"] == "A→H" and r["mono"] >= start
+              and int(r["op"], 16) & 0xFF in (0x64, 0x65)]
+    return frames or "none"
+
+
 async def c4_edit(proxy) -> None:
     if len(ARGS.args) != 2:
-        problem("c4 edit favorite|binding|activity-rename|command-rename|multi-rename")
+        problem("c4 edit favorite|binding|activity-rename|command-rename|multi-rename|device-rename|member-favorite")
         return
     kind, form = ARGS.args[1], ARGS.sync or "none"
-    if form not in ENTITY_SYNC_FORMS:
-        problem(f"--sync must be one of {ENTITY_SYNC_FORMS}")
+    if form not in (*ENTITY_SYNC_FORMS, "auto"):
+        problem(f"--sync must be one of {ENTITY_SYNC_FORMS} or auto")
         return
     act, _act2, wifi = sandbox_ids()
-    proxy.sync.entity_sync_form = form
-    TAPE.mark(f"c4_edit_{kind}_{form}")
+    if form != "auto":
+        proxy.sync.entity_sync_form = form
+    start = TAPE.mark(f"c4_edit_{kind}_{form}")["mono"]
     if kind in ("command-rename", "multi-rename"):
         state = load_state()
         deployment = WifiDeployment.from_dict(state["wifi"])
@@ -782,17 +814,41 @@ async def c4_edit(proxy) -> None:
             slots[index - 1] = dataclasses.replace(old, label=label, long_label=None)
             changes.append(f"slot {index} -> {label!r}")
         spec = WifiDeviceSpec(name=deployment.spec.name, slots=tuple(slots), brand=deployment.spec.brand)
-        async with proxy.batch_writes(send_remote_sync=False):
+        async with _edit_scope(proxy):
             deployment = await proxy.update_wifi_device(deployment, spec)
         state["wifi"] = deployment.to_dict()
         store_state(state)
-        step("c4_edit", kind=kind, sync=form, change="; ".join(changes), entity=wifi)
+        step("c4_edit", kind=kind, sync=form, change="; ".join(changes), entity=wifi,
+             sync_frames=_sync_frames_after(start))
         return
-    snap = await proxy.refresh(activity_id=act)
+    if kind == "device-rename":
+        # The device editor's path (sync_device) on the empty IR device.
+        dev = load_state().get("new_device")
+        if not dev:
+            problem("no J Sync IR recorded: run `c6 create-device` first")
+            return
+        snap = await proxy.refresh(device_id=int(dev))
+        baseline = snap.bundle
+        edited = copy.deepcopy(baseline)
+        device = next(d for d in edited["devices"] if int(d["device"]["device_id"]) == int(dev))
+        name = device["device"].get("name")
+        device["device"]["name"] = NEW_DEVICE if name != NEW_DEVICE else f"{NEW_DEVICE} R"
+        change = f"{name!r} -> {device['device']['name']!r}"
+        async with _edit_scope(proxy):
+            result = await proxy.sync_device(baseline=baseline, edited=edited, device_id=int(dev),
+                                             snapshot_id=snap.snapshot_id)
+        step("c4_edit", kind=kind, sync=form, change=change, entity=int(dev),
+             status=getattr(result, "status", None), failed_at=getattr(result, "failed_at", None),
+             sync_frames=_sync_frames_after(start))
+        REPORT["result"] = repr(result)
+        return
+    # member-favorite edits J Sync 2, which has no member until it does.
+    target = _act2 if kind == "member-favorite" else act
+    snap = await proxy.refresh(activity_id=target)
     baseline = snap.bundle
     edited = copy.deepcopy(baseline)
-    activity = next(a for a in edited["activities"] if int(a["device"]["device_id"]) == act)
-    if kind == "favorite":
+    activity = next(a for a in edited["activities"] if int(a["device"]["device_id"]) == target)
+    if kind in ("favorite", "member-favorite"):
         change = _toggle_favorite(activity, wifi)
     elif kind == "binding":
         change = _toggle_binding(activity, wifi)
@@ -803,11 +859,11 @@ async def c4_edit(proxy) -> None:
     else:
         problem(f"unknown kind {kind!r}")
         return
-    async with proxy.batch_writes(send_remote_sync=False):
-        result = await proxy.sync_activity(baseline=baseline, edited=edited, activity_id=act,
+    async with _edit_scope(proxy):
+        result = await proxy.sync_activity(baseline=baseline, edited=edited, activity_id=target,
                                            snapshot_id=snap.snapshot_id)
-    step("c4_edit", kind=kind, sync=form, change=change, entity=act, status=getattr(result, "status", None),
-         failed_at=getattr(result, "failed_at", None))
+    step("c4_edit", kind=kind, sync=form, change=change, entity=target, status=getattr(result, "status", None),
+         failed_at=getattr(result, "failed_at", None), sync_frames=_sync_frames_after(start))
     REPORT["result"] = repr(result)
 
 
@@ -820,11 +876,12 @@ async def c6_create(proxy) -> None:
         problem(f"{NEW_ACTIVITY} is already recorded ({state['new_activity']}): `c6 delete` first")
         return
     start = TAPE.mark("c6_create")["mono"]
-    async with proxy.batch_writes(send_remote_sync=False):
+    async with _edit_scope(proxy):
         new = await proxy.add_activity(NEW_ACTIVITY)
     state["new_activity"] = new
     store_state(state)
-    step("c6_create", activity=new, triggers=len(TAPE.triggers_after(start)))
+    step("c6_create", activity=new, triggers=len(TAPE.triggers_after(start)),
+         sync_frames=_sync_frames_after(start))
 
 
 async def c6_delete(proxy) -> None:
@@ -836,11 +893,72 @@ async def c6_delete(proxy) -> None:
         problem("no J New recorded")
         return
     start = TAPE.mark("c6_delete")["mono"]
-    async with proxy.batch_writes(send_remote_sync=False):
+    async with _edit_scope(proxy):
         await proxy.remove_activity(int(new))
     state.pop("new_activity", None)
     store_state(state)
-    step("c6_delete", activity=new, triggers=len(TAPE.triggers_after(start)))
+    step("c6_delete", activity=new, triggers=len(TAPE.triggers_after(start)),
+         sync_frames=_sync_frames_after(start))
+
+
+async def c6_create_device(proxy) -> None:
+    """An empty IR device, no trigger (does a new device need a sync?)."""
+
+    sandbox_ids()
+    state = load_state()
+    if state.get("new_device"):
+        problem(f"{NEW_DEVICE} is already recorded ({state['new_device']}): `c6 delete-device` first")
+        return
+    start = TAPE.mark("c6_create_device")["mono"]
+    async with _edit_scope(proxy):
+        dev = await proxy.add_device(NEW_DEVICE, "ir")
+    state["new_device"] = dev
+    store_state(state)
+    step("c6_create_device", device=dev, triggers=len(TAPE.triggers_after(start)),
+         sync_frames=_sync_frames_after(start))
+
+
+async def c6_delete_device(proxy) -> None:
+    """Delete the empty IR device, no trigger."""
+
+    state = load_state()
+    dev = state.get("new_device")
+    if not dev:
+        problem("no J Sync IR recorded")
+        return
+    start = TAPE.mark("c6_delete_device")["mono"]
+    async with _edit_scope(proxy):
+        await proxy.remove_device(int(dev))
+    state.pop("new_device", None)
+    store_state(state)
+    step("c6_delete_device", device=dev, triggers=len(TAPE.triggers_after(start)),
+         sync_frames=_sync_frames_after(start))
+
+
+async def c6_deploy_wifi2(proxy) -> None:
+    """Deploy a second Wifi device with a favorite in J Sync 2, sending no
+    remote-sync frame of any kind (which sync does a deploy really need?)."""
+
+    act, act2, _wifi = sandbox_ids()
+    state = load_state()
+    if state.get("wifi2"):
+        problem(f"{SANDBOX_WIFI_2} is already recorded")
+        return
+    if ARGS.sync != "auto":
+        proxy.sync.entity_sync_form = "none"
+    start = TAPE.mark("c6_deploy_wifi2")["mono"]
+    spec = WifiDeviceSpec(name=SANDBOX_WIFI_2, slots=(
+        WifiSlotSpec(label="J2 Fav", favorite=True, activities=(act2,)),
+        WifiSlotSpec(label="J2 Two"),
+    ))
+    async with _edit_scope(proxy):
+        if ARGS.model == "X2":
+            deployment = await proxy.deploy_wifi_device(spec, transport="mqtt")
+        else:
+            deployment = await proxy.deploy_wifi_device(spec, host=proxy.local_address(), port=8060)
+    state["wifi2"] = deployment.to_dict()
+    store_state(state)
+    step("c6_deploy_wifi2", device=deployment.device_id, activity=act2, sync_frames=_sync_frames_after(start))
 
 
 def run_facade(label: str, body, *, needs_go_ahead: bool = True) -> None:
@@ -872,8 +990,10 @@ def main() -> int:
             chunk_c3_order_sync()
         elif chunk == "c4" and sub == "edit":
             run_facade("c4-edit", c4_edit)
-        elif chunk == "c6" and sub in ("create", "delete"):
-            run_facade(f"c6-{sub}", c6_create if sub == "create" else c6_delete)
+        elif chunk == "c6" and sub in ("create", "delete", "create-device", "delete-device", "deploy-wifi2"):
+            body = {"create": c6_create, "delete": c6_delete, "create-device": c6_create_device,
+                    "delete-device": c6_delete_device, "deploy-wifi2": c6_deploy_wifi2}[sub]
+            run_facade(f"c6-{sub}", body)
         elif chunk == "info":
             chunk_info()
         elif chunk == "c7":

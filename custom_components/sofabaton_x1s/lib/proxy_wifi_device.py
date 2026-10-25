@@ -983,7 +983,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         # pipeline sends its own single terminal trigger after all
         # writes.
         if profile.get("send_remote_sync", True):
-            if not self._send_remote_sync_step("save-tail-remote-sync"):
+            if not self.sync_remotes_after_write(created=(device_id,), origin="save-tail"):
                 return None
 
         self._cache_created_wifi_device(
@@ -1146,10 +1146,10 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
 
         # App-parity save tail: skipped when the deploy pipeline owns the
         # batch -- see the note in :meth:`_run_wifi_create_x1_roku`. This
-        # path also runs on the X2, so the trigger is the hub's own form
-        # (the all-remotes broadcast there), never a bare 0x0064.
+        # path also runs on the X2: the create gets the order-only sync and
+        # the new device's per-item sync there, the full sync elsewhere.
         if profile.get("send_remote_sync", True):
-            if not self._send_remote_sync_step("save-tail-remote-sync"):
+            if not self.sync_remotes_after_write(created=(device_id,), origin="save-tail"):
                 return None
 
         self._cache_created_wifi_device(

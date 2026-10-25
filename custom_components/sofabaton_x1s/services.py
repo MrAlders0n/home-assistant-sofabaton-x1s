@@ -339,7 +339,7 @@ async def _async_handle_delete_device(call: ServiceCall):
     if device_id < 1 or device_id > 255:
         raise ValueError("device_id must be between 1 and 255")
 
-    return await hub.async_delete_device(device_id=device_id)
+    return await hub.async_delete_device(device_id=device_id, sync_remotes=True)
 
 
 @runtime._hub_write_service()

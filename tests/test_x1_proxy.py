@@ -1048,15 +1048,17 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
 
 
 @pytest.mark.parametrize(
-    "hub_version, trigger",
+    "hub_version, trigger, item_syncs",
     [
-        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b"")),
-        (HUB_VERSION_X2, (OP_X2_REMOTE_SYNC_ALL, b"\xff\xff\xff")),
+        # The X1S lists a new device only after the full sync.
+        (HUB_VERSION_X1S, (OP_REMOTE_SYNC, b""), []),
+        # The X2: the order-only sync lists it, its per-item sync brings its commands.
+        (HUB_VERSION_X2, (0x0464, b"\x00\x00\xff\x00"), [(0x0165, b"\x07")]),
     ],
 )
-def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_version, trigger) -> None:
-    """The virtual-IP create also runs on the X2, where a bare 0x0064
-    starts no sync; its save tail is the frame resync_remote sends."""
+def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_version, trigger, item_syncs) -> None:
+    """The virtual-IP create also runs on the X2; its save tail is the
+    create's remote sync for the model (sync_remotes_after_write)."""
 
     proxy = X1Proxy(
         "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=hub_version
@@ -1076,6 +1078,7 @@ def test_create_wifi_device_save_tail_is_the_hub_remote_sync(monkeypatch, hub_ve
     assert result == {"device_id": 0x07, "status": "success"}
     remote_syncs = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x64]
     assert remote_syncs == [trigger]
+    assert [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x65] == item_syncs
 
     # send_remote_sync=False (the deploy pipeline owns the trigger) sends none.
     sent.clear()

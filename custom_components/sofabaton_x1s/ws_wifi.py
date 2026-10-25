@@ -840,7 +840,7 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
     deployed_device_id = payload.get("deployed_device_id")
     deployed_commands_hash = str(payload.get("deployed_commands_hash") or "").strip()
     if isinstance(deployed_device_id, int):
-        result = await hub.async_delete_device(deployed_device_id)
+        result = await hub.async_delete_device(deployed_device_id, sync_remotes=True)
         deleted_hub_device = bool(result)
     if not deleted_hub_device:
         try:
@@ -868,7 +868,7 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
             # The first delete landed although it reported no success.
             deleted_hub_device = True
         for managed_device_id, _managed_key, _managed_hash, _brand in matches:
-            result = await hub.async_delete_device(managed_device_id)
+            result = await hub.async_delete_device(managed_device_id, sync_remotes=True)
             deleted_hub_device = bool(result)
             if deleted_hub_device:
                 break

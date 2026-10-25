@@ -13,18 +13,38 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ### Changed
 
-- X2 device and activity reorders end with the hub's order-only remote
-  sync (about 10 seconds) instead of a full rebuild of every remote (about
-  4.5 minutes). The X1 and X1S have no order-only form and keep the full
-  trigger. Set the engine's `order_sync_form` to `"full"` for the old
-  behaviour.
-- A Wifi Device update that only rewrites the device's own records (command
-  renames, payloads, its head) ends with a per-item remote sync of that
-  device instead of a full rebuild, on every model: the remotes re-read
-  that one device. If the hub does not acknowledge it, the full trigger
-  follows as before. Updates that touch favorites, bindings, membership,
-  inputs or power hooks keep the full sync. The engine gains
-  `sync_remote_entity(entity_id)`.
+- Every write now ends with the cheapest remote sync that brings it to the
+  remotes, instead of a full rebuild (X1 about 30 seconds, X1S about a
+  minute, X2 about 4.5 minutes) or no sync at all. Three syncs exist: a
+  per-item sync (the remotes re-read one device or activity, seconds), the
+  X2's order-only sync (the device and activity lists, about 10 seconds)
+  and the full sync. Measured on all three models:
+  - device and activity renames, and on the X2 deletes, reach the remotes
+    on their own and send nothing;
+  - content changes (commands, favorites, bindings, membership, macros,
+    inputs) end with a per-item sync of each changed device or activity;
+  - a create (device, activity, Wifi Device) ends with the order-only sync
+    and per-item syncs of the new device and the activities it is used in
+    on the X2, and with the full sync on the X1 and X1S;
+  - a delete through `remove_device()` / `remove_activity()` ends with the
+    full sync on the X1 and X1S, which list a deleted entity until then,
+    and per-item syncs of the activities it cascaded into on the X2;
+  - X2 reorders end with the order-only sync (set the engine's
+    `order_sync_form` to `"full"` for the old trigger); the X1 and X1S
+    keep the full sync.
+  A per-item or order-only sync the hub does not acknowledge falls back to
+  the full sync. The engine gains `sync_remotes_after_write(created=,
+  touched=, deleted=)` and `sync_remote_entity(entity_id)`.
+- `sync_device()` and `sync_activity()` end with that per-item sync, once
+  per entity (a favorite or keymap write's own sync counts). Before,
+  they sent no remote sync, so a renamed command, a favorite added on an X2
+  or a membership change reached the remotes only with the next full sync.
+- A write batch defers per-item and order-only syncs too and sends the
+  cheapest covering set when it closes: the full sync if any write asked
+  for one, otherwise the order-only sync first, then one per-item sync per
+  entity (none for an entity a later write in the batch deleted). The engine's `end_write_batch()` summary gains
+  `remote_sync_kind` (`"full"`, `"order"`, `"item"` or None) and
+  `item_syncs`; the facade's `BatchOutcome` is unchanged.
 
 ### Fixed
 

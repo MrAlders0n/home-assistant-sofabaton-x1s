@@ -504,6 +504,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             return {"status": "failed", "failed_at": "stale_check",
                     "preflight": verdict, "message": message}
 
+        self._begin_item_sync_tracking()
         failure, counters = self._walk_sync_plan(
             plan, progress=_progress, context={"current_activity_id": activity_id}
         )
@@ -544,6 +545,11 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             ),
             log_tag="ACTIVITY_SYNC",
         )
+        # Last, after the reads: the per-item sync of what the plan changed
+        # for the remotes (renames reach them alone; favorites and keymaps
+        # synced themselves). A sync that fails never fails the edit.
+        if not self._sync_remotes_after_edit(activity_id, plan, "activity-sync"):
+            self._log.warning("[ACTIVITY_SYNC] remote sync after act=0x%02X was not sent", activity_id & 0xFF)
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_activity_id=activity_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
@@ -694,6 +700,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             return {"status": "failed", "failed_at": "stale_check",
                     "preflight": verdict, "message": message}
 
+        self._begin_item_sync_tracking()
         failure, counters = self._walk_sync_plan(
             plan, progress=_progress, context={"current_device_id": device_id}
         )
@@ -714,6 +721,10 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             lambda: _device_block_signature(self.backup_device(device_id, include_blobs=False)),
             log_tag="DEVICE_SYNC",
         )
+        # Last, after the reads: the device's per-item sync (a renamed or
+        # re-coded command reaches no remote without one, bench_333).
+        if not self._sync_remotes_after_edit(device_id, plan, "device-sync"):
+            self._log.warning("[DEVICE_SYNC] remote sync after dev=0x%02X was not sent", device_id & 0xFF)
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_device_id=device_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
@@ -2142,6 +2153,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         # The same per-run state sync_activity resets: the live favorite map
         # a delete resolves against must not come from an earlier run.
         self._activity_sync_reset_run_state()
+        self._begin_item_sync_tracking()
 
         # Every in-place step is an idempotent rewrite, so a transient ack
         # miss (observed live: a macro-save ack lost under background hub
@@ -2154,7 +2166,10 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         total = len(steps)
         _progress(phase="completed", message="Synced to hub.", step_kind=None, step_name=None,
                   completed_steps=total, total_steps=total)
-        return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
+        # The entities a favorite or keymap step already synced per item:
+        # the caller's closing sync leaves them out.
+        return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters,
+                "item_synced": sorted(self._entity_sync_marks)}
 
     # ── Low-level primitives ────────────────────────────────────────────
 

@@ -720,8 +720,9 @@ class _DeletingHub(_Hub):
         self._result = result
         self.deleted = None
 
-    async def async_delete_device(self, device_id):
+    async def async_delete_device(self, device_id, *, sync_remotes=False):
         self.deleted = device_id
+        self.sync_remotes = sync_remotes
         return self._result
 
 
@@ -735,6 +736,8 @@ def test_ws_activity_delete_runs_hub_delete(monkeypatch):
     }))
     assert conn.error is None
     assert hub.deleted == 104
+    # A delete the user asked for ends with the remote sync a delete needs.
+    assert hub.sync_remotes is True
     assert conn.result[1]["status"] == "success"
 
 

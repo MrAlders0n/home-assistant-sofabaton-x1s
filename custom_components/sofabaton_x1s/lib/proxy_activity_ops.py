@@ -610,9 +610,10 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
         activity_id = int(result.get("activity_id") or 0) & 0xFF
 
         # The new activity last (the hubs append it themselves; the read-back
-        # this does is the catalog refresh), then the one remote sync.
+        # this does is the catalog refresh), then the remote sync that lists
+        # it: the order-only sync on the X2, the full one on the X1/X1S.
         self._settle_order("activities", [activity_id])
-        if not self.resync_remote():
+        if not self.sync_remotes_after_write(created=(activity_id,), origin="activity-create"):
             self._log.warning("[ACT_CREATE] REMOTE_SYNC after create was not acked")
 
         return {
@@ -668,7 +669,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             self.fetch_idle_behavior(device_id, timeout=2.0)
         except Exception:  # noqa: BLE001 - the device exists either way
             self._log.debug("[DEV_CREATE] idle behavior read failed", exc_info=True)
-        if not self.resync_remote():
+        if not self.sync_remotes_after_write(created=(device_id,), origin="device-create"):
             self._log.warning("[DEV_CREATE] REMOTE_SYNC after create was not acked")
 
         self._log.info(

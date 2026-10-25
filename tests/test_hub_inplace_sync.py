@@ -182,12 +182,12 @@ def _make_hub(
 
     item_syncs: list = []
 
-    async def _item_sync(targets):
-        item_syncs.append(targets)
-        return targets is not None
+    async def _item_sync(*, created=(), touched=(), deleted=()):
+        item_syncs.append((tuple(created), tuple(touched), tuple(deleted)))
+        return True
 
     monkeypatch.setattr(hub, "async_resync_remote", _resync)
-    monkeypatch.setattr(hub, "async_sync_remote_items", _item_sync)
+    monkeypatch.setattr(hub, "async_sync_remotes_after_write", _item_sync)
     monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _noop)
     hub._inplace_plans = plans
     hub._button_calls = button_calls
@@ -224,9 +224,9 @@ def test_inplace_path_runs_and_skips_replace(monkeypatch):
     # the hash changed, so the plan is exactly the brand head commit
     assert [s.kind for s in hub._inplace_plans[0].steps] == ["wifi_head_commit"]
     assert calls == ["inplace_run"]  # no create, no delete
-    # A plan that only rewrites the device's own records ends with its per-item
-    # remote sync, not the full resync.
-    assert hub._item_syncs == [(DEV_ID,)] and hub._resyncs == []
+    # A plan that only rewrites the device head (the version hash) changes
+    # nothing the remotes show: no sync at all, and never the full resync.
+    assert hub._item_syncs == [((), (), ())] and hub._resyncs == []
     assert store.saved and store.saved[0]["request_port"] == PORT
     assert store.saved[0]["deployed_device_id"] == DEV_ID
     loop.close()
@@ -408,6 +408,29 @@ def test_command_record_steps_rewarm_referencing_activities(monkeypatch):
     assert "command_rename" in kinds
     assert all(s.payload.get("activity_id") is None for s in hub._inplace_plans[0].steps)
     assert rewarmed == [0x65]
+    loop.close()
+
+
+@pytest.mark.parametrize(("item_synced", "expected"), [((), (DEV_ID,)), ((DEV_ID,), ())])
+def test_inplace_closing_sync_skips_entities_a_step_already_synced(monkeypatch, item_synced, expected):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store(deployed_slots=[{"name": "Old Name"}])
+    run_result = None
+    if item_synced:
+        run_result = {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {},
+                      "item_synced": list(item_synced)}
+    hub = _make_hub(
+        monkeypatch, loop, store=store, device_entry=_device_entry(label="Old Name"), run_result=run_result,
+    )
+    payload = _payload()
+    payload["commands"][0]["name"] = "New Name"
+
+    assert _run_sync(loop, hub, payload)["status"] == "success"
+
+    # The command renames change the device's remote copy: one per-item
+    # sync of it, unless the run reports a step already sent it.
+    assert hub._item_syncs == [((), expected, ())] and hub._resyncs == []
     loop.close()
 
 

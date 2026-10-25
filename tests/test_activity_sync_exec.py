@@ -33,10 +33,20 @@ class FakeProxy(ActivitySyncMixin):
         self.command_labels: dict[int, str] = {}
         # The X1 quick-access order check a sync runs after its plan.
         self.quick_access_repairs: list[int] = []
+        # The remote syncs closing a run (WriteBatchMixin), kept apart from
+        # the write calls: (entity, plan step kinds, origin).
+        self.item_syncs: list[tuple] = []
 
     # Environment
     def can_issue_commands(self) -> bool:
         return self.can_issue
+
+    def _begin_item_sync_tracking(self) -> None:
+        self.item_syncs.append("begin")
+
+    def _sync_remotes_after_edit(self, entity_id, steps, origin) -> bool:
+        self.item_syncs.append((entity_id, tuple(step.kind for step in steps), origin))
+        return True
 
     def backup_activity(self, activity_id, **_kw):
         if isinstance(self._fresh_activity, list):
@@ -185,6 +195,11 @@ def test_full_edit_dispatches_in_plan_order_and_reports_counters():
     assert kinds.index("favorite_add") < kinds.index("idle_behavior")
     assert kinds[-1] == "remote_sync"
     assert result["counters"]["favorite_add"] == 1
+    # The run tracks per-item syncs from its start and closes with the remote
+    # sync of what the plan changed, after the walk.
+    assert proxy.item_syncs[0] == "begin"
+    assert proxy.item_syncs[-1][0] == ACTIVITY_ID and proxy.item_syncs[-1][2] == "activity-sync"
+    assert "favorite_add" in proxy.item_syncs[-1][1]
 
 
 def test_member_replay_threads_input_cmd_id_to_add_device():
@@ -665,6 +680,8 @@ def test_device_sync_dispatches_with_device_entity_id_and_refreshes():
     # Tail refresh re-reads the device (blob-free) after the writes.
     assert kinds[-1] == "backup_device"
     assert proxy.calls[-1][2].get("include_blobs") is False
+    # Closed by the device's remote sync after the read-back.
+    assert proxy.item_syncs[-1][0] == DEVICE_ID and proxy.item_syncs[-1][2] == "device-sync"
 
 
 def test_device_macro_write_uses_the_single_page_device_builder():

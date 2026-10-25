@@ -808,6 +808,7 @@ class HubOpsMixin:
         device_id: int,
         *,
         refresh_impacted_activities: bool = True,
+        sync_remotes: bool = False,
     ) -> dict[str, Any] | None:
         """Delete a device and confirm impacted activities on the selected hub.
 
@@ -819,6 +820,12 @@ class HubOpsMixin:
         their own re-warm pass afterwards (the wifi deploy pipeline) pass
         ``refresh_impacted_activities=False`` and fold the result's
         ``impacted_activities`` into that pass instead.
+
+        ``sync_remotes`` is for a delete the user asked for on its own: it
+        ends with the remote syncs a delete needs (the full sync on the
+        X1/X1S, per-item syncs of the impacted activities on the X2). Flows
+        that delete as one step of a larger write leave it off and sync once
+        at their own end.
         """
 
         result = await self.hass.async_add_executor_job(
@@ -851,6 +858,11 @@ class HubOpsMixin:
             self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             await self._async_persist_cache_if_enabled()
+            if sync_remotes:
+                impacted_ids = result.get("impacted_activities") or result.get("confirmed_activities") or []
+                await self.async_sync_remotes_after_write(
+                    deleted=(device_id & 0xFF,), touched=tuple(int(a) & 0xFF for a in impacted_ids)
+                )
         return result
 
     async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
@@ -1079,20 +1091,32 @@ class HubOpsMixin:
         self._log.debug("[%s] Triggering remote resync", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
 
-    async def async_sync_remote_items(self, targets: tuple[int, ...] | None) -> bool:
-        """Per-item remote syncs for ``targets`` (see per_item_sync_targets).
+    async def async_sync_remotes_after_write(
+        self,
+        *,
+        created: tuple[int, ...] | list[int] = (),
+        touched: tuple[int, ...] | list[int] = (),
+        deleted: tuple[int, ...] | list[int] = (),
+    ) -> bool:
+        """The remote syncs that bring a write to the remotes: per-item,
+        order-only or full, whichever covers it (proxy
+        ``sync_remotes_after_write``). True when nothing was needed."""
 
-        False when ``targets`` is None or the hub did not ack one: the caller
-        then sends the full resync instead.
-        """
-
-        if targets is None:
-            return False
-        for entity in targets:
-            self._log.debug("[%s] Per-item remote sync of %s", self.entry_id, entity)
-            if not await self.hass.async_add_executor_job(self._proxy.sync_remote_entity, entity):
-                return False
-        return True
+        created, touched, deleted = tuple(created), tuple(touched), tuple(deleted)
+        if not (created or touched or deleted):
+            return True
+        self._log.debug(
+            "[%s] Remote sync after a write: created=%s touched=%s deleted=%s",
+            self.entry_id, created, touched, deleted,
+        )
+        return bool(
+            await self.hass.async_add_executor_job(
+                partial(
+                    self._proxy.sync_remotes_after_write,
+                    created=created, touched=touched, deleted=deleted, origin="ha",
+                )
+            )
+        )
 
     async def async_send_button(self, btn_code: int) -> None:
         if self.current_activity is None:

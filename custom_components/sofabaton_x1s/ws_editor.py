@@ -155,7 +155,7 @@ async def _handle_entity_delete_ws(
         return
 
     entity_id = int(msg["activity_id" if entity_kind == "activity" else "device_id"])
-    result = await hub.async_delete_device(device_id=entity_id)
+    result = await hub.async_delete_device(device_id=entity_id, sync_remotes=True)
     if not result or str(result.get("status")) != "success":
         connection.send_error(
             msg["id"],

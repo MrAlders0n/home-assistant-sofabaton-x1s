@@ -34,6 +34,9 @@ from typing import Any, Iterable
 from .hub_versions import HUB_VERSION_X2
 from .protocol_const import OP_ACTIVITY_ASSIGN_COMMIT, OP_X2_REMOTE_SYNC
 
+#: Activity ids start here; devices sit below.
+ACTIVITY_ID_BASE = 0x65
+
 #: Row type of a paired remote in the X2 paired-device list.
 X2_ROW_TYPE_REMOTE = 0
 
@@ -169,36 +172,40 @@ def order_sync_frame(hub_version: str | None) -> tuple[int, bytes] | None:
     return None
 
 
-#: Write-plan steps that only change one device's own records: a per-item
-#: sync of that device brings them to the remote (bench_333: command renames
-#: on the X1, X1S and X2; one sync carried several renames). The head commit
-#: is the same device's record (a device rename reaches the remote even
-#: without a sync, 2026-08 bench); Home Assistant ends every in-place update
-#: with one.
-DEVICE_ITEM_SYNC_STEP_KINDS = frozenset({"command_rename", "command_payload", "wifi_head_commit"})
+#: Write-plan steps the remotes pick up without any sync, or that change
+#: nothing a remote shows: device and activity renames (the head commit
+#: included) reach every model's remote on their own (bench_333 section 14
+#: and the 2026-08 bench); idle behaviour and a Wifi Device's callback
+#: address are hub-side; ``remote_sync`` is the plan's own read-back.
+REMOTE_NEUTRAL_STEP_KINDS = frozenset(
+    {"activity_rename", "device_rename", "wifi_head_commit", "idle_behavior", "device_ip", "remote_sync"}
+)
 
 
-def per_item_sync_targets(steps: Iterable[Any], device_id: int) -> tuple[int, ...] | None:
-    """The entities to per-item sync after a write plan for ``device_id``,
-    or None when the plan needs the full remote sync.
+def entities_touched_by(steps: Iterable[Any], default_entity: int) -> tuple[int, ...]:
+    """The entities whose remote copy a write plan changed, in step order:
+    each activity a step names (``activity_id`` from 101 up), otherwise
+    ``default_entity`` (the device the plan edits, or a device-page step's
+    own device). Remote-neutral steps count for nothing."""
 
-    Only a plan made of the device's own record rewrites (renames,
-    payloads, the head) is covered: favorites, bindings, membership,
-    inputs and power hooks keep the full sync until a bench shows the
-    per-item form brings them over.
-    """
-
-    kinds = {getattr(step, "kind", None) for step in steps}
-    if not kinds or not kinds <= DEVICE_ITEM_SYNC_STEP_KINDS:
-        return None
-    return (int(device_id) & 0xFF,)
+    touched: list[int] = []
+    for step in steps:
+        if getattr(step, "kind", None) in REMOTE_NEUTRAL_STEP_KINDS:
+            continue
+        payload = getattr(step, "payload", None) or {}
+        activity = payload.get("activity_id") if isinstance(payload, dict) else None
+        if activity is not None and int(activity) & 0xFF >= ACTIVITY_ID_BASE:
+            touched.append(int(activity) & 0xFF)
+        else:
+            touched.append(int(default_entity) & 0xFF)
+    return tuple(dict.fromkeys(touched))
 
 
 __all__ = [
-    "DEVICE_ITEM_SYNC_STEP_KINDS",
     "FAMILY_ENTITY_SYNC",
     "OP_ENTITY_SYNC",
     "OP_X2_ENTITY_SYNC",
+    "REMOTE_NEUTRAL_STEP_KINDS",
     "X2PairedDevice",
     "X2_ENTITY_SYNC_FLAG",
     "X2_ROW_TYPE_REMOTE",
@@ -206,9 +213,9 @@ __all__ = [
     "X2_SYNC_FLAG_ORDER",
     "X2_TARGET_ALL",
     "X2_TARGET_ALL_REMOTES",
+    "entities_touched_by",
     "entity_sync_frame",
     "order_sync_frame",
-    "per_item_sync_targets",
     "parse_x2_paired_row",
     "x2_order_sync_frame",
     "x2_remote_sync_frame",

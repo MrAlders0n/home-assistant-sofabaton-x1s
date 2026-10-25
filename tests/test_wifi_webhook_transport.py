@@ -529,6 +529,13 @@ def _x2_deploy_hub(monkeypatch, loop, store, calls):
     async def _resync():
         calls.append("resync")
 
+    remote_syncs: list[dict] = []
+
+    async def _sync_after(**kwargs):
+        calls.append("sync")
+        remote_syncs.append(kwargs)
+        return True
+
     async def _noop(*_a, **_k):
         return None
 
@@ -541,6 +548,8 @@ def _x2_deploy_hub(monkeypatch, loop, store, calls):
     monkeypatch.setattr(hub._proxy, "send_command", _send_command)
     monkeypatch.setattr(hub._proxy, "backup_device", lambda *_a, **_k: None)
     monkeypatch.setattr(hub, "async_resync_remote", _resync)
+    monkeypatch.setattr(hub, "async_sync_remotes_after_write", _sync_after)
+    hub._remote_syncs = remote_syncs
     monkeypatch.setattr(hub, "async_fetch_device_commands", _noop)
     monkeypatch.setattr(hub, "_async_persist_cache_if_enabled", _noop)
     monkeypatch.setattr(hub, "async_set_roku_server_enabled", _enable_listener)
@@ -562,7 +571,9 @@ def test_x2_deploy_writes_url_records_tests_delivery_then_syncs_the_remote(monke
 
     # Records pointed at the webhook before anything else, the test press
     # before the remote sync, and the listener never enabled.
-    assert calls == ["create", "rewrite", "probe", "resync"]
+    assert calls == ["create", "rewrite", "probe", "sync"]
+    # A create: the remote sync for a new device (order-only + per-item on the X2), never the full resync.
+    assert hub._remote_syncs[0]["created"] == (9,)
     device_id, bodies = hub._rewritten
     assert device_id == 9
     assert sorted(bodies) == list(range(1, 21))
@@ -613,7 +624,7 @@ def test_x1s_deploy_keeps_the_listener(monkeypatch) -> None:
         "commands_hash": "abc",
     }
     result = loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
-    assert calls == ["listener:True", "create", "probe", "resync"]
+    assert calls == ["listener:True", "create", "probe", "sync"]
     assert store.saved[-1]["deployed_transport"] == "http"
     assert store.saved[-1]["request_port"] == 8060
     assert "deployed_url" not in store.saved[-1]

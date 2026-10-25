@@ -18,7 +18,7 @@ from __future__ import annotations
 import contextlib
 import threading
 from collections import deque
-from typing import Any, Callable, Dict, Mapping, Protocol, Sequence, TYPE_CHECKING
+from typing import Any, Callable, Dict, Iterable, Mapping, Protocol, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .ack import AckOutcome, InputsBurstResult, SendStepResult
@@ -243,6 +243,8 @@ class _OpsHost(Protocol):
     """The cross-mixin write helpers: builders, backup and restore, the Wifi
     sync steps and the persisted command records."""
 
+    _entity_sync_marks: set[int]
+
     def _apply_wifi_input_configuration(
         self,
         *,
@@ -430,6 +432,16 @@ class _OpsHost(Protocol):
         self, step_name: str, *, ack_first_byte: int | None = ..., purpose: str = ...
     ) -> bool: ...
     def _send_entity_sync_step(self, entity_id: int, step_name: str) -> bool: ...
+    def sync_remotes_after_write(
+        self,
+        *,
+        created: Iterable[int] = ...,
+        touched: Iterable[int] = ...,
+        deleted: Iterable[int] = ...,
+        origin: str = ...,
+    ) -> bool: ...
+    def _begin_item_sync_tracking(self) -> None: ...
+    def _sync_remotes_after_edit(self, entity_id: int, steps: Iterable[Any], origin: str) -> bool: ...
     def _settle_order(self, kind: str, last_ids: Sequence[int]) -> str: ...
     def set_idle_behavior(self, device_id: int, mode: int) -> bool: ...
     @property
