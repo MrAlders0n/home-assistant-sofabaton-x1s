@@ -109,7 +109,7 @@ test("the delivery panel stays quiet on success and guides on failure", () => {
   assert.match(ok, new RegExp(S.title));
   assert.match(ok, /Test again/);
   assert.doesNotMatch(ok, new RegExp(S.notDelivered));
-  assert.doesNotMatch(ok, /Move to direct delivery/);
+  assert.doesNotMatch(ok, /Use Home Assistant's endpoint/);
 
   const failed = templateText(renderWifiDeliveryPanel({
     ...base,
@@ -123,11 +123,11 @@ test("the delivery panel stays quiet on success and guides on failure", () => {
     ...base,
     info: { ...WEBHOOK_INFO, transport: "http", target: "http://192.168.2.50:8060", move_available: true, target_stale: true },
   }));
-  assert.match(listener, /Move to direct delivery/);
-  assert.match(listener, /Update the hub/);
+  assert.match(listener, /Use Home Assistant's endpoint/);
+  assert.match(listener, /Sync/);
 
   const passed = templateText(renderWifiDeliveryPanel({ ...base, info: WEBHOOK_INFO, lastTest: { status: "delivered", latency_s: 0.42 } }));
-  assert.match(passed, /Presses arrive \(0\.4 s\)/);
+  assert.match(passed, /Test command received \(0\.4 s\)/);
 });
 
 function makeTab(callWS: (msg: Record<string, unknown>) => Promise<unknown>) {
@@ -228,8 +228,8 @@ test("the broker form prefills Home Assistant's broker and never sends its passw
   form.openFor("entry-1", { onDone: (connected) => { done = connected; } });
   assert.equal(form.open, true);
   assert.match(templateText(form.render()), /192\.168\.2\.50/);
-  // No broker yet: no replace warning.
-  assert.doesNotMatch(templateText(form.render()), /replaces the hub's current broker/);
+  // Disconnected does not mean unconfigured: warn before replacing saved settings.
+  assert.match(templateText(form.render()), /replaces any MQTT broker settings/);
   await form.submit();
   const setup = sent.find((msg) => msg.type === "sofabaton_x1s/hub_mqtt/setup")!;
   assert.deepEqual(setup, {
@@ -244,7 +244,7 @@ test("the broker form prefills Home Assistant's broker and never sends its passw
 
   // Change: the hub has a broker that gets replaced.
   form.openFor("entry-1");
-  assert.match(templateText(form.render()), /replaces the hub's current broker/);
+  assert.match(templateText(form.render()), /replaces any MQTT broker settings/);
 });
 
 test("the broker form refuses a host the hub cannot store before sending", async () => {
@@ -254,5 +254,114 @@ test("the broker form refuses a host the hub cannot store before sending", async
   form.openFor("entry-1");
   await form.submit();
   assert.equal(sent.length, 0);
-  assert.match(templateText(form.render()), /Enter the broker's IPv4 address/);
+  assert.match(templateText(form.render()), /Enter a valid IPv4 address for the broker/);
+});
+
+test("latency uses the selected locale and never turns missing data into zero", () => {
+  for (const locale of ["de", "es", "fr", "nl"]) {
+    setToolsCardLanguage(locale);
+    assert.equal(formatLatency(0.84), "0,8", locale);
+  }
+  for (const locale of ["en", "en-GB", "zh-hans"]) {
+    setToolsCardLanguage(locale);
+    assert.equal(formatLatency(0.84), "0.8", locale);
+  }
+  assert.equal(formatLatency(null), "?");
+  assert.equal(formatLatency(undefined), "?");
+  assert.equal(formatLatency(Number.NaN), "?");
+  assert.equal(formatLatency(0), "0.0");
+  assert.equal(formatLatency(0.84, "bad_locale"), "0.8");
+  setToolsCardLanguage("en");
+});
+
+test("stale delivery names the deployed and desired addresses separately", () => {
+  setToolsCardLanguage("en");
+  const text = templateText(renderWifiDeliveryPanel({
+    info: { ...WEBHOOK_INFO, target_stale: true, desired_target: "https://192.168.2.60:8443" },
+    busy: null, locked: false, lastTest: null, error: "", onTest() {}, onMove() {}, onUpdate() {},
+  }));
+  assert.match(text, /The hub calls Home Assistant at https:\/\/192\.168\.2\.50:8123/);
+  assert.match(text, /Home Assistant now uses https:\/\/192\.168\.2\.60:8443/);
+  assert.doesNotMatch(text, /The hub calls Home Assistant at https:\/\/192\.168\.2\.60/);
+});
+
+test("an unsent test does not claim a delivery failure or prescribe firewall changes", () => {
+  setToolsCardLanguage("en");
+  const notices: any[] = [];
+  const tab = makeTab(async () => ({}));
+  tab.showCompletion = (notice: unknown) => notices.push(notice);
+  tab._announceDeployResult({ status: "not_sent" }, "Synced", "entry-1");
+  assert.equal(notices[0].label, "Synced, but delivery could not be tested.");
+  const text = templateText(renderWifiDeliveryPanel({
+    info: { ...WEBHOOK_INFO, delivery: { status: "not_sent" } },
+    busy: null, locked: false, lastTest: null, error: "", onTest() {}, onMove() {}, onUpdate() {},
+  }));
+  assert.match(text, /Could not send the test command/);
+  assert.doesNotMatch(text, /did not reach|allow TCP/);
+});
+
+test("broker validation rejects invalid IPv4 octets and ports without sending", async () => {
+  setToolsCardLanguage("en");
+  let sent = false;
+  const form = makeForm(async () => { sent = true; return {}; });
+  form.state = LINK;
+  for (const host of ["999.999.999.999", "192.168.001.1", "broker.local"]) {
+    form.openFor("entry-1");
+    (form as any)._host = host;
+    await form.submit();
+    assert.match(templateText(form.render()), /sb-broker-host-error/);
+  }
+  for (const port of [0, 65536, 1883.5, Number.NaN]) {
+    form.openFor("entry-1");
+    (form as any)._port = port;
+    await form.submit();
+    assert.match(templateText(form.render()), /sb-broker-port-error/);
+    assert.match(templateText(form.render()), /1 to 65535/);
+  }
+  assert.equal(sent, false);
+});
+
+test("broker failures are localized from codes, with visible field errors and a safe fallback", async () => {
+  for (const locale of ["de", "es", "fr", "nl", "zh-hans"]) {
+    setToolsCardLanguage(locale);
+    const S = TOOLS_CARD_STRINGS.wifiDelivery;
+    const cases: Array<[string, string, string | null]> = [
+      ["broker_invalid_host", S.brokerHostRequired, "host"],
+      ["broker_invalid_port", S.brokerPortInvalid, "port"],
+      ["broker_username_too_long", S.brokerUsernameTooLong, "username"],
+      ["broker_password_too_long", S.brokerPasswordTooLong, "password"],
+      ["broker_credentials_too_long", S.brokerCredentialsTooLong, null],
+      ["unknown", S.brokerFailed, null],
+      ["invalid_format", S.brokerFailed, null],
+      ["hub_no_answer", S.brokerNoAnswer, null],
+    ];
+    for (const [code, expected, field] of cases) {
+      const form = makeForm(async () => { throw { code, message: "Backend diagnostic must not appear" }; });
+      form.state = LINK;
+      form.openFor("entry-1");
+      (form as any)._useHaLogin = false;
+      await form.submit();
+      const text = templateText(form.render());
+      assert.ok(text.includes(expected), `${locale}: ${code}`);
+      assert.doesNotMatch(text, /Backend diagnostic/);
+      if (field) assert.ok(text.includes(`sb-broker-${field}-error`));
+    }
+    // Stored HA credentials have no editable field: their error must remain visible.
+    const form = makeForm(async () => { throw { code: "broker_password_too_long" }; });
+    form.state = LINK;
+    form.openFor("entry-1");
+    await form.submit();
+    assert.ok(templateText(form.render()).includes(S.brokerPasswordTooLong));
+  }
+  setToolsCardLanguage("en");
+});
+
+test("the replacement warning is present for connected, disconnected and unknown hubs", () => {
+  setToolsCardLanguage("en");
+  for (const status of [true, false, null]) {
+    const form = makeForm(async () => ({}));
+    form.state = { ...LINK, hub_connected: status };
+    form.openFor("entry-1");
+    assert.ok(templateText(form.render()).includes(TOOLS_CARD_STRINGS.wifiDelivery.brokerReplaceWarning));
+  }
 });

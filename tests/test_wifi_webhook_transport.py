@@ -908,6 +908,50 @@ def test_ws_move_to_direct_only_for_an_x2_listener_device(monkeypatch) -> None:
     assert moves[0]["move_to_direct"] is True
 
 
+def test_ws_stale_delivery_keeps_the_deployed_address_and_reports_the_new_one(monkeypatch) -> None:
+    from tests.test_wifi_events_ws import _Conn, _msg
+    import custom_components.sofabaton_x1s.ws_wifi as ws_wifi
+
+    store, _hub, key = _ws_setup(monkeypatch)
+    old_url = f"https://192.168.2.50:8123/api/webhook/{WEBHOOK_ID}"
+    new_url = f"https://192.168.2.60:8443/api/webhook/{WEBHOOK_ID}"
+    _run(store.async_save_deployed_wifi_commands(
+        "entry-1", key, [{"name": "On"}], deployed_device_id=9, commands_hash="h",
+        deployed_transport="webhook", deployed_url=old_url,
+    ))
+
+    async def current_url(*_args):
+        return new_url
+
+    monkeypatch.setattr(ws_wifi, "async_webhook_base_url", current_url)
+    conn = _Conn()
+    _run(integration_module()._ws_get_wifi_delivery(None, conn, _msg(device_key=key)))
+    result = conn.result[1]
+    assert result["target"] == "https://192.168.2.50:8123"
+    assert result["desired_target"] == "https://192.168.2.60:8443"
+    assert result["target_stale"] is True
+    assert WEBHOOK_ID not in json.dumps(result)
+
+
+@pytest.mark.parametrize("code", [
+    "broker_invalid_host", "broker_invalid_port", "broker_username_too_long",
+    "broker_password_too_long", "broker_credentials_too_long",
+])
+def test_ws_broker_validation_preserves_localizable_error_codes(monkeypatch, code) -> None:
+    from tests.test_wifi_events_ws import _Conn, _msg
+    from custom_components.sofabaton_x1s.lib.proxy_hub_mqtt import HubMqttValidationError
+
+    _ws_setup(monkeypatch)
+
+    async def refuse(*_args, **_kwargs):
+        raise HubMqttValidationError(code, "Invalid broker settings")
+
+    monkeypatch.setattr(hub_mqtt_link, "async_point_hub_at_broker", refuse)
+    conn = _Conn()
+    _run(integration_module()._ws_set_hub_mqtt_broker(None, conn, _msg(host=HA_ADDRESS, port=1883)))
+    assert conn.error[1] == code
+
+
 def test_ws_hub_broker_setup_is_x2_only_and_reports_bad_values(monkeypatch) -> None:
     from tests.test_wifi_events_ws import _Conn, _msg
 

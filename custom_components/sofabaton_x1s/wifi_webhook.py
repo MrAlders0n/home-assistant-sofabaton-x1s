@@ -48,6 +48,14 @@ def webhook_transport_ready(hass: HomeAssistant) -> bool:
     return "webhook" in components and getattr(config, "api", None) is not None
 
 
+class LocalEndpointError(ValueError):
+    """An invalid local address or port, identified without parsing prose."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def parse_local_endpoint(value: Any) -> tuple[str | None, int | None, str | None]:
     """The hub's local address override as typed: ``(address, port, scheme)``.
 
@@ -72,11 +80,11 @@ def parse_local_endpoint(value: Any) -> tuple[str | None, int | None, str | None
     try:
         address = str(ipaddress.IPv4Address(host.strip()))
     except ipaddress.AddressValueError as err:
-        raise ValueError(f"expected an IPv4 address, optionally with :port, got {value!r}") from err
+        raise LocalEndpointError("invalid_address", "expected an IPv4 address with an optional HTTP scheme and port") from err
     port: int | None = None
     if sep:
         if not port_text.isdigit() or not (0 < int(port_text) < 65536):
-            raise ValueError(f"the port must be 1..65535, got {port_text!r}")
+            raise LocalEndpointError("invalid_port", "the port must be 1..65535")
         port = int(port_text)
     return address, port, scheme
 

@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import CONF_HOST, CONF_MAC, DOMAIN, signal_hub
 from .hub import SofabatonHub, hub_device_info
 from .lib.network import is_local_ipv4
-from .wifi_webhook import format_local_endpoint, parse_local_endpoint
+from .wifi_webhook import LocalEndpointError, format_local_endpoint, parse_local_endpoint
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -145,10 +145,12 @@ class SofabatonLocalAddressText(TextEntity):
     async def async_set_value(self, value: str) -> None:
         try:
             address, port, scheme = parse_local_endpoint(value)
-        except ValueError as err:
+        except LocalEndpointError as err:
+            if err.code == "invalid_port":
+                raise HomeAssistantError("Enter a port number from 1 to 65535.") from err
             raise HomeAssistantError(
-                "Enter a valid IPv4 address (optionally with :port), or clear the "
-                "field to select it automatically"
+                "Enter a valid IPv4 address, optionally with http:// or https:// and a port "
+                "(for example, https://192.168.1.5:8443), or clear the field to select it automatically."
             ) from err
         # An address nobody answers on takes the hub offline, and it stays
         # unsettled for minutes after the address is corrected.

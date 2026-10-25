@@ -1582,7 +1582,8 @@ class SofabatonWifiCommandsTab extends LitElement {
    *  device's panel names what to allow). */
   private _announceDeployResult(delivery: WifiDelivery | null | undefined, successLabel: string, hubEntryId: string) {
     if (deliveryFailed(delivery)) {
-      this.showCompletion?.({ tone: "error", label: TOOLS_CARD_STRINGS.wifiDelivery.syncedNotDeliveredDock }, hubEntryId);
+      const S = TOOLS_CARD_STRINGS.wifiDelivery;
+      this.showCompletion?.({ tone: "error", label: delivery?.status === "not_sent" ? S.syncedNotTestedDock : S.syncedNotDeliveredDock }, hubEntryId);
       return;
     }
     this.showCompletion?.({ tone: "success", label: successLabel }, hubEntryId);

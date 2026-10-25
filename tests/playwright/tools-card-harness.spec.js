@@ -140,7 +140,8 @@ test.describe("tools-card browser harness", () => {
     const languages = await page.evaluate(
       () => window.__toolsCardHarness.supportedLanguages,
     );
-    const scenarios = ["1", "add-device", "activities-capture", "backup-edit", "automation-events", "18", "21", "24"];
+    const scenarios = ["1", "add-device", "activities-capture", "backup-edit", "automation-events", "18", "21", "24",
+      "wifi-delivery-failed", "wifi-move-direct", "wifi-create-mqtt-no-broker", "settings-x2-broker"];
     const failures = [];
 
     for (const language of languages) {
@@ -152,6 +153,15 @@ test.describe("tools-card browser harness", () => {
         const clipped = await page.evaluate(async (scenarioId) => {
           await window.__toolsCardHarness.loadScenario(scenarioId);
           await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+          if (scenarioId === "settings-x2-broker") {
+            const card = window.__toolsCardHarness.getCard();
+            // Wait for the broker status before opening its form.
+            await card._brokerForm.load("hub-1");
+            await card.updateComplete;
+            card.shadowRoot.querySelector(".setting-broker").click();
+            await card.updateComplete;
+          }
 
           const card = window.__toolsCardHarness.getCard();
           const roots = [];
@@ -165,7 +175,7 @@ test.describe("tools-card browser harness", () => {
 
           const failures = [];
           for (const root of roots) {
-            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill")) {
+            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-panel, .delivery-head, .delivery-move, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions")) {
               const text = element.textContent?.replace(/\s+/g, " ").trim();
               if (!text || !element.getClientRects().length) continue;
               if (element.scrollWidth > element.clientWidth + 1) {
@@ -579,7 +589,7 @@ test.describe("tools-card browser harness", () => {
       const root = window.__toolsCardHarness.getCard().shadowRoot?.querySelector("sofabaton-wifi-commands-tab")?.shadowRoot;
       return root?.querySelector(".delivery-panel")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
     });
-    await expect.poll(panelText).toContain("Button presses don't reach Home Assistant yet.");
+    await expect.poll(panelText).toContain("The test command did not reach Home Assistant.");
     expect(await panelText()).toContain("The hub calls Home Assistant at https://192.168.1.10:8123.");
     expect(await panelText()).toContain("allow TCP from the hub (192.168.1.110) to 192.168.1.10:8123.");
     expect(await page.evaluate(() => {
@@ -590,8 +600,8 @@ test.describe("tools-card browser harness", () => {
       const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
       root.querySelector(".delivery-test-btn").click();
     });
-    await expect.poll(panelText).toContain("Presses arrive (0.8 s).");
-    expect(await panelText()).not.toContain("don't reach");
+    await expect.poll(panelText).toContain("Test command received (0.8 s).");
+    expect(await panelText()).not.toContain("did not reach");
     const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
     expect(calls.some((call) => call.message?.type === "sofabaton_x1s/command_config/test_delivery")).toBe(true);
   });
@@ -607,7 +617,7 @@ test.describe("tools-card browser harness", () => {
     });
     const dock = () => page.evaluate(() =>
       window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".card-bottom-dock-status")?.textContent?.trim() ?? "");
-    await expect.poll(dock).toBe("Wifi Device moved to direct delivery.");
+    await expect.poll(dock).toBe("Wifi Device now uses Home Assistant's HTTP endpoint.");
     const state = await page.evaluate(() => {
       const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
       return {
@@ -688,8 +698,8 @@ test.describe("tools-card browser harness", () => {
     expect(await tile()).toContain("Set up");
     await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".setting-broker").click());
     await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-dialog")));
-    // No broker yet: nothing to replace, no warning.
-    expect(await page.evaluate(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")))).toBe(false);
+    // A disconnected hub may still have saved settings: the warning is always present.
+    expect(await page.evaluate(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")))).toBe(true);
     await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-connect").click());
     await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-done")));
     await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-done").click());
@@ -699,7 +709,32 @@ test.describe("tools-card browser harness", () => {
     await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")));
     expect(await page.evaluate(() =>
       window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning").textContent.trim()))
-      .toContain("This replaces the hub's current broker setup");
+      .toContain("This replaces any MQTT broker settings saved on the hub");
+  });
+
+  test("broker validation stays localized and identifies the invalid field", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html?width=360");
+    await page.evaluate(async () => {
+      await window.__toolsCardHarness.setLanguage("fr");
+      await window.__toolsCardHarness.loadScenario("settings-x2-broker");
+    });
+    await page.locator(".setting-broker").click();
+    const dialog = page.locator(".broker-dialog");
+    await expect(dialog.locator(".broker-warning")).toBeVisible();
+    const address = dialog.locator("#sb-broker-host input");
+    await address.fill("999.999.999.999");
+    await address.dispatchEvent("change");
+    await dialog.locator(".broker-connect").click();
+    await expect(dialog.locator("#sb-broker-host-error")).toHaveText("Saisissez une adresse IPv4 valide pour le broker.");
+    await address.fill("192.168.1.10");
+    await address.dispatchEvent("change");
+    const port = dialog.locator("#sb-broker-port input");
+    await port.fill("65536");
+    await port.dispatchEvent("change");
+    await dialog.locator(".broker-connect").click();
+    await expect(dialog.locator("#sb-broker-port-error")).toHaveText("Saisissez un numéro de port compris entre 1 et 65535.");
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    expect(calls.some((call) => call.message?.type === "sofabaton_x1s/hub_mqtt/setup")).toBe(false);
   });
 
   test("the broker line is global: last of the GLOBAL rows, shown on another hub's tab naming the X2", async ({ page }) => {

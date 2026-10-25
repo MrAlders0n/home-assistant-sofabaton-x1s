@@ -2147,7 +2147,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
     wifiResyncingRemote: "Resyncing the physical remote\u2026",
     wifiCheckingBroker: "Checking the MQTT broker link\u2026",
-    wifiMovingDelivery: "Pointing the Wifi Device at Home Assistant\u2026",
+    wifiMovingDelivery: "Updating the Wifi Device's destination\u2026",
     wifiTestingDelivery: "Testing that button presses reach Home Assistant\u2026",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
@@ -2727,7 +2727,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
-    syncFailedRewrite: "The hub did not take the new delivery address. Sync again.",
+    syncFailedRewrite: "The hub did not save the new destination address. Sync again.",
     syncFailedMqttNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
@@ -2751,7 +2751,7 @@ var TOOLS_CARD_STRINGS_EN = {
     createModalCancel: "Cancel",
     createModalCreate: "Create",
     transportLabel: "Delivery method",
-    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
+    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach its configured broker.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
     // The standalone server panel's create flow (no switch there yet).
     transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
@@ -2871,35 +2871,35 @@ var TOOLS_CARD_STRINGS_EN = {
     // Short names for the transport pills and the device editor's select.
     directShort: "Direct",
     mqttShort: "MQTT",
-    directWebhookHint: "The hub calls Home Assistant's own address. Nothing else to set up.",
-    mqttWebhookHint: "The hub publishes to the MQTT broker set in the Sofabaton app; Home Assistant must use the same broker.",
-    title: "How presses reach Home Assistant",
+    directWebhookHint: "Uses Home Assistant's HTTP endpoint; no separate HTTP listener is needed.",
+    mqttWebhookHint: "The hub publishes to its configured MQTT broker. Home Assistant must use the same broker.",
+    title: "How button presses reach Home Assistant",
     pathWebhook: (target) => `The hub calls Home Assistant at ${target}.`,
-    pathListener: (target) => `The hub calls this integration's listener at ${target}.`,
+    pathListener: (target) => `The hub calls this integration's HTTP listener at ${target}.`,
     pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; Home Assistant listens on ${broker}.` : "The hub publishes to its MQTT broker.",
     allowWebhook: (hubIp, hostPort) => `If the hub is on another network or VLAN, allow TCP from the hub (${hubIp}) to ${hostPort}.`,
     allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on the Home Assistant host; with Docker, publish port ${port}.`,
     allowMqtt: (broker) => broker ? `The hub must reach the same broker Home Assistant uses (${broker}), and the broker must let it publish.` : "The hub must reach the same broker Home Assistant uses, and the broker must let it publish.",
-    notDelivered: "Button presses don't reach Home Assistant yet.",
-    notSent: "The hub did not take the test press. Test again in a moment.",
-    delivered: (seconds) => `Presses arrive (${seconds} s).`,
+    notDelivered: "The test command did not reach Home Assistant.",
+    notSent: "Could not send the test command. Try again.",
+    delivered: (seconds) => `Test command received (${seconds} s).`,
     testAgain: "Test again",
     testing: "Testing\u2026",
     testFailed: "The test could not run. Try again.",
     networkingGuide: "Networking guide",
-    targetStale: "Home Assistant's address changed since this device was synced.",
-    updateHub: "Update the hub",
-    moveHint: "This device sends presses to the integration's listener on port 8060. Direct delivery calls Home Assistant's own address instead: no extra port to open, and https when Home Assistant uses it.",
-    moveButton: "Move to direct delivery",
-    moving: "Moving\u2026",
-    movedDock: "Wifi Device moved to direct delivery.",
-    syncedNotDeliveredDock: "Synced, but button presses don't reach Home Assistant yet.",
+    targetStale: (target) => target ? `Home Assistant now uses ${target}. Sync this device to update its destination.` : "Home Assistant's address has changed. Sync this device to update its destination.",
+    updateHub: "Sync",
+    moveHint: "This device uses the integration's HTTP listener. Switch to Home Assistant's HTTP endpoint, using HTTPS when configured. No separate HTTP listener is needed.",
+    moveButton: "Use Home Assistant's endpoint",
+    moving: "Switching\u2026",
+    movedDock: "Wifi Device now uses Home Assistant's HTTP endpoint.",
+    syncedNotDeliveredDock: "Synced, but the test command did not reach Home Assistant.",
     // The create dialog's MQTT option, checked before anything is written.
     mqttChecking: "Checking the broker link\u2026",
     mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
     mqttHubNotConnected: "The hub isn't connected to an MQTT broker. Set it up now?",
     setUpNow: "Set it up",
-    useDirectInstead: "Use Direct instead",
+    useDirectInstead: "Use Direct",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
     // The line is global: it shows on every hub's Settings tab while an X2
@@ -2915,23 +2915,28 @@ var TOOLS_CARD_STRINGS_EN = {
     brokerSetUp: "Set up",
     brokerChange: "Change",
     brokerDialogTitle: "Connect the hub to an MQTT broker",
-    brokerIntro: "The hub publishes button presses to this broker. Enter the broker's address as the hub reaches it (IPv4).",
+    brokerIntro: "The hub publishes button presses to this broker. Enter the broker's IPv4 address, reachable from the hub's network.",
     brokerHostLabel: "Broker address",
     brokerPortLabel: "Port",
     brokerTlsWarning: "Home Assistant's broker uses TLS on this port; the hub may not support it.",
-    brokerUseHaLogin: (username) => username ? `Use Home Assistant's MQTT login (${username})` : "Use Home Assistant's MQTT login",
-    brokerUseSeparateLogin: "Use a separate login",
+    brokerUseHaLogin: (username) => username ? `Use Home Assistant's MQTT credentials (${username})` : "Use Home Assistant's MQTT credentials",
+    brokerUseSeparateLogin: "Use separate credentials",
     brokerUsernameLabel: "Username",
     brokerPasswordLabel: "Password",
-    brokerLoginNote: "The hub will hold this login. Home Assistant sends it to the hub and does not store it.",
-    brokerReplaceWarning: "This replaces the hub's current broker setup, possibly the one the Sofabaton app or another MQTT integration relies on. The hub can't report its current setup, so this can't be undone here.",
+    brokerLoginNote: "The hub stores these credentials. This integration sends them to the hub without saving an additional copy.",
+    brokerReplaceWarning: "This replaces any MQTT broker settings saved on the hub, which the Sofabaton app or another MQTT integration may rely on. The current settings cannot be read or restored here.",
     brokerConnect: "Connect",
     brokerConnecting: "Connecting. The hub tries for up to 15 seconds\u2026",
     brokerConnectedResult: "The hub is connected to the broker.",
-    brokerFailed: "The hub could not connect. Check the address, the port and the login, and that the hub's network can reach the broker.",
-    brokerNoAnswer: "The hub gave no answer. Try again.",
-    brokerHostRequired: "Enter the broker's IPv4 address.",
+    brokerFailed: "The hub could not connect. Check the address, port and credentials, and that the hub's network can reach the broker.",
+    brokerNoAnswer: "The hub did not respond. Try again.",
+    brokerHostRequired: "Enter a valid IPv4 address for the broker.",
     brokerTryAgain: "Try again",
+    syncedNotTestedDock: "Synced, but delivery could not be tested.",
+    brokerPortInvalid: "Enter a port number from 1 to 65535.",
+    brokerUsernameTooLong: "The username is too long for the hub. Use a shorter username or separate credentials.",
+    brokerPasswordTooLong: "The password is too long for the hub. Use a shorter password or separate credentials.",
+    brokerCredentialsTooLong: "The username and password together are too long for the hub. Use shorter credentials.",
     brokerDone: "Done"
   }
 };
@@ -6291,6 +6296,8 @@ var hubBrokerFormStyles = i`
   .broker-fields { display: flex; gap: 10px; align-items: flex-start; }
   .broker-fields .broker-host { flex: 1 1 auto; min-width: 0; }
   .broker-fields .broker-port { flex: 0 0 110px; }
+  .broker-dialog ha-input, .broker-dialog ha-textfield { width: 100%; }
+  .broker-field-error { color: var(--error-color, #db4437); font-size: 12px; margin-top: 4px; }
   .broker-login { display: flex; flex-direction: column; gap: 6px; }
   .broker-login-option { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--primary-text-color); cursor: pointer; }
   .broker-login-option input { accent-color: var(--primary-color); margin: 0; }
@@ -6326,7 +6333,6 @@ var HubBrokerFormController = class {
     this.loadedFor = null;
     this.open = false;
     this._entryId = "";
-    this._replace = false;
     this._host = "";
     this._port = 1883;
     this._useHaLogin = true;
@@ -6335,6 +6341,7 @@ var HubBrokerFormController = class {
     this._busy = false;
     this._verdict = null;
     this._error = "";
+    this._errorField = null;
     this._onDone = null;
     this._onUseDirect = null;
     this.close = () => {
@@ -6352,8 +6359,17 @@ var HubBrokerFormController = class {
       if (this._busy) return;
       const S5 = TOOLS_CARD_STRINGS.wifiDelivery;
       const host = this._host.trim();
-      if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+      this._errorField = null;
+      this._verdict = null;
+      if (!/^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(host) || host.split(".").some((part) => Number(part) > 255)) {
         this._error = S5.brokerHostRequired;
+        this._errorField = "host";
+        this.host.requestUpdate();
+        return;
+      }
+      if (!Number.isInteger(this._port) || this._port < 1 || this._port > 65535) {
+        this._error = S5.brokerPortInvalid;
+        this._errorField = "port";
         this.host.requestUpdate();
         return;
       }
@@ -6379,7 +6395,16 @@ var HubBrokerFormController = class {
       } catch (error) {
         const code = String(error?.code ?? "");
         this._verdict = code === "hub_no_answer" ? "no_answer" : null;
-        this._error = code === "hub_no_answer" ? "" : String(error?.message || S5.brokerFailed);
+        const validation = {
+          broker_invalid_host: ["host", S5.brokerHostRequired],
+          broker_invalid_port: ["port", S5.brokerPortInvalid],
+          broker_username_too_long: [this._useHaLogin ? null : "username", S5.brokerUsernameTooLong],
+          broker_password_too_long: [this._useHaLogin ? null : "password", S5.brokerPasswordTooLong],
+          broker_credentials_too_long: [null, S5.brokerCredentialsTooLong]
+        };
+        const fieldError = validation[code];
+        this._errorField = fieldError?.[0] ?? null;
+        this._error = code === "hub_no_answer" ? "" : fieldError?.[1] ?? S5.brokerFailed;
       } finally {
         this._busy = false;
         this._password = "";
@@ -6432,7 +6457,6 @@ var HubBrokerFormController = class {
    *  create flow's way out; `onDone` hears the verdict. */
   openFor(entryId, opts = {}) {
     this._entryId = entryId;
-    this._replace = this.state?.hub_connected === true;
     this._host = this.state?.suggested_host ?? "";
     this._port = Number(this.state?.suggested_port || 1883);
     this._useHaLogin = Boolean(this.state?.ha_login_available);
@@ -6441,16 +6465,24 @@ var HubBrokerFormController = class {
     this._busy = false;
     this._verdict = null;
     this._error = "";
+    this._errorField = null;
     this._onDone = opts.onDone ?? null;
     this._onUseDirect = opts.onUseDirect ?? null;
     this.open = true;
     this.host.requestUpdate();
   }
   _textField(params) {
-    const handle = (event) => params.onInput(String(event.currentTarget.value ?? ""));
-    return useLegacyTextField() ? b2`<ha-textfield
+    const handle = (event) => {
+      this._error = "";
+      this._errorField = null;
+      params.onInput(String(event.currentTarget.value ?? ""));
+      this.host.requestUpdate();
+    };
+    const error = params.id === `sb-broker-${this._errorField}` ? this._error : "";
+    const field = useLegacyTextField() ? b2`<ha-textfield
           id=${params.id}
-          class=${params.className ?? ""}
+          aria-invalid=${error ? "true" : "false"}
+          aria-describedby=${error ? `${params.id}-error` : A}
           .label=${params.label}
           .type=${params.type ?? "text"}
           .value=${params.value}
@@ -6459,7 +6491,8 @@ var HubBrokerFormController = class {
           @change=${handle}
         ></ha-textfield>` : b2`<ha-input
           id=${params.id}
-          class=${params.className ?? ""}
+          aria-invalid=${error ? "true" : "false"}
+          aria-describedby=${error ? `${params.id}-error` : A}
           type=${params.type ?? "text"}
           .label=${params.label}
           .value=${params.value}
@@ -6467,6 +6500,7 @@ var HubBrokerFormController = class {
           @input=${handle}
           @change=${handle}
         ></ha-input>`;
+    return b2`<div class=${params.className ?? ""}>${field}${error ? b2`<div class="broker-field-error" id=${`${params.id}-error`} role="alert">${error}</div>` : A}</div>`;
   }
   render() {
     if (!this.open) return A;
@@ -6482,7 +6516,7 @@ var HubBrokerFormController = class {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} ?disabled=${this._busy} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${this._replace ? b2`<div class="broker-warning" role="note">${S5.brokerReplaceWarning}</div>` : A}
+            <div class="broker-warning" role="note">${S5.brokerReplaceWarning}</div>
             <div class="dialog-field-helper">${S5.brokerIntro}</div>
             <div class="broker-fields">
               ${this._textField({
@@ -6503,8 +6537,7 @@ var HubBrokerFormController = class {
       value: String(this._port),
       type: "number",
       onInput: (value) => {
-        const port = Number.parseInt(value, 10);
-        this._port = Number.isInteger(port) && port > 0 && port < 65536 ? port : this._port;
+        this._port = Number(value);
         this.host.requestUpdate();
       }
     })}
@@ -6556,7 +6589,7 @@ var HubBrokerFormController = class {
             ${this._verdict === "no_answer" ? b2`<div class="broker-result bad" role="alert">${S5.brokerNoAnswer}</div>` : A}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._error}</div>
+            <div class="dialog-footer-note" role="alert">${this._errorField ? "" : this._error}</div>
             <div class="dialog-footer-actions">
               ${connected ? b2`<button class="dialog-btn dialog-btn-primary broker-done" @click=${this._finish}>${S5.brokerDone}</button>` : b2`
                     ${this._onUseDirect ? b2`<button class="dialog-btn broker-use-direct" ?disabled=${this._busy} @click=${this._useDirect}>${S5.useDirectInstead}</button>` : b2`<button class="dialog-btn" ?disabled=${this._busy} @click=${this.close}>${TOOLS_CARD_STRINGS.common.cancel}</button>`}
@@ -18301,9 +18334,15 @@ function deliveryAllowText(info) {
 function deliveryDocUrl(transport) {
   return deployedTransport(transport) === "mqtt" ? DOC_URLS.networkingMqtt : DOC_URLS.networkingWifi;
 }
-function formatLatency(seconds) {
+function formatLatency(seconds, locale = toolsCardLanguage()) {
+  if (seconds == null) return "?";
   const value = Number(seconds);
-  return Number.isFinite(value) ? value.toFixed(1) : "?";
+  if (!Number.isFinite(value)) return "?";
+  try {
+    return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  } catch {
+    return new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  }
 }
 
 // custom_components/sofabaton_x1s/www/src/components/wifi-delivery-panel.ts
@@ -18367,6 +18406,7 @@ var wifiDeliveryStyles = i`
   .delivery-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
   .delivery-btn.primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
   .delivery-btn:disabled { opacity: 0.45; cursor: default; }
+  .delivery-move .delivery-btn { max-width: 100%; white-space: normal; }
 `;
 function renderWifiDeliveryPanel(params) {
   const info = params.info;
@@ -18398,7 +18438,7 @@ function renderWifiDeliveryPanel(params) {
       ${lastPassed ? b2`<div class="delivery-ok">${S5.delivered(formatLatency(params.lastTest?.latency_s))}</div>` : A}
       ${info.target_stale ? b2`
             <div class="delivery-note">
-              <span class="delivery-note-text">${S5.targetStale}</span>
+              <span class="delivery-note-text">${S5.targetStale(info.desired_target ?? "")}</span>
               <button class="delivery-btn primary delivery-update-btn" ?disabled=${disabled} @click=${params.onUpdate}>${S5.updateHub}</button>
             </div>
           ` : A}
@@ -19415,7 +19455,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
    *  device's panel names what to allow). */
   _announceDeployResult(delivery, successLabel, hubEntryId) {
     if (deliveryFailed(delivery)) {
-      this.showCompletion?.({ tone: "error", label: TOOLS_CARD_STRINGS.wifiDelivery.syncedNotDeliveredDock }, hubEntryId);
+      const S5 = TOOLS_CARD_STRINGS.wifiDelivery;
+      this.showCompletion?.({ tone: "error", label: delivery?.status === "not_sent" ? S5.syncedNotTestedDock : S5.syncedNotDeliveredDock }, hubEntryId);
       return;
     }
     this.showCompletion?.({ tone: "success", label: successLabel }, hubEntryId);

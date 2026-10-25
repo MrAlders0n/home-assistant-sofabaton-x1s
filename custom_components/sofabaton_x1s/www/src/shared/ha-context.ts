@@ -244,7 +244,7 @@ export interface WifiCommandSyncState {
 /** Did a press from the hub reach Home Assistant? Written by the deploy's
  *  test press and by Test again; a real press marks it delivered. */
 export interface WifiDelivery {
-  /** `not_sent`: the hub did not take the test press at all. */
+  /** `not_sent`: the test command could not be sent; delivery is untested. */
   status: "delivered" | "not_delivered" | "not_sent" | string;
   /** `http` (the listener), `webhook` (X2 direct) or `mqtt`. */
   transport?: string;
@@ -263,7 +263,10 @@ export interface WifiDeliveryInfo {
   device_key: string;
   /** The deployed transport, null before the first deploy. */
   transport: string | null;
+  /** The deployed destination (never the webhook id). */
   target: string;
+  /** The current Home Assistant endpoint, which a stale device will use after sync. */
+  desired_target?: string;
   /** A webhook device whose records call an address Home Assistant no
    *  longer uses (a new local address or port): a sync rewrites them. */
   target_stale: boolean;

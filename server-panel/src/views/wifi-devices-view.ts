@@ -127,12 +127,12 @@ const T = {
   x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
   leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them.",
   // The delivery test (the card's "How presses reach Home Assistant", for this server).
-  deliveryTitle: "How presses reach the server",
-  notDelivered: "Button presses don't reach the server yet.",
+  deliveryTitle: "How button presses reach the server",
+  notDelivered: "The test command did not reach the server.",
   allowListener: (hubIp: string, target: string, port: string) =>
     `The hub (${hubIp}) calls ${target}. Allow TCP from the hub to port ${port} on this server's host; with Docker, publish port ${port}.`,
   allowMqtt: (broker: string) => `The hub must publish to the same broker this server uses${broker ? ` (${broker})` : ""}, and the broker must let it.`,
-  delivered: (seconds: string) => `Presses arrive (${seconds} s).`,
+  delivered: (seconds: string) => `Test command received (${seconds} s).`,
 };
 
 const BUTTON_ICONS: Record<string, string> = {

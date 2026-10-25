@@ -37,11 +37,22 @@ _MAX_FRAME_PAYLOAD = 0xFF
 HUB_MQTT_CONNECT_TIMEOUT = 15.0
 
 
+class HubMqttValidationError(ValueError):
+    """Invalid broker settings, with a stable code for localized clients."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def _utf16_field(text: str, what: str) -> bytes:
     encoded = str(text or "").encode("utf-16-be")
     units = len(encoded) // 2
     if units > HUB_MQTT_MAX_TEXT:
-        raise ValueError(f"the broker {what} is longer than {HUB_MQTT_MAX_TEXT} characters")
+        raise HubMqttValidationError(
+            f"broker_{what}_too_long",
+            f"the broker {what} is longer than {HUB_MQTT_MAX_TEXT} UTF-16 code units",
+        )
     return bytes([units]) + encoded
 
 
@@ -70,10 +81,10 @@ def build_hub_mqtt_setup_payload(
     try:
         ip = ipaddress.IPv4Address(str(broker_ip or "").strip()).packed
     except (ipaddress.AddressValueError, ValueError) as err:
-        raise ValueError(f"the broker address must be an IPv4 address, got {broker_ip!r}") from err
+        raise HubMqttValidationError("broker_invalid_host", "the broker address must be an IPv4 address") from err
     port = broker_port
     if isinstance(port, bool) or not isinstance(port, int) or not (0 < port < 65536):
-        raise ValueError(f"the broker port must be 1..65535, got {broker_port!r}")
+        raise HubMqttValidationError("broker_invalid_port", "the broker port must be 1..65535")
     data = (
         ip
         + port.to_bytes(2, "big")
@@ -83,7 +94,9 @@ def build_hub_mqtt_setup_payload(
     )
     payload = len(data).to_bytes(2, "big") + data
     if len(payload) > _MAX_FRAME_PAYLOAD:
-        raise ValueError("the broker username and password together are too long for the hub")
+        raise HubMqttValidationError(
+            "broker_credentials_too_long", "the broker username and password together are too long for the hub"
+        )
     return payload
 
 

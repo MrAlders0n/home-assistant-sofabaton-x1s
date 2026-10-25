@@ -12927,7 +12927,7 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
     wifiResyncingRemote: "Resyncing the physical remote\u2026",
     wifiCheckingBroker: "Checking the MQTT broker link\u2026",
-    wifiMovingDelivery: "Pointing the Wifi Device at Home Assistant\u2026",
+    wifiMovingDelivery: "Updating the Wifi Device's destination\u2026",
     wifiTestingDelivery: "Testing that button presses reach Home Assistant\u2026",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
@@ -13507,7 +13507,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
-    syncFailedRewrite: "The hub did not take the new delivery address. Sync again.",
+    syncFailedRewrite: "The hub did not save the new destination address. Sync again.",
     syncFailedMqttNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
@@ -13531,7 +13531,7 @@ var TOOLS_CARD_STRINGS_EN = {
     createModalCancel: "Cancel",
     createModalCreate: "Create",
     transportLabel: "Delivery method",
-    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach the broker configured in the Sofabaton app.",
+    transportMqttHint: "Faster delivery through your MQTT broker; the Sofabaton HTTP listener on port 8060 is not needed. The hub must be able to reach its configured broker.",
     transportHttpHint: "The hub calls Home Assistant directly over your network.",
     // The standalone server panel's create flow (no switch there yet).
     transportLockedNote: "The delivery method cannot be changed after the device is synced to the hub.",
@@ -13651,35 +13651,35 @@ var TOOLS_CARD_STRINGS_EN = {
     // Short names for the transport pills and the device editor's select.
     directShort: "Direct",
     mqttShort: "MQTT",
-    directWebhookHint: "The hub calls Home Assistant's own address. Nothing else to set up.",
-    mqttWebhookHint: "The hub publishes to the MQTT broker set in the Sofabaton app; Home Assistant must use the same broker.",
-    title: "How presses reach Home Assistant",
+    directWebhookHint: "Uses Home Assistant's HTTP endpoint; no separate HTTP listener is needed.",
+    mqttWebhookHint: "The hub publishes to its configured MQTT broker. Home Assistant must use the same broker.",
+    title: "How button presses reach Home Assistant",
     pathWebhook: (target) => `The hub calls Home Assistant at ${target}.`,
-    pathListener: (target) => `The hub calls this integration's listener at ${target}.`,
+    pathListener: (target) => `The hub calls this integration's HTTP listener at ${target}.`,
     pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; Home Assistant listens on ${broker}.` : "The hub publishes to its MQTT broker.",
     allowWebhook: (hubIp, hostPort) => `If the hub is on another network or VLAN, allow TCP from the hub (${hubIp}) to ${hostPort}.`,
     allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on the Home Assistant host; with Docker, publish port ${port}.`,
     allowMqtt: (broker) => broker ? `The hub must reach the same broker Home Assistant uses (${broker}), and the broker must let it publish.` : "The hub must reach the same broker Home Assistant uses, and the broker must let it publish.",
-    notDelivered: "Button presses don't reach Home Assistant yet.",
-    notSent: "The hub did not take the test press. Test again in a moment.",
-    delivered: (seconds) => `Presses arrive (${seconds} s).`,
+    notDelivered: "The test command did not reach Home Assistant.",
+    notSent: "Could not send the test command. Try again.",
+    delivered: (seconds) => `Test command received (${seconds} s).`,
     testAgain: "Test again",
     testing: "Testing\u2026",
     testFailed: "The test could not run. Try again.",
     networkingGuide: "Networking guide",
-    targetStale: "Home Assistant's address changed since this device was synced.",
-    updateHub: "Update the hub",
-    moveHint: "This device sends presses to the integration's listener on port 8060. Direct delivery calls Home Assistant's own address instead: no extra port to open, and https when Home Assistant uses it.",
-    moveButton: "Move to direct delivery",
-    moving: "Moving\u2026",
-    movedDock: "Wifi Device moved to direct delivery.",
-    syncedNotDeliveredDock: "Synced, but button presses don't reach Home Assistant yet.",
+    targetStale: (target) => target ? `Home Assistant now uses ${target}. Sync this device to update its destination.` : "Home Assistant's address has changed. Sync this device to update its destination.",
+    updateHub: "Sync",
+    moveHint: "This device uses the integration's HTTP listener. Switch to Home Assistant's HTTP endpoint, using HTTPS when configured. No separate HTTP listener is needed.",
+    moveButton: "Use Home Assistant's endpoint",
+    moving: "Switching\u2026",
+    movedDock: "Wifi Device now uses Home Assistant's HTTP endpoint.",
+    syncedNotDeliveredDock: "Synced, but the test command did not reach Home Assistant.",
     // The create dialog's MQTT option, checked before anything is written.
     mqttChecking: "Checking the broker link\u2026",
     mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
     mqttHubNotConnected: "The hub isn't connected to an MQTT broker. Set it up now?",
     setUpNow: "Set it up",
-    useDirectInstead: "Use Direct instead",
+    useDirectInstead: "Use Direct",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
     // The line is global: it shows on every hub's Settings tab while an X2
@@ -13695,29 +13695,38 @@ var TOOLS_CARD_STRINGS_EN = {
     brokerSetUp: "Set up",
     brokerChange: "Change",
     brokerDialogTitle: "Connect the hub to an MQTT broker",
-    brokerIntro: "The hub publishes button presses to this broker. Enter the broker's address as the hub reaches it (IPv4).",
+    brokerIntro: "The hub publishes button presses to this broker. Enter the broker's IPv4 address, reachable from the hub's network.",
     brokerHostLabel: "Broker address",
     brokerPortLabel: "Port",
     brokerTlsWarning: "Home Assistant's broker uses TLS on this port; the hub may not support it.",
-    brokerUseHaLogin: (username) => username ? `Use Home Assistant's MQTT login (${username})` : "Use Home Assistant's MQTT login",
-    brokerUseSeparateLogin: "Use a separate login",
+    brokerUseHaLogin: (username) => username ? `Use Home Assistant's MQTT credentials (${username})` : "Use Home Assistant's MQTT credentials",
+    brokerUseSeparateLogin: "Use separate credentials",
     brokerUsernameLabel: "Username",
     brokerPasswordLabel: "Password",
-    brokerLoginNote: "The hub will hold this login. Home Assistant sends it to the hub and does not store it.",
-    brokerReplaceWarning: "This replaces the hub's current broker setup, possibly the one the Sofabaton app or another MQTT integration relies on. The hub can't report its current setup, so this can't be undone here.",
+    brokerLoginNote: "The hub stores these credentials. This integration sends them to the hub without saving an additional copy.",
+    brokerReplaceWarning: "This replaces any MQTT broker settings saved on the hub, which the Sofabaton app or another MQTT integration may rely on. The current settings cannot be read or restored here.",
     brokerConnect: "Connect",
     brokerConnecting: "Connecting. The hub tries for up to 15 seconds\u2026",
     brokerConnectedResult: "The hub is connected to the broker.",
-    brokerFailed: "The hub could not connect. Check the address, the port and the login, and that the hub's network can reach the broker.",
-    brokerNoAnswer: "The hub gave no answer. Try again.",
-    brokerHostRequired: "Enter the broker's IPv4 address.",
+    brokerFailed: "The hub could not connect. Check the address, port and credentials, and that the hub's network can reach the broker.",
+    brokerNoAnswer: "The hub did not respond. Try again.",
+    brokerHostRequired: "Enter a valid IPv4 address for the broker.",
     brokerTryAgain: "Try again",
+    syncedNotTestedDock: "Synced, but delivery could not be tested.",
+    brokerPortInvalid: "Enter a port number from 1 to 65535.",
+    brokerUsernameTooLong: "The username is too long for the hub. Use a shorter username or separate credentials.",
+    brokerPasswordTooLong: "The password is too long for the hub. Use a shorter password or separate credentials.",
+    brokerCredentialsTooLong: "The username and password together are too long for the hub. Use shorter credentials.",
     brokerDone: "Done"
   }
 };
+var currentLanguage2 = "en";
 var currentStrings2 = TOOLS_CARD_STRINGS_EN;
 function isPlainObject3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function toolsCardLanguage() {
+  return currentLanguage2;
 }
 function valueAtPath(path) {
   let value = currentStrings2;
@@ -14155,7 +14164,11 @@ function noticeForJob(job, at) {
   }
   if (job.status === "cancelled") return { tone: "neutral", label: "Operation cancelled.", detail: null, jobId: job.job_id, sticky: false, at };
   if (jobDeliveryFailed(job)) {
-    return { tone: "error", label: job.kind === "test_wifi_delivery" ? "Button presses don't reach the server yet." : "Synced, but button presses don't reach the server yet.", detail: null, jobId: job.job_id, sticky: false, at };
+    const delivery = job.result?.delivery;
+    if (delivery?.status === "not_sent") {
+      return { tone: "error", label: job.kind === "test_wifi_delivery" ? "Could not send the test command. Try again." : "Synced, but delivery could not be tested.", detail: null, jobId: job.job_id, sticky: false, at };
+    }
+    return { tone: "error", label: job.kind === "test_wifi_delivery" ? "The test command did not reach the server." : "Synced, but the test command did not reach the server.", detail: null, jobId: job.job_id, sticky: false, at };
   }
   return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }
@@ -27538,9 +27551,15 @@ function deliveryFailed(delivery) {
   const status = String(delivery?.status ?? "");
   return status === "not_delivered" || status === "not_sent";
 }
-function formatLatency(seconds) {
+function formatLatency(seconds, locale = toolsCardLanguage()) {
+  if (seconds == null) return "?";
   const value = Number(seconds);
-  return Number.isFinite(value) ? value.toFixed(1) : "?";
+  if (!Number.isFinite(value)) return "?";
+  try {
+    return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  } catch {
+    return new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  }
 }
 
 // server-panel/src/views/wifi-devices-state.ts
@@ -27843,11 +27862,11 @@ var T2 = {
   x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
   leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them.",
   // The delivery test (the card's "How presses reach Home Assistant", for this server).
-  deliveryTitle: "How presses reach the server",
-  notDelivered: "Button presses don't reach the server yet.",
+  deliveryTitle: "How button presses reach the server",
+  notDelivered: "The test command did not reach the server.",
   allowListener: (hubIp, target, port) => `The hub (${hubIp}) calls ${target}. Allow TCP from the hub to port ${port} on this server's host; with Docker, publish port ${port}.`,
   allowMqtt: (broker) => `The hub must publish to the same broker this server uses${broker ? ` (${broker})` : ""}, and the broker must let it.`,
-  delivered: (seconds) => `Presses arrive (${seconds} s).`
+  delivered: (seconds) => `Test command received (${seconds} s).`
 };
 var BUTTON_ICONS = {
   up: mdiArrowUpBold,

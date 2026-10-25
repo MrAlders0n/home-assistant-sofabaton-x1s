@@ -287,6 +287,23 @@ def test_setup_payload_refuses(kw) -> None:
         hub_mqtt.build_hub_mqtt_setup_payload(**args)
 
 
+@pytest.mark.parametrize("kw, code", [
+    ({"broker_ip": "999.1.2.3"}, "broker_invalid_host"),
+    ({"broker_port": 65536}, "broker_invalid_port"),
+    ({"username": "u" * 61}, "broker_username_too_long"),
+    ({"password": "p" * 61}, "broker_password_too_long"),
+    ({"username": "u" * 60, "password": "p" * 60}, "broker_credentials_too_long"),
+])
+def test_broker_validation_exposes_codes_without_credential_values(kw, code) -> None:
+    args = {"broker_ip": "192.168.2.50", "broker_port": 1883, "hub_mac": "aabbccddeeff",
+            "username": "private-user", "password": "private-password"} | kw
+    with pytest.raises(hub_mqtt.HubMqttValidationError) as error:
+        hub_mqtt.build_hub_mqtt_setup_payload(**args)
+    assert error.value.code == code
+    assert args["username"] not in str(error.value)
+    assert args["password"] not in str(error.value)
+
+
 def _answer_with(engine, monkeypatch, reply: bytes | None, sent: list) -> None:
     def send(family, payload):
         sent.append((family, bytes(payload)))

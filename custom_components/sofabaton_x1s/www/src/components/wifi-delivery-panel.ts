@@ -79,6 +79,7 @@ export const wifiDeliveryStyles = css`
   .delivery-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
   .delivery-btn.primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
   .delivery-btn:disabled { opacity: 0.45; cursor: default; }
+  .delivery-move .delivery-btn { max-width: 100%; white-space: normal; }
 `;
 
 export function renderWifiDeliveryPanel(params: {
@@ -125,7 +126,7 @@ export function renderWifiDeliveryPanel(params: {
       ${info.target_stale
         ? html`
             <div class="delivery-note">
-              <span class="delivery-note-text">${S.targetStale}</span>
+              <span class="delivery-note-text">${S.targetStale(info.desired_target ?? "")}</span>
               <button class="delivery-btn primary delivery-update-btn" ?disabled=${disabled} @click=${params.onUpdate}>${S.updateHub}</button>
             </div>
           `

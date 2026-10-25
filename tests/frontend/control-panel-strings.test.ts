@@ -16,6 +16,18 @@ import {
 } from "../../custom_components/sofabaton_x1s/www/src/strings";
 import { TOOLS_CARD_LOCALES } from "../../custom_components/sofabaton_x1s/www/src/control-panel-language-loader";
 import "../../custom_components/sofabaton_x1s/www/src/control-panel-translations";
+import de from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/de";
+import es from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/es";
+import fr from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
+import nl from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/nl";
+import zhHans from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/zh-hans";
+
+test("complete catalogues explicitly cover every device type, including open-ended map keys", () => {
+  const expected = Object.keys(TOOLS_CARD_STRINGS_EN.cache.deviceClassLabels).sort();
+  for (const [locale, catalogue] of Object.entries({ de, es, fr, nl, "zh-hans": zhHans })) {
+    assert.deepEqual(Object.keys(catalogue.cache.deviceClassLabels).sort(), expected, locale);
+  }
+});
 
 test("control-panel strings default to the complete English table", () => {
   setToolsCardLanguage("en");

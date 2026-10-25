@@ -296,7 +296,10 @@ def test_the_local_address_entity_rejects_anything_but_ipv4(monkeypatch):
         hub, entry, entity, _signals = _local_address_entity(monkeypatch, loop)
 
         for bad in ("homeassistant.local", "2001:db8::1", "192.0.2"):
-            with pytest.raises(HomeAssistantError):
+            with pytest.raises(HomeAssistantError, match="https://192.168.1.5:8443"):
+                loop.run_until_complete(entity.async_set_value(bad))
+        for bad in ("192.0.2.99:0", "https://192.0.2.99:65536", "192.0.2.99:abc"):
+            with pytest.raises(HomeAssistantError, match="port number from 1 to 65535"):
                 loop.run_until_complete(entity.async_set_value(bad))
         assert entry.options == {}
         assert hub.local_address is None

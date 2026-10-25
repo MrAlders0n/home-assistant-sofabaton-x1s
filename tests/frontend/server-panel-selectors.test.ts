@@ -209,11 +209,13 @@ test("delivery: a Wifi deploy whose test press did not arrive is an error notice
   const deployed = (status: string) => job({ kind: "update_wifi_device", status: "done", result: { delivery: { status } } });
   assert.equal(jobDeliveryFailed(deployed("not_delivered")), true);
   assert.equal(jobDeliveryFailed(deployed("not_sent")), true);
+  assert.equal(noticeForJob(deployed("not_sent"), 5)?.label, "Synced, but delivery could not be tested.");
+  assert.equal(noticeForJob(job({ kind: "test_wifi_delivery", status: "done", result: { delivery: { status: "not_sent" } } }), 5)?.label, "Could not send the test command. Try again.");
   assert.equal(jobDeliveryFailed(deployed("delivered")), false);
   assert.equal(jobDeliveryFailed(job({ kind: "restore", status: "done", result: { delivery: { status: "not_delivered" } } })), false);
   assert.equal(noticeForJob(deployed("not_delivered"), 5)?.tone, "error");
-  assert.equal(noticeForJob(deployed("not_delivered"), 5)?.label, "Synced, but button presses don't reach the server yet.");
-  assert.equal(noticeForJob(job({ kind: "test_wifi_delivery", status: "done", result: { delivery: { status: "not_delivered" } } }), 5)?.label, "Button presses don't reach the server yet.");
+  assert.equal(noticeForJob(deployed("not_delivered"), 5)?.label, "Synced, but the test command did not reach the server.");
+  assert.equal(noticeForJob(job({ kind: "test_wifi_delivery", status: "done", result: { delivery: { status: "not_delivered" } } }), 5)?.label, "The test command did not reach the server.");
   assert.deepEqual(noticeForJob(deployed("delivered"), 5), { tone: "success", label: "Wifi Device synced.", detail: null, jobId: "j1", sticky: false, at: 5 });
 });
 

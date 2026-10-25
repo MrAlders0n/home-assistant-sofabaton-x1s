@@ -314,8 +314,12 @@ export function noticeForJob(job: JobView, at: number): HubNotice | null {
   }
   if (job.status === "cancelled") return { tone: "neutral", label: "Operation cancelled.", detail: null, jobId: job.job_id, sticky: false, at };
   if (jobDeliveryFailed(job)) {
+    const delivery = (job.result as { delivery?: { status?: string } } | null)?.delivery;
+    if (delivery?.status === "not_sent") {
+      return { tone: "error", label: job.kind === "test_wifi_delivery" ? "Could not send the test command. Try again." : "Synced, but delivery could not be tested.", detail: null, jobId: job.job_id, sticky: false, at };
+    }
     // The card's line: the write landed, presses do not arrive yet; the device's panel says what to allow.
-    return { tone: "error", label: job.kind === "test_wifi_delivery" ? "Button presses don't reach the server yet." : "Synced, but button presses don't reach the server yet.", detail: null, jobId: job.job_id, sticky: false, at };
+    return { tone: "error", label: job.kind === "test_wifi_delivery" ? "The test command did not reach the server." : "Synced, but the test command did not reach the server.", detail: null, jobId: job.job_id, sticky: false, at };
   }
   return { tone: "success", label: JOB_COMPLETIONS[job.kind] ?? "Operation completed.", detail: null, jobId: job.job_id, sticky: false, at };
 }

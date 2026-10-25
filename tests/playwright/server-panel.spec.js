@@ -3750,13 +3750,13 @@ test.describe("control panel, wifi commands", () => {
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
     const detail = view(page).locator("#wifi-device-detail");
     const delivery = detail.locator("#wifi-delivery");
-    await expect(delivery.locator(".wifi-delivery-title")).toHaveText("How presses reach the server");
-    await expect(delivery.locator("#wifi-delivery-failed")).toContainText("Button presses don't reach the server yet.");
+    await expect(delivery.locator(".wifi-delivery-title")).toHaveText("How button presses reach the server");
+    await expect(delivery.locator("#wifi-delivery-failed")).toContainText("The test command did not reach the server.");
     await expect(delivery.locator("#wifi-delivery-failed")).toContainText("The hub (192.168.1.50) calls http://192.168.1.10:8060. Allow TCP from the hub to port 8060");
     await page.screenshot({ path: shot(testInfo, "wifi-delivery-failed") });
 
     await delivery.locator("#wifi-test-delivery").click();
-    await expect(delivery.locator("#wifi-delivery-ok")).toHaveText("Presses arrive (0.1 s).");
+    await expect(delivery.locator("#wifi-delivery-ok")).toHaveText("Test command received (0.1 s).");
     await expect(delivery.locator("#wifi-delivery-failed")).toHaveCount(0);
     expect(calls.filter((c) => c.key === "test")).toEqual([{ key: "test", device: "a1b2c3d4" }]);
 
@@ -3804,7 +3804,7 @@ test.describe("control panel, wifi commands", () => {
     await expect.poll(() => sockets.length).toBe(1);
     const finished = (kind, status) => job({ job_id: kind, kind, status: "done", finished_at: new Date().toISOString(), result: { delivery: { ...failed, status } } });
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: finished("update_wifi_device", "not_delivered") }));
-    await expect(page.locator("#dock-status")).toHaveText("Synced, but button presses don't reach the server yet.");
+    await expect(page.locator("#dock-status")).toHaveText("Synced, but the test command did not reach the server.");
     await expect(page.locator("#bottom-dock")).toHaveClass(/dock--error/);
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: finished("test_wifi_delivery", "delivered") }));
     await expect(page.locator("#dock-status")).toHaveText("Delivery tested.");

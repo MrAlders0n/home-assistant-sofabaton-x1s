@@ -6,7 +6,8 @@
 // Commands create flow (the Wifi tab) share it; both hosts carry the dialog
 // classes. The form prefills Home Assistant's own broker and login (the
 // password never leaves the backend); a separate login can be typed
-// instead. Change (the hub already has a broker) shows the replace warning.
+// instead. Setup always explains that saved broker settings are replaced:
+// a disconnected hub may still have settings that we cannot read.
 
 import { css, html, nothing, type ReactiveController, type ReactiveControllerHost } from "lit";
 import type { HassLike, HubMqttLinkState } from "../shared/ha-context";
@@ -15,11 +16,14 @@ import { useLegacyTextField } from "../tabs/edit-detail/names";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 type Verdict = "connected" | "failed" | "no_answer" | null;
+type BrokerField = "host" | "port" | "username" | "password";
 
 export const hubBrokerFormStyles = css`
   .broker-fields { display: flex; gap: 10px; align-items: flex-start; }
   .broker-fields .broker-host { flex: 1 1 auto; min-width: 0; }
   .broker-fields .broker-port { flex: 0 0 110px; }
+  .broker-dialog ha-input, .broker-dialog ha-textfield { width: 100%; }
+  .broker-field-error { color: var(--error-color, #db4437); font-size: 12px; margin-top: 4px; }
   .broker-login { display: flex; flex-direction: column; gap: 6px; }
   .broker-login-option { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--primary-text-color); cursor: pointer; }
   .broker-login-option input { accent-color: var(--primary-color); margin: 0; }
@@ -53,7 +57,6 @@ export class HubBrokerFormController implements ReactiveController {
   loadedFor: string | null = null;
   open = false;
   private _entryId = "";
-  private _replace = false;
   private _host = "";
   private _port = 1883;
   private _useHaLogin = true;
@@ -62,6 +65,7 @@ export class HubBrokerFormController implements ReactiveController {
   private _busy = false;
   private _verdict: Verdict = null;
   private _error = "";
+  private _errorField: BrokerField | null = null;
   private _onDone: ((connected: boolean) => void) | null = null;
   private _onUseDirect: (() => void) | null = null;
 
@@ -117,7 +121,6 @@ export class HubBrokerFormController implements ReactiveController {
     opts: { onDone?: (connected: boolean) => void; onUseDirect?: () => void } = {},
   ) {
     this._entryId = entryId;
-    this._replace = this.state?.hub_connected === true;
     this._host = this.state?.suggested_host ?? "";
     this._port = Number(this.state?.suggested_port || 1883);
     this._useHaLogin = Boolean(this.state?.ha_login_available);
@@ -126,6 +129,7 @@ export class HubBrokerFormController implements ReactiveController {
     this._busy = false;
     this._verdict = null;
     this._error = "";
+    this._errorField = null;
     this._onDone = opts.onDone ?? null;
     this._onUseDirect = opts.onUseDirect ?? null;
     this.open = true;
@@ -149,8 +153,17 @@ export class HubBrokerFormController implements ReactiveController {
     if (this._busy) return;
     const S = TOOLS_CARD_STRINGS.wifiDelivery;
     const host = this._host.trim();
-    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    this._errorField = null;
+    this._verdict = null;
+    if (!/^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(host) || host.split(".").some((part) => Number(part) > 255)) {
       this._error = S.brokerHostRequired;
+      this._errorField = "host";
+      this.host.requestUpdate();
+      return;
+    }
+    if (!Number.isInteger(this._port) || this._port < 1 || this._port > 65535) {
+      this._error = S.brokerPortInvalid;
+      this._errorField = "port";
       this.host.requestUpdate();
       return;
     }
@@ -176,9 +189,16 @@ export class HubBrokerFormController implements ReactiveController {
     } catch (error) {
       const code = String((error as { code?: unknown } | null)?.code ?? "");
       this._verdict = code === "hub_no_answer" ? "no_answer" : null;
-      this._error = code === "hub_no_answer"
-        ? ""
-        : String((error as { message?: unknown } | null)?.message || S.brokerFailed);
+      const validation: Record<string, [BrokerField | null, string]> = {
+        broker_invalid_host: ["host", S.brokerHostRequired],
+        broker_invalid_port: ["port", S.brokerPortInvalid],
+        broker_username_too_long: [this._useHaLogin ? null : "username", S.brokerUsernameTooLong],
+        broker_password_too_long: [this._useHaLogin ? null : "password", S.brokerPasswordTooLong],
+        broker_credentials_too_long: [null, S.brokerCredentialsTooLong],
+      };
+      const fieldError = validation[code];
+      this._errorField = fieldError?.[0] ?? null;
+      this._error = code === "hub_no_answer" ? "" : fieldError?.[1] ?? S.brokerFailed;
     } finally {
       this._busy = false;
       this._password = "";
@@ -200,11 +220,18 @@ export class HubBrokerFormController implements ReactiveController {
     className?: string;
     onInput: (value: string) => void;
   }) {
-    const handle = (event: Event) => params.onInput(String((event.currentTarget as HTMLElement & { value: string }).value ?? ""));
-    return useLegacyTextField()
+    const handle = (event: Event) => {
+      this._error = "";
+      this._errorField = null;
+      params.onInput(String((event.currentTarget as HTMLElement & { value: string }).value ?? ""));
+      this.host.requestUpdate();
+    };
+    const error = params.id === `sb-broker-${this._errorField}` ? this._error : "";
+    const field = useLegacyTextField()
       ? html`<ha-textfield
           id=${params.id}
-          class=${params.className ?? ""}
+          aria-invalid=${error ? "true" : "false"}
+          aria-describedby=${error ? `${params.id}-error` : nothing}
           .label=${params.label}
           .type=${params.type ?? "text"}
           .value=${params.value}
@@ -214,7 +241,8 @@ export class HubBrokerFormController implements ReactiveController {
         ></ha-textfield>`
       : html`<ha-input
           id=${params.id}
-          class=${params.className ?? ""}
+          aria-invalid=${error ? "true" : "false"}
+          aria-describedby=${error ? `${params.id}-error` : nothing}
           type=${params.type ?? "text"}
           .label=${params.label}
           .value=${params.value}
@@ -222,6 +250,9 @@ export class HubBrokerFormController implements ReactiveController {
           @input=${handle}
           @change=${handle}
         ></ha-input>`;
+    return html`<div class=${params.className ?? ""}>${field}${error
+      ? html`<div class="broker-field-error" id=${`${params.id}-error`} role="alert">${error}</div>`
+      : nothing}</div>`;
   }
 
   render() {
@@ -238,7 +269,7 @@ export class HubBrokerFormController implements ReactiveController {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} ?disabled=${this._busy} @click=${this.close}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${this._replace ? html`<div class="broker-warning" role="note">${S.brokerReplaceWarning}</div>` : nothing}
+            <div class="broker-warning" role="note">${S.brokerReplaceWarning}</div>
             <div class="dialog-field-helper">${S.brokerIntro}</div>
             <div class="broker-fields">
               ${this._textField({
@@ -255,8 +286,7 @@ export class HubBrokerFormController implements ReactiveController {
                 value: String(this._port),
                 type: "number",
                 onInput: (value) => {
-                  const port = Number.parseInt(value, 10);
-                  this._port = Number.isInteger(port) && port > 0 && port < 65536 ? port : this._port;
+                  this._port = Number(value);
                   this.host.requestUpdate();
                 },
               })}
@@ -302,7 +332,7 @@ export class HubBrokerFormController implements ReactiveController {
             ${this._verdict === "no_answer" ? html`<div class="broker-result bad" role="alert">${S.brokerNoAnswer}</div>` : nothing}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._error}</div>
+            <div class="dialog-footer-note" role="alert">${this._errorField ? "" : this._error}</div>
             <div class="dialog-footer-actions">
               ${connected
                 ? html`<button class="dialog-btn dialog-btn-primary broker-done" @click=${this._finish}>${S.brokerDone}</button>`

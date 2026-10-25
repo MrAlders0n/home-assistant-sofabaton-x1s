@@ -46,6 +46,7 @@ from . import hub_mqtt_link
 from . import runtime
 from .wifi_deploy import wifi_sync_failure
 from .wifi_webhook import async_webhook_base_url
+from .lib.proxy_hub_mqtt import HubMqttValidationError
 
 # Same logger name as the package: log lines keep their source name.
 _LOGGER = logging.getLogger(__package__)
@@ -509,13 +510,14 @@ async def _ws_get_wifi_delivery(hass: HomeAssistant, connection, msg: dict[str, 
         normalize_wifi_transport(payload.get("deployed_transport")) if deployed else None
     )
     target = ""
+    desired_target = ""
     target_stale = False
     if transport == WIFI_TRANSPORT_WEBHOOK:
         current = await async_webhook_base_url(hass, hub)
-        target = url_origin(current) or str(payload.get("deployed_target") or "")
-        target_stale = bool(current) and current != store.get_deployed_url(
-            hub.entry_id, str(payload.get("device_key") or device_key)
-        )
+        deployed_url = store.get_deployed_url(hub.entry_id, str(payload.get("device_key") or device_key))
+        target = url_origin(deployed_url) or str(payload.get("deployed_target") or "")
+        desired_target = url_origin(current) or ""
+        target_stale = bool(current) and current != deployed_url
     elif transport == WIFI_TRANSPORT_MQTT:
         broker = hub_mqtt_link.ha_mqtt_broker(hass)
         target = f"{broker['host']}:{broker['port']}" if broker and broker["host"] else ""
@@ -529,6 +531,7 @@ async def _ws_get_wifi_delivery(hass: HomeAssistant, connection, msg: dict[str, 
             "device_key": str(payload.get("device_key") or device_key),
             "transport": transport,
             "target": target,
+            "desired_target": desired_target,
             "target_stale": target_stale,
             "hub_ip": str(getattr(hub, "host", "") or ""),
             "delivery": payload.get("delivery"),
@@ -678,8 +681,11 @@ async def _ws_set_hub_mqtt_broker(hass: HomeAssistant, connection, msg: dict[str
             password=msg.get("password"),
             use_ha_login=bool(msg.get("use_ha_login", True)),
         )
-    except ValueError as err:
-        connection.send_error(msg["id"], "invalid_format", str(err))
+    except HubMqttValidationError as err:
+        connection.send_error(msg["id"], err.code, str(err))
+        return
+    except ValueError:
+        connection.send_error(msg["id"], "invalid_format", "Invalid broker settings")
         return
     if connected is None:
         connection.send_error(msg["id"], "hub_no_answer", "The hub gave no answer to the broker setup")

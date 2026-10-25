@@ -5,7 +5,7 @@
 
 import type { WifiDelivery, WifiDeliveryInfo } from "../ha-context";
 import { DOC_URLS } from "../doc-links";
-import { TOOLS_CARD_STRINGS } from "../../strings";
+import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../../strings";
 
 export type WifiTransport = "http" | "webhook" | "mqtt";
 
@@ -65,7 +65,13 @@ export function deliveryDocUrl(transport: unknown): string {
 }
 
 /** Seconds as the panel shows them: one decimal. */
-export function formatLatency(seconds: number | null | undefined): string {
+export function formatLatency(seconds: number | null | undefined, locale = toolsCardLanguage()): string {
+  if (seconds == null) return "?";
   const value = Number(seconds);
-  return Number.isFinite(value) ? value.toFixed(1) : "?";
+  if (!Number.isFinite(value)) return "?";
+  try {
+    return new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  } catch {
+    return new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
+  }
 }
