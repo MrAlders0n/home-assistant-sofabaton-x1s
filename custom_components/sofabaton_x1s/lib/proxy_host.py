@@ -283,6 +283,7 @@ class _OpsHost(Protocol):
         ip_device: bool = ...,
         brand_name: str = ...,
         wifi_power_state: tuple[int, int, int] | None = ...,
+        color_id: int = ...,
     ) -> bytes: ...
     @staticmethod
     def _descriptive_play_blob_text(blob: bytes) -> str | None: ...

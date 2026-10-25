@@ -1,6 +1,6 @@
 {
   "pyright": "1.1.414",
-  "errors": 215,
+  "errors": 216,
   "entries": [
     {
       "file": "custom_components/sofabaton_x1s/lib/activity_sync.py",
@@ -366,7 +366,7 @@
       "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
       "rule": "reportArgumentType",
       "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
-      "count": 4
+      "count": 5
     },
     {
       "file": "sofabaton-x-server/src/sofabaton_server/routes_callbacks.py",
