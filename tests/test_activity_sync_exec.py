@@ -721,6 +721,32 @@ def test_device_macro_write_uses_the_single_page_device_builder():
     assert step2[:9] == b"\xff" * 9 and step2[9] == 3  # delay sentinel row
 
 
+def test_device_macro_write_pages_past_one_frame():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["macros"][0]["steps"] = [
+        {"command_id": 10, "duration": 0, "delay": 255} for _ in range(19)
+    ]
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    frames: list[tuple[int, bytes]] = []
+    proxy._send_family_frame = lambda family, payload: frames.append((family, payload))
+    # Answer each page with the ack it waits for: STATUS 0x00, then the key.
+    proxy.wait_for_ack_any = lambda candidates, **kw: (
+        candidates[0][0],
+        bytes([candidates[0][1] or 0]),
+    )
+    proxy.reset_ack_queues = lambda: None
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    assert [family for family, _payload in frames] == [0x12, 0x12]
+    assert frames[0][1][0:3] == b"\x01\x00\x01"
+    assert frames[1][1][0:3] == b"\x01\x00\x02"
+    assert frames[0][1][3:9] == bytes([0x01, 0x00, 0x02, DEVICE_ID, 198, 19])
+
+
 def test_device_sync_stale_preflight_blocks_before_any_write():
     base = device_base_bundle()
     edited = copy.deepcopy(base)

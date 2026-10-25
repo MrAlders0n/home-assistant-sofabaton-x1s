@@ -34,7 +34,7 @@ from .device_create import (
     build_device_create_step,
     build_device_update_step,
     build_key_sort_steps,
-    build_macro_step,
+    build_macro_steps,
     build_macro_step_record,
     build_set_idle_behavior_step,
     run_device_create,
@@ -1305,8 +1305,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                             delay=int(entry.get("delay", 0xFF)) & 0xFF,
                         )
                     )
-            parts.macro_steps.append(
-                build_macro_step(
+            parts.macro_steps.extend(
+                build_macro_steps(
                     hub_version=self.hub_version,
                     device_id=new_device_id,
                     key_id=button_id,
@@ -2082,8 +2082,8 @@ class RestoreMixin(_ProxyHost if TYPE_CHECKING else object):
                             delay=int(entry.get("delay", 0xFF)) & 0xFF,
                         )
                     )
-            post_steps.append(
-                build_macro_step(
+            post_steps.extend(
+                build_macro_steps(
                     hub_version=self.hub_version,
                     device_id=new_activity_id,
                     key_id=button_id,

@@ -31,7 +31,7 @@ from .device_create import (
     CreateStep,
     FAMILY_DEVICE_UPDATE,
     FAMILY_INPUTS,
-    build_macro_step,
+    build_macro_steps,
     build_macro_step_record,
     run_create_sequence,
     synthesize_command_code,
@@ -1112,8 +1112,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
     def _device_sync_macro_write(self, device_id: int, button_id: int, payload: Mapping[str, Any]) -> bool:
         """Device-scope macro write (incl. the 198/199 power sequences).
 
-        Devices use the single-page OP_3212 write that device create and
-        restore already exercise, not the paged activity macro save. Step
+        Devices use the OP_3212 create-step write that device create and
+        restore already exercise (paged past 18 rows on X1S/X2, 21 on
+        X1), not the activity macro save. Step
         rows default the device byte to the device itself and the 48-bit
         button code to the synthetic command code; a ``command_id == 0xFF``
         row is the firmware's delay sentinel (all head bytes 0xFF).
@@ -1142,7 +1143,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                 duration=int(step.get("duration", 0)) & 0xFF,
                 delay=int(step.get("delay", 0xFF)) & 0xFF,
             )
-        step = build_macro_step(
+        steps = build_macro_steps(
             hub_version=self.hub_version,
             device_id=dev_lo,
             key_id=button_id & 0xFF,
@@ -1150,7 +1151,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             step_records=bytes(step_records),
         )
         self.reset_ack_queues()
-        result = run_create_sequence(self, [step])
+        result = run_create_sequence(self, steps)
         return bool(result.success)
 
     def _activity_sync_macro_label_slot(self, activity_id: int, button_id: int) -> bytes | None:

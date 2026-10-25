@@ -246,7 +246,11 @@ Confirmed on **both** X1 and X1S:
   all-`0xFF` sentinel with the pause length in the final byte; they
   round-trip through write → hub → re-read. Grow, truncating shrink,
   and zero-step writes all land exactly; the label slot (30 B ASCII on
-  X1, 60 B UTF-16BE on X1S) is preserved across rewrites.
+  X1, 60 B UTF-16BE on X1S) is preserved across rewrites. Since issue
+  #315, a macro past one page (18 rows on X1S/X2, 21 on X1) goes out
+  through the same builder as several pages (`build_macro_steps`, the
+  paged activity save's layout); that paged create-step form is not yet
+  benched.
 - **Idle / automatic-power byte** — `0x0241` per-device write, both
   directions.
 - **Multi-category plans** — one sync carrying macro + binding + idle

@@ -369,6 +369,34 @@ def test_restore_style_create_with_zero_commands(monkeypatch, device_class: str)
     assert proxy.state.commands[0x23] == {}
 
 
+def test_restore_device_pages_a_power_macro_past_one_frame(monkeypatch) -> None:
+    """Issue #315: a 19-row macro no longer stops a device restore; it goes
+    out as two family-0x12 pages in the post phase."""
+
+    proxy = _make_proxy(HUB_VERSION_X2)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda: None)
+    sequence_calls: list[list[Any]] = []
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _fake_sequence(sequence_calls))
+
+    payload = build_empty_device_payload("Fan", "ir", hub_version=HUB_VERSION_X2)
+    payload["macros"] = [
+        {
+            "button_id": 0xC6,
+            "name": "POWER_ON",
+            "steps": [{"command_id": 0xFF, "delay": 2} for _ in range(19)],
+        }
+    ]
+    result = proxy.restore_device(payload)
+
+    assert result is not None
+    assert result["status"] == "success"
+    assert result["restored_macros"] == 1
+    macro_steps = [step for step in sequence_calls[1] if step.family == 0x12]
+    assert [step.payload[0:3] for step in macro_steps] == [b"\x01\x00\x01", b"\x01\x00\x02"]
+    assert macro_steps[0].payload[3:9] == bytes([0x01, 0x00, 0x02, 0x23, 0xC6, 19])
+
+
 @pytest.mark.parametrize(
     ("device_class", "expect_inputs_page"),
     [("ir", True), ("wifi_hue", True), ("wifi_sonos", True), ("wifi_roku", False)],

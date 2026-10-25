@@ -77,6 +77,12 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   restore replays it. A backup taken before this release still holds no
   RF signal data: take a new one. Restore also classifies a device block
   that has a class code but no class name.
+- Restore writes a macro that does not fit one frame (more than 18 steps
+  on the X1S and X2, 21 on the X1) as several pages, the way the app does.
+  Before, such a macro stopped the device or activity restore at that
+  macro, and a whole-hub restore with it; `sync_device()` had the same
+  limit for device macros. `device_create.build_macro_steps()` returns the
+  paged write; `build_macro_step()` stays the single-page form.
 
 ## 0.2.5 (2026-10-17)
 
