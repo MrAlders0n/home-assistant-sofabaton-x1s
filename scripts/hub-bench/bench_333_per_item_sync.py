@@ -726,11 +726,13 @@ async def c3_swap(proxy) -> None:
     if form not in ("none",) + ORDER_SYNC_FORMS:
         problem(f"--sync must be none, {' or '.join(ORDER_SYNC_FORMS)}")
         return
-    act, act2, _wifi = sandbox_ids()
+    sandbox_ids()
     acts = await proxy.activities(refresh=True)
     ids = [a.activity_id for a in acts]
-    if sorted(ids[-2:]) != sorted([act, act2]):
-        problem(f"J Sync / J Sync 2 are not the last two activities ({ids}); a swap would move real ones")
+    # Any two J activities (a device delete sweeps every empty activity, so
+    # J Sync 2 may be gone and a "J New" from `c6 create` stand in).
+    if len(acts) < 2 or not all(a.name.startswith("J ") for a in acts[-2:]):
+        problem(f"the last two activities are not both J activities ({ids}); a swap would move real ones")
         return
     new = ids[:-2] + [ids[-1], ids[-2]]
     TAPE.mark(f"c3_swap_{form}")

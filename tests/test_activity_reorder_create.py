@@ -103,7 +103,8 @@ def test_reorder_activities_uses_same_write_on_x1(monkeypatch) -> None:
     result = proxy.reorder_activities([0x66, 0x65])
 
     assert result == {"status": "success", "ordered_ids": [0x66, 0x65]}
-    assert [family for family, _payload in sent] == [FAMILY_ACTIVITY_SORT, FAMILY_REMOTE_SYNC]
+    # The X1 remote takes a new activity order on its own (bench_333): no remote sync.
+    assert [family for family, _payload in sent] == [FAMILY_ACTIVITY_SORT]
     payload = sent[0][1]
     assert payload[6:12] == bytes([0x00, 0x66, 0x01, 0x00, 0x65, 0x02])
     assert payload[-1] == sum(payload[3:-1]) & 0xFF
@@ -317,6 +318,10 @@ def test_reorder_remote_sync_is_the_resync_remote_frame(monkeypatch, hub_version
     result = reorder([0x02, 0x01] if kind == "device" else [0x66, 0x65])
 
     assert result is not None and result["status"] == "success"
+    if hub_version == HUB_VERSION_X1 and kind == "activity":
+        # The X1 remote takes a new activity order on its own (bench_333).
+        assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family] and len(ack_waits) == 1
+        return
     assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family, FAMILY_REMOTE_SYNC]
     assert wire[1] == trigger
     if hub_version != HUB_VERSION_X2:

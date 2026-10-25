@@ -402,8 +402,12 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             return None
 
         # The app follows the order write with REMOTE_SYNC so the remote
-        # refreshes its local view (on the X2, the all-remotes broadcast).
-        if remote_sync and not self._send_remote_sync_step(
+        # refreshes its local view: the order-only sync on the X2, the full
+        # one on the X1S. The X1 remote takes the new activity order on its
+        # own (bench_333, three observations), so it gets none.
+        if remote_sync and self.hub_version == HUB_VERSION_X1:
+            self._log.info("[ACT_REORDER] X1: the remote picks up the order alone; no remote sync")
+        elif remote_sync and not self._send_remote_sync_step(
             "activity-sort-remote-sync", ack_first_byte=0x00, purpose="order"
         ):
             self._log.warning("[ACT_REORDER] REMOTE_SYNC after reorder was not acked")
