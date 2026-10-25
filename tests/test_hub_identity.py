@@ -57,7 +57,7 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
 
     hub.version = "X2"
     hub.name = "X2 HUB"
-    hub.hub_firmware_version = 7  # X2 floor is 8
+    hub.hub_firmware_version = 8  # X2 floor is 9
 
     loop.run_until_complete(hub._async_update_firmware_state())
 
@@ -72,11 +72,11 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
     assert kwargs["translation_placeholders"] == {
         "name": "X2 HUB",
         "model": "X2",
-        "installed": "7",
-        "recommended": "8",
+        "installed": "8",
+        "recommended": "9",
     }
     # The installed firmware is mirrored onto the device even while outdated.
-    assert device_registry.updated == [("device-1", {"sw_version": "7"})]
+    assert device_registry.updated == [("device-1", {"sw_version": "8"})]
 
     # The placeholders must line up with the repair text in en.json; a
     # rename on either side silently breaks the rendered issue.
@@ -96,12 +96,12 @@ def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
     assert referenced == set(kwargs["translation_placeholders"])
 
     # Hub reports the recommended firmware -> the repair clears.
-    hub.hub_firmware_version = 8
+    hub.hub_firmware_version = 9
     loop.run_until_complete(hub._async_update_firmware_state())
 
     assert len(created) == 1  # no second issue raised
     assert deleted == [(hub_module.DOMAIN, "outdated_firmware_entry-id")]
-    assert device_registry.updated[-1] == ("device-1", {"sw_version": "8"})
+    assert device_registry.updated[-1] == ("device-1", {"sw_version": "9"})
 
     loop.close()
 

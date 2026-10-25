@@ -46,6 +46,10 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   entity (none for an entity a later write in the batch deleted). The engine's `end_write_batch()` summary gains
   `remote_sync_kind` (`"full"`, `"order"`, `"item"` or None) and
   `item_syncs`; the facade's `BatchOutcome` is unchanged.
+- The X2's recommended firmware floor is now 9, the firmware URL Wifi
+  records and the order-only and per-item syncs were validated on:
+  `firmware_outdated` is true for an X2 below it. The supported floor
+  (`firmware_unsupported`) is unchanged.
 
 ### Fixed
 
