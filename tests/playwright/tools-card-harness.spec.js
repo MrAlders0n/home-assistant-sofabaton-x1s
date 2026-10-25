@@ -701,4 +701,25 @@ test.describe("tools-card browser harness", () => {
       window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning").textContent.trim()))
       .toContain("This replaces the hub's current broker setup");
   });
+
+  test("the broker line is global: last of the GLOBAL rows, shown on another hub's tab naming the X2", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("settings-x2-broker-other-hub"));
+    const tile = () => page.evaluate(() =>
+      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".setting-broker")?.textContent?.replace(/\s+/g, " ").trim() ?? "");
+    await expect.poll(tile).toContain("Basement X2: The hub is connected to an MQTT broker.");
+    expect(await tile()).toContain("Change");
+    const rows = await page.evaluate(() =>
+      [...window.__toolsCardHarness.getCard().shadowRoot.querySelectorAll(".settings-list .setting-tile")].map((row) => ({
+        broker: row.classList.contains("setting-broker"),
+        global: Boolean(row.querySelector(".setting-global-tag")),
+      })));
+    const brokerIndex = rows.findIndex((row) => row.broker);
+    expect(rows[brokerIndex].global).toBe(true);
+    // Every row before it is global, none after it.
+    expect(rows.slice(0, brokerIndex).every((row) => row.global)).toBe(true);
+    expect(rows.slice(brokerIndex + 1).some((row) => row.global)).toBe(false);
+    await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".setting-broker").click());
+    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")));
+  });
 });

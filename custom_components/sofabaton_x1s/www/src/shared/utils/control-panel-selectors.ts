@@ -17,6 +17,14 @@ export function selectedHub(snapshot: ControlPanelSnapshot): ControlPanelHubStat
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
 }
 
+/** The X2 the Settings tab's global MQTT broker line is about: the selected
+ *  hub when it is an X2, otherwise the first X2; null without one. */
+export function brokerHub(snapshot: ControlPanelSnapshot): ControlPanelHubState | null {
+  const selected = selectedHub(snapshot);
+  if (selected?.broker_setup_available === true) return selected;
+  return (snapshot.state?.hubs ?? []).find((hub) => hub.broker_setup_available === true) ?? null;
+}
+
 /**
  * Device classes the Hub tab "Add device" dialog can create on a hub line,
  * in display order. Mirrors SUPPORTED_CREATE_CLASSES_BY_HUB in

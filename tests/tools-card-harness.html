@@ -3162,6 +3162,33 @@
         postLoad: card => clickTab(card, "Settings"),
       },
       {
+        id: "settings-x2-broker-other-hub", group: "Settings",
+        label: "X1S settings with an X2 configured: the global broker line names the X2",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [
+            HUB_1,
+            { entry_id: "hub-x2", name: "Basement X2", version: "X2",
+              ip_address: "192.168.1.112", activity_count: 2, device_count: 1,
+              mqtt_available: true, broker_setup_available: true,
+              actions: { can_sync_remote: true },
+              settings: { proxy_enabled: false, hex_logging_enabled: false, wifi_device_enabled: false } },
+          ],
+        },
+        hubMqtt: {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: true,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        },
+        postLoad: card => clickTab(card, "Settings"),
+      },
+      {
         id: 24, group: "WiFi Commands",
         label: "24. Create device modal",
         states: STATES_CONNECTED,

@@ -1237,6 +1237,10 @@ export const TOOLS_CARD_STRINGS_EN = {
     useDirectInstead: "Use Direct instead",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
+    // The line is global: it shows on every hub's Settings tab while an X2
+    // is configured, and names that X2 on another hub's tab.
+    brokerFooter: "GLOBAL",
+    brokerForHub: (hub: string, status: string) => `${hub}: ${status}`,
     brokerLoading: "Checking the hub's broker connection…",
     brokerConnected: "The hub is connected to an MQTT broker.",
     brokerNotConnected: "The hub is not connected to an MQTT broker.",

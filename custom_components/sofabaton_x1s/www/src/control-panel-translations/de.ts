@@ -480,6 +480,8 @@ export const TOOLS_CARD_STRINGS_DE = {
     setUpNow: "Einrichten",
     useDirectInstead: "Stattdessen direkt",
     brokerTitle: "MQTT-Broker",
+    brokerFooter: "GLOBAL",
+    brokerForHub: (hub: string, status: string) => `${hub}: ${status}`,
     brokerLoading: "Broker-Verbindung des Hubs wird geprüft…",
     brokerConnected: "Der Hub ist mit einem MQTT-Broker verbunden.",
     brokerNotConnected: "Der Hub ist mit keinem MQTT-Broker verbunden.",
