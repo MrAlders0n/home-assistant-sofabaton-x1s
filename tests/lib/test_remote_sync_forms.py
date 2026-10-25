@@ -132,6 +132,17 @@ def test_order_trigger_default_is_the_x2_order_sync(monkeypatch, hub_version, pa
     assert sent == [(0x64, payload)]
 
 
+def test_x1_order_trigger_sends_nothing_unless_the_full_form_is_asked(monkeypatch) -> None:
+    engine, sent = _engine("X1", monkeypatch)
+    engine.begin_write_batch()
+    # The X1 remote takes a new order on its own (bench_333): nothing sent or deferred.
+    assert engine._send_remote_sync_step("device-sort-remote-sync", ack_first_byte=0x00, purpose="order")
+    assert engine.end_write_batch()["remote_sync"] == "not_needed" and sent == []
+    engine.order_sync_form = write_batch.ORDER_SYNC_FULL
+    assert engine._send_remote_sync_step("activity-sort-remote-sync", ack_first_byte=0x00, purpose="order")
+    assert sent == [(0x64, b"")]
+
+
 @pytest.mark.parametrize("hub_version, payload", [("X1S", b""), ("X2", b"\xff\xff\xff")])
 def test_order_trigger_full_form_sends_the_full_trigger(monkeypatch, hub_version, payload) -> None:
     engine, sent = _engine(hub_version, monkeypatch)

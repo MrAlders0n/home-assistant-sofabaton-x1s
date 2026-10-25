@@ -20,6 +20,9 @@ shows, matched against the wall-clock times printed here.
     c3 swap [--sync none|full|native]
                                 swap J Sync and J Sync 2 (real activities keep
                                 their places)
+    c3 swap-devices [--sync none|full|native]
+                                swap the last two devices when both are J
+                                devices (J Sync W + `c6 create-device`)
     c3 order-sync               0x0464 [00 00 FF][00]
     c4 edit KIND [--sync none|legacy|native|auto]
                                 KIND: favorite | binding | activity-rename |
@@ -746,6 +749,32 @@ async def c3_swap(proxy) -> None:
     step("c3_swap", sync=form, before=ids[-2:], after=after[-2:], ok=after == new)
 
 
+async def c3_swap_devices(proxy) -> None:
+    form = ARGS.sync or "none"
+    if form not in ("none",) + ORDER_SYNC_FORMS:
+        problem(f"--sync must be none, {' or '.join(ORDER_SYNC_FORMS)}")
+        return
+    sandbox_ids()
+    devs = await proxy.devices(refresh=True)
+    ids = [d.device_id for d in devs]
+    if len(devs) < 2 or not all(d.name.startswith("J ") for d in devs[-2:]):
+        problem(f"the last two devices are not both J devices ({[[d.device_id, d.name] for d in devs]}); "
+                "a swap would move real ones")
+        return
+    new = ids[:-2] + [ids[-1], ids[-2]]
+    start = TAPE.mark(f"c3_swap_devices_{form}")["mono"]
+    if form == "none":
+        async with proxy.batch_writes(send_remote_sync=False):
+            await proxy.reorder_devices(new)
+    else:
+        proxy.sync.order_sync_form = form
+        await proxy.reorder_devices(new)
+    after = await proxy.devices(refresh=True)
+    step("c3_swap_devices", sync=form, before=[[d.device_id, d.name] for d in devs[-2:]],
+         after=[[d.device_id, d.name] for d in after[-2:]], ok=[d.device_id for d in after] == new,
+         sync_frames=_sync_frames_after(start))
+
+
 def _toggle_favorite(activity: dict, wifi: int) -> str:
     rows = activity.setdefault("favorite_slots", [])
     present = [r for r in rows if int(r.get("device_id") or 0) == wifi and int(r.get("command_id") or 0) == ADD_SLOT]
@@ -988,6 +1017,8 @@ def main() -> int:
             run_facade(f"sandbox-{sub}", body, needs_go_ahead=sub != "show")
         elif chunk == "c3" and sub == "swap":
             run_facade("c3-swap", c3_swap)
+        elif chunk == "c3" and sub == "swap-devices":
+            run_facade("c3-swap-devices", c3_swap_devices)
         elif chunk == "c3" and sub == "order-sync":
             chunk_c3_order_sync()
         elif chunk == "c4" and sub == "edit":

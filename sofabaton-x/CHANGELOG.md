@@ -30,9 +30,9 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
     full sync on the X1 and X1S, which list a deleted entity until then,
     and per-item syncs of the activities it cascaded into on the X2;
   - X2 reorders end with the order-only sync (set the engine's
-    `order_sync_form` to `"full"` for the old trigger); the X1S keeps the
-    full sync; X1 activity reorders send none (its remote takes the new
-    order on its own) and X1 device reorders keep the full sync.
+    `order_sync_form` to `"full"` for the old trigger); X1 reorders send
+    none (its remote takes a new device or activity order on its own;
+    `"full"` restores the trigger there too); the X1S keeps the full sync.
   A per-item or order-only sync the hub does not acknowledge falls back to
   the full sync. The engine gains `sync_remotes_after_write(created=,
   touched=, deleted=)` and `sync_remote_entity(entity_id)`.

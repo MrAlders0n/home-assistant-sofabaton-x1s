@@ -164,7 +164,7 @@ def _seed_device(proxy: X1Proxy, dev_lo: int, name: str, *, kind: int = 0x00) ->
     proxy._devices_catalog_ready = True  # a seeded catalog counts as read (W2)
 
 
-def test_reorder_devices_sends_family_11_order_then_remote_sync(monkeypatch) -> None:
+def test_reorder_devices_sends_family_11_order_and_no_x1_remote_sync(monkeypatch) -> None:
     proxy = _make_proxy(HUB_VERSION_X1)
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
     for dev_lo, name in enumerate(
@@ -188,14 +188,14 @@ def test_reorder_devices_sends_family_11_order_then_remote_sync(monkeypatch) -> 
     result = proxy.reorder_devices([6, 5, 4, 3, 2, 1])
 
     assert result == {"status": "success", "ordered_ids": [6, 5, 4, 3, 2, 1]}
-    assert [family for family, _payload in sent] == [FAMILY_DEVICE_SORT, FAMILY_REMOTE_SYNC]
+    # The X1 remote takes a new device order on its own (bench_333): no remote sync.
+    assert [family for family, _payload in sent] == [FAMILY_DEVICE_SORT]
     # Golden payload from the live X1 bench write (opcode 0x1011,
     # bench 2026-07-16): reverse order 0x06→1 … 0x01→6; the hub acked and
     # restamped every record's sort byte to match.
     assert sent[0][1] == bytes.fromhex(
         "01 00 01 01 00 01 00 06 01 00 05 02 00 04 03 00 03 04 00 02 05 00 01 06 2c"
     )
-    assert sent[1][1] == b""
     assert refreshed == [True]
 
 
@@ -318,8 +318,8 @@ def test_reorder_remote_sync_is_the_resync_remote_frame(monkeypatch, hub_version
     result = reorder([0x02, 0x01] if kind == "device" else [0x66, 0x65])
 
     assert result is not None and result["status"] == "success"
-    if hub_version == HUB_VERSION_X1 and kind == "activity":
-        # The X1 remote takes a new activity order on its own (bench_333).
+    if hub_version == HUB_VERSION_X1:
+        # The X1 remote takes a new device or activity order on its own (bench_333).
         assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family] and len(ack_waits) == 1
         return
     assert [opcode & 0xFF for opcode, _payload in wire] == [sort_family, FAMILY_REMOTE_SYNC]

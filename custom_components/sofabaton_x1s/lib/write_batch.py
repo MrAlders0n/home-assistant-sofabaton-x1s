@@ -38,7 +38,7 @@ import threading
 from typing import Any, Iterable, TYPE_CHECKING
 
 from .hub_logging import LogTag
-from .hub_versions import HUB_VERSION_X2, classify_hub_version
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X2, classify_hub_version
 from .protocol_const import OP_REMOTE_SYNC, OP_X2_REMOTE_SYNC_ALL
 from .remote_sync_frames import FAMILY_ENTITY_SYNC, entities_touched_by, entity_sync_frame, order_sync_frame
 
@@ -184,12 +184,17 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         success.
 
         ``purpose="order"`` marks a reorder's trigger: with
-        ``order_sync_form`` set to ``native`` the X2 gets its order-only
-        sync instead of the full broadcast. A batch still coalesces it into
-        the one full trigger, which covers the order.
+        ``order_sync_form`` set to ``native`` (the default) the X2 gets its
+        order-only sync instead of the full broadcast, the X1 nothing (its
+        remote takes a new device or activity order on its own, bench_333:
+        three activity and two device swaps), the X1S the full sync.
         """
 
         order = purpose == "order" and self.order_sync_form == ORDER_SYNC_NATIVE
+        if order and self.hub_version == HUB_VERSION_X1:
+            self._log.info("%s %s: the X1 remote picks up the order alone; no remote sync",
+                           LogTag.REMOTE, step_name)
+            return True
         if self._defer_remote_sync(step_name, kind="order" if order else "full"):
             return True
         frame = self._remote_sync_frame()

@@ -164,8 +164,8 @@ def entity_sync_frame(entity_id: int, *, x2_form: bool) -> tuple[int, bytes]:
 
 
 def order_sync_frame(hub_version: str | None) -> tuple[int, bytes] | None:
-    """The order-only sync for this hub, or None where the full trigger is
-    the only form (the X1/X1S reorder already ends with ``0x0064``)."""
+    """The order-only sync for this hub, or None where it has none (the
+    X1S reorder ends with the full ``0x0064``; the X1 needs no sync)."""
 
     if hub_version == HUB_VERSION_X2:
         return x2_order_sync_frame()
