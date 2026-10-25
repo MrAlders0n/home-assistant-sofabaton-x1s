@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import custom_components.sofabaton_x1s.hub as hub_module
 import custom_components.sofabaton_x1s.hub_identity as hub_identity_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
-from tests.hub_fakes import FakeDeviceRegistry, FakeHass
+from tests.hub_fakes import FakeDeviceRegistry, FakeHass, LegacyFakeDeviceRegistry
 
 
 def test_update_firmware_state_raises_and_clears_outdated_repair(monkeypatch):
@@ -158,6 +158,48 @@ def test_async_sync_authoritative_identity_skips_device_registry_rename_when_nam
     )
 
     assert rename_calls == []
+
+    loop.close()
+
+
+def _hub_with_mac(hass, entry_id="entry-id"):
+    return SofabatonHub(
+        hass,
+        entry_id,
+        "X1S HUB",
+        "127.0.0.1",
+        1234,
+        {"MAC": "aa:bb:cc:dd:ee:ff"},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+
+def test_hub_device_lookup_is_scoped_to_the_config_entry():
+    """Issue #316: HA 2026.10 deprecates the unscoped async_get_device."""
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    device = SimpleNamespace(id="device-1", name="X1S HUB", name_by_user=None)
+    registry = FakeDeviceRegistry(device)
+
+    assert _hub_with_mac(hass)._async_hub_device(registry) is device
+    # The same MAC under another config entry is not this hub's device.
+    assert _hub_with_mac(hass, "other-entry")._async_hub_device(registry) is None
+
+    loop.close()
+
+
+def test_hub_device_lookup_falls_back_on_home_assistant_before_2026_8():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+    device = SimpleNamespace(id="device-1", name="X1S HUB", name_by_user=None)
+
+    assert _hub_with_mac(hass)._async_hub_device(LegacyFakeDeviceRegistry(device)) is device
 
     loop.close()
 
