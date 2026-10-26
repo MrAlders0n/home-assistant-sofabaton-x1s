@@ -432,16 +432,6 @@ export class ControlPanelApi {
     });
   }
 
-  /** Move an X2 device off the listener onto Home Assistant's webhook, in
-   *  place; answers like a sync (its `delivery` included). */
-  moveWifiDeviceToDirect(hubEntryId: string, deviceKey: string) {
-    return this.hass.callWS<{ delivery?: WifiDelivery | null } & Record<string, unknown>>({
-      type: "sofabaton_x1s/command_sync/move_to_direct",
-      entry_id: hubEntryId,
-      device_key: deviceKey,
-    });
-  }
-
   getHubMqttStatus(hubEntryId: string) {
     return this.hass.callWS<HubMqttLinkState>({
       type: "sofabaton_x1s/hub_mqtt/status",

@@ -77,7 +77,7 @@ export function localizeWifiSyncFailure(value: unknown): string {
     case "retarget_failed": return S.syncFailedRetarget;
     case "writes_refused": return S.syncFailedWritesRefused;
     case "inplace_failed": return S.syncFailedRejected;
-    case "rewrite_failed": return S.syncFailedRewrite;
+    case "redeploy_needed": return S.syncFailedRedeployNeeded;
     case "mqtt_not_connected": return S.syncFailedMqttNotConnected;
     case "hub_mqtt_not_connected": return S.syncFailedHubMqttNotConnected;
     case "not_found": return S.syncFailedNotFound;
@@ -195,7 +195,7 @@ type WifiPhaseKey =
   | "wifiStarting" | "wifiReadingDevice" | "wifiEnablingDevice" | "wifiDisablingDevice"
   | "wifiValidatingActivities" | "wifiCreatingDevice" | "wifiDeletingDevice"
   | "wifiAddingToActivities" | "wifiMovingReferences" | "wifiApplyingFavorites" | "wifiApplyingBindings"
-  | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiCheckingBroker" | "wifiMovingDelivery"
+  | "wifiRefreshingMaps" | "wifiResyncingRemote" | "wifiCheckingBroker"
   | "wifiTestingDelivery" | "wifiUpdatedInPlace"
   | "wifiAlreadyCurrent" | "wifiDeviceRemoved" | "wifiComplete";
 
@@ -290,7 +290,6 @@ export const WIFI_DEPLOY_PHASES: Record<string, WifiPhaseKey> = {
   refreshing_maps: "wifiRefreshingMaps",
   resyncing_remote: "wifiResyncingRemote",
   checking_broker: "wifiCheckingBroker",
-  moving_delivery: "wifiMovingDelivery",
   testing_delivery: "wifiTestingDelivery",
   updated_in_place: "wifiUpdatedInPlace",
   already_current: "wifiAlreadyCurrent",

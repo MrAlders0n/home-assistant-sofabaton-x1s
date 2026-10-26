@@ -464,9 +464,8 @@ export class SofabatonEditDetailView extends LitElement {
     const current = bundleDeviceClass(this.bundle, Number(this.entityId)) === "wifi_mqtt" ? "mqtt" : "http";
     if (!this.mqttAvailable && current !== "mqtt") return nothing;
     const S = TOOLS_CARD_STRINGS.wifiCommands;
-    const D = TOOLS_CARD_STRINGS.wifiDelivery;
     if (!this.mqttAvailable) {
-      return html`<span class="transport-pill ${current}" title=${S.transportPillDeployedTitle}>${current === "mqtt" ? D.mqttShort : D.directShort}</span>`;
+      return html`<span class="transport-pill ${current}" title=${S.transportPillDeployedTitle}>${current === "mqtt" ? "MQTT" : "HTTP"}</span>`;
     }
     const shown = this.pendingTransport ?? current;
     const pending = shown !== current;
@@ -481,8 +480,8 @@ export class SofabatonEditDetailView extends LitElement {
           this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport: next }, bubbles: true, composed: true }));
         }}
       >
-        <option value="http" ?selected=${shown === "http"}>${D.directShort}</option>
-        <option value="mqtt" ?selected=${shown === "mqtt"}>${D.mqttShort}</option>
+        <option value="http" ?selected=${shown === "http"}>HTTP</option>
+        <option value="mqtt" ?selected=${shown === "mqtt"}>MQTT</option>
       </select>
     `;
   }

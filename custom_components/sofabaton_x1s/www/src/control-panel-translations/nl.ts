@@ -181,7 +181,6 @@ export const TOOLS_CARD_STRINGS_NL = {
     wifiRefreshingMaps: "Knoppen en snelkoppelingen vernieuwen…",
     wifiResyncingRemote: "Fysieke afstandsbediening opnieuw synchroniseren…",
     wifiCheckingBroker: "Verbinding met de MQTT-broker controleren…",
-    wifiMovingDelivery: "Doeladres van het Wifi-apparaat bijwerken…",
     wifiTestingDelivery: "Testen of knopdrukken Home Assistant bereiken…",
     wifiStepCommandAdd: (name: string | null) => (name == null ? "Een commando toevoegen…" : `Commando "${name}" toevoegen…`),
     wifiStepCommandPayload: (name: string | null) => (name == null ? "Een commando bijwerken…" : `Commando "${name}" bijwerken…`),
@@ -442,7 +441,7 @@ export const TOOLS_CARD_STRINGS_NL = {
     commandSlotDescription: "Maak een commando in deze positie. Geef het een naam en kies op welke activiteiten het wordt toegepast. De naam verschijnt op het scherm van je afstandsbediening, in de mobiele app en als sensorstatus van het Wifi-commando.",
     syncingDeviceFallback: "Wifi-apparaat synchroniseren…", syncingDeviceNamed: (deviceName: string) => `${deviceName} synchroniseren…`, startSync: "Synchronisatie wordt gestart",
     syncMessageFailed: "Laatste synchronisatie mislukt.", syncShortRunning: "Synchroniseren", syncShortFailed: "Synchronisatie mislukt", syncShortNeeded: "Synchronisatie nodig",
-    syncFailedAnotherSync: "Er loopt al een andere synchronisatie van Wifi Commands.", syncFailedHubBusy: "De hub is bezig met een andere bewerking. Probeer het opnieuw als die klaar is.", syncFailedPortInUse: "Het Wifi-apparaat kon niet worden ingeschakeld: de poort is in gebruik.", syncFailedActivitiesChanged: "De activiteiten op de hub zijn gewijzigd. Selecteer de activiteiten van dit Wifi-apparaat opnieuw, sla op en synchroniseer opnieuw.", syncFailedHubNoAnswer: "De hub reageerde niet. Synchroniseer opnieuw.", syncFailedDeviceAmbiguous: "Meer dan één Wifi-apparaat op de hub komt overeen met dit apparaat.", syncFailedPowerCommand: "Het aan- of uitcommando is niet een van de commando's van dit apparaat.", syncFailedDelete: "De hub heeft het vorige Wifi-apparaat niet verwijderd.", syncFailedCreate: "De hub heeft het Wifi-apparaat niet aangemaakt.", syncFailedReadback: "De hub heeft de commando's niet opgeslagen zoals verzonden; het vorige Wifi-apparaat is behouden.", syncFailedAttach: "Het Wifi-apparaat kon niet aan alle activiteiten worden toegevoegd.", syncFailedRetarget: "De activiteitsverwijzingen konden niet naar het nieuwe Wifi-apparaat worden verplaatst; het vorige is behouden.", syncFailedWritesRefused: "De hub weigerde enkele wijzigingen. Synchroniseer opnieuw om het Wifi-apparaat te herstellen.", syncFailedRejected: "De hub weigerde een wijziging. Synchroniseer opnieuw.", syncFailedRewrite: "De hub heeft het nieuwe doeladres niet opgeslagen. Synchroniseer opnieuw.", syncFailedMqttNotConnected: "De MQTT-integratie van Home Assistant is niet verbonden met een broker.", syncFailedHubMqttNotConnected: "De hub is niet verbonden met een MQTT-broker.", syncFailedGeneric: "De synchronisatie is gestopt. Synchroniseer opnieuw.", syncFailedNotFound: "Dit Wifi-apparaat bestaat niet meer. Laad de kaart opnieuw.",
+    syncFailedAnotherSync: "Er loopt al een andere synchronisatie van Wifi Commands.", syncFailedHubBusy: "De hub is bezig met een andere bewerking. Probeer het opnieuw als die klaar is.", syncFailedPortInUse: "Het Wifi-apparaat kon niet worden ingeschakeld: de poort is in gebruik.", syncFailedActivitiesChanged: "De activiteiten op de hub zijn gewijzigd. Selecteer de activiteiten van dit Wifi-apparaat opnieuw, sla op en synchroniseer opnieuw.", syncFailedHubNoAnswer: "De hub reageerde niet. Synchroniseer opnieuw.", syncFailedDeviceAmbiguous: "Meer dan één Wifi-apparaat op de hub komt overeen met dit apparaat.", syncFailedPowerCommand: "Het aan- of uitcommando is niet een van de commando's van dit apparaat.", syncFailedDelete: "De hub heeft het vorige Wifi-apparaat niet verwijderd.", syncFailedCreate: "De hub heeft het Wifi-apparaat niet aangemaakt.", syncFailedReadback: "De hub heeft de commando's niet opgeslagen zoals verzonden; het vorige Wifi-apparaat is behouden.", syncFailedAttach: "Het Wifi-apparaat kon niet aan alle activiteiten worden toegevoegd.", syncFailedRetarget: "De activiteitsverwijzingen konden niet naar het nieuwe Wifi-apparaat worden verplaatst; het vorige is behouden.", syncFailedWritesRefused: "De hub weigerde enkele wijzigingen. Synchroniseer opnieuw om het Wifi-apparaat te herstellen.", syncFailedRejected: "De hub weigerde een wijziging. Synchroniseer opnieuw.", syncFailedRedeployNeeded: "Synchroniseer dit Wifi-apparaat eerst en test het daarna.", syncFailedMqttNotConnected: "De MQTT-integratie van Home Assistant is niet verbonden met een broker.", syncFailedHubMqttNotConnected: "De hub is niet verbonden met een MQTT-broker.", syncFailedGeneric: "De synchronisatie is gestopt. Synchroniseer opnieuw.", syncFailedNotFound: "Dit Wifi-apparaat bestaat niet meer. Laad de kaart opnieuw.",
     deviceDeleting: "Verwijderen…", deviceSynced: "Gesynchroniseerd", actionButtonUnavailable: "Niet beschikbaar", actionButtonSyncing: "Synchroniseren…", actionButtonBusy: "Bezig",
     actionButtonSyncToHub: "Synchroniseren", actionButtonUpToDate: "Actueel", createDeviceBusy: "Wifi-apparaat aanmaken…", deviceName: "Apparaatnaam", createDeviceNameRequired: "Apparaatnaam is verplicht.",
     createDeviceFailed: "Wifi-apparaat kan niet worden aangemaakt", deleteDeviceBusy: "Wifi-apparaat verwijderen…", deleteDeviceFailed: "Wifi-apparaat kan niet worden verwijderd",
@@ -491,20 +490,11 @@ export const TOOLS_CARD_STRINGS_NL = {
     },
   },
   wifiDelivery: {
-    directName: "Rechtstreeks naar Home Assistant",
-    mqttName: "Via je MQTT-broker",
-    directShort: "Direct",
-    mqttShort: "MQTT",
-    directWebhookHint: "Gebruikt het HTTP-eindpunt van Home Assistant; een aparte HTTP-listener is niet nodig.",
-    mqttWebhookHint: "De hub publiceert naar zijn ingestelde MQTT-broker. Home Assistant moet dezelfde broker gebruiken.",
     title: "Zo bereiken knopdrukken Home Assistant",
-    pathWebhook: (target: string) => `De hub roept Home Assistant aan op ${target}.`,
     pathListener: (target: string) => `De hub roept de HTTP-listener van deze integratie aan op ${target}.`,
     pathMqtt: (broker: string) => broker
       ? `De hub publiceert naar zijn MQTT-broker; Home Assistant luistert op ${broker}.`
       : "De hub publiceert naar zijn MQTT-broker.",
-    allowWebhook: (hubIp: string, hostPort: string) =>
-      `Staat de hub in een ander netwerk of VLAN, sta dan TCP toe van de hub (${hubIp}) naar ${hostPort}.`,
     allowListener: (hubIp: string, port: string) =>
       `Sta TCP toe van de hub (${hubIp}) naar poort ${port} op de Home Assistant-host; publiceer met Docker poort ${port}.`,
     allowMqtt: (broker: string) => broker
@@ -517,19 +507,12 @@ export const TOOLS_CARD_STRINGS_NL = {
     testing: "Testen…",
     testFailed: "De test kon niet worden uitgevoerd. Probeer het opnieuw.",
     networkingGuide: "Netwerkgids",
-    targetStale: (target: string) => target ? `Home Assistant gebruikt nu ${target}. Synchroniseer dit apparaat om het doeladres bij te werken.` : "Het adres van Home Assistant is gewijzigd. Synchroniseer dit apparaat om het doeladres bij te werken.",
-    updateHub: "Synchroniseren",
-    moveHint:
-      "Dit apparaat gebruikt de HTTP-listener van de integratie. Schakel over naar het HTTP-eindpunt van Home Assistant, dat HTTPS gebruikt als dit is ingesteld. Een aparte HTTP-listener is dan niet nodig.",
-    moveButton: "Home Assistant-eindpunt gebruiken",
-    moving: "Overstappen…",
-    movedDock: "Het Wifi-apparaat gebruikt nu het HTTP-eindpunt van Home Assistant.",
     syncedNotDeliveredDock: "Gesynchroniseerd, maar het testcommando heeft Home Assistant niet bereikt.",
     mqttChecking: "Verbinding met de broker controleren…",
     mqttHaNotConnected: "De MQTT-integratie van Home Assistant is niet verbonden met een broker, dus MQTT kan nog niet gebruikt worden.",
     mqttHubNotConnected: "De hub is niet verbonden met een MQTT-broker. Nu instellen?",
     setUpNow: "Instellen",
-    useDirectInstead: "Direct gebruiken",
+    useHttpInstead: "HTTP gebruiken",
     brokerTitle: "MQTT-broker",
     brokerFooter: "ALGEMEEN",
     brokerForHub: (hub: string, status: string) => `${hub}: ${status}`,

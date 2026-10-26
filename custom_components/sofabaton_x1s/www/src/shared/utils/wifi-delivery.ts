@@ -7,13 +7,13 @@ import type { WifiDelivery, WifiDeliveryInfo } from "../ha-context";
 import { DOC_URLS } from "../doc-links";
 import { TOOLS_CARD_STRINGS, toolsCardLanguage } from "../../strings";
 
-export type WifiTransport = "http" | "webhook" | "mqtt";
+export type WifiTransport = "http" | "mqtt";
 
-/** The deployed transport: `http` (the listener), `webhook` (X2 direct) or
- *  `mqtt`; null for anything else (not deployed). */
+/** The deployed transport: `http` (the listener) or `mqtt`; null for
+ *  anything else (not deployed, or a device that needs a Sync first). */
 export function deployedTransport(value: unknown): WifiTransport | null {
   const text = String(value ?? "").trim().toLowerCase();
-  return text === "http" || text === "webhook" || text === "mqtt" ? text : null;
+  return text === "http" || text === "mqtt" ? text : null;
 }
 
 /** `host:port` of an origin such as `https://192.168.2.50:8123` (a bare
@@ -42,7 +42,6 @@ export function deliveryFailed(delivery: WifiDelivery | null | undefined): boole
 export function deliveryPathText(info: Pick<WifiDeliveryInfo, "transport" | "target">): string {
   const S = TOOLS_CARD_STRINGS.wifiDelivery;
   const transport = deployedTransport(info.transport);
-  if (transport === "webhook") return S.pathWebhook(info.target);
   if (transport === "mqtt") return S.pathMqtt(info.target);
   if (transport === "http") return S.pathListener(info.target);
   return "";
@@ -53,7 +52,6 @@ export function deliveryAllowText(info: Pick<WifiDeliveryInfo, "transport" | "ta
   const S = TOOLS_CARD_STRINGS.wifiDelivery;
   const transport = deployedTransport(info.transport);
   const hubIp = String(info.hub_ip ?? "").trim() || "?";
-  if (transport === "webhook") return S.allowWebhook(hubIp, targetHostPort(info.target));
   if (transport === "mqtt") return S.allowMqtt(info.target);
   if (transport === "http") return S.allowListener(hubIp, targetPort(info.target) || "8060");
   return "";

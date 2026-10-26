@@ -1195,69 +1195,6 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         self._log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
-    def rewrite_wifi_records(
-        self,
-        device_id: int,
-        bodies: dict[int, tuple[int, bytes]],
-        *,
-        ack_timeout: float = 5.0,
-    ) -> dict[str, Any] | None:
-        """Rewrite a Wifi device's command records in place.
-
-        ``bodies`` maps ``command_id -> (code type, record body)``, e.g.
-        :func:`wifi_url_record_bodies` to move a device's records to URL
-        records or :func:`wifi_http_record_bodies` to move them back. Each
-        record keeps its label and its 48-bit code (what bindings and
-        macros reference), so nothing else on the hub changes: the hub
-        stores and runs the new record in place (in-place rewrite
-        bench-validated on an X2, 2026-10-24). Refuses before any write
-        when a command is not on the device. No remote sync: the hub runs
-        Wifi commands, the remote only shows their labels.
-
-        Returns ``{"device_id", "rewritten"}`` or ``None`` when the device's
-        commands could not be read or the hub refused a record (the
-        records before it are already rewritten).
-        """
-
-        if not self.can_issue_commands():
-            self._log.info("[WIFI] rewrite_wifi_records ignored: proxy client is connected")
-            return None
-        dev_lo = int(device_id) & 0xFF
-        if not self._ensure_device_commands_cached(dev_lo):
-            self._log.warning("[WIFI] rewrite_wifi_records: commands of dev=0x%02X not readable", dev_lo)
-            return None
-        labels = dict(self.state.commands.get(dev_lo) or {})
-        metadata = self.state.command_metadata.get(dev_lo) or {}
-        wanted = sorted(int(cid) & 0xFF for cid in bodies)
-        missing = [cid for cid in wanted if cid not in labels or not isinstance(metadata.get(cid), dict)]
-        if missing:
-            self._log.warning(
-                "[WIFI] rewrite_wifi_records: dev=0x%02X has no command(s) %s", dev_lo, missing
-            )
-            return None
-        rewritten: list[int] = []
-        for cid in wanted:
-            code_type, body = bodies[cid]
-            meta = metadata[cid]
-            result = self.overwrite_command_payload(
-                device_id=dev_lo,
-                command_id=cid,
-                command_name=str(labels[cid]),
-                library_type=int(code_type) & 0xFF,
-                library_data=bytes(body),
-                button_code=int(meta.get("button_code", 0)) & 0xFFFFFFFFFFFF,
-                ack_timeout=ack_timeout,
-            )
-            if not isinstance(result, dict) or result.get("status") != "success":
-                self._log.warning(
-                    "[WIFI] rewrite_wifi_records: hub refused dev=0x%02X cmd=0x%02X", dev_lo, cid
-                )
-                return None
-            meta["library_type"] = int(code_type) & 0xFF
-            rewritten.append(cid)
-        self._log.info("[WIFI] rewrote %d record(s) of dev=0x%02X in place", len(rewritten), dev_lo)
-        return {"device_id": dev_lo, "rewritten": rewritten}
-
     def _build_launch_action_path(
         self,
         *,

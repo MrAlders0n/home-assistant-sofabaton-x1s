@@ -151,7 +151,6 @@ export const TOOLS_CARD_STRINGS_DE = {
     wifiRefreshingMaps: "Tasten und Verknüpfungen werden aktualisiert…",
     wifiResyncingRemote: "Fernbedienung wird neu synchronisiert…",
     wifiCheckingBroker: "MQTT-Broker-Verbindung wird geprüft…",
-    wifiMovingDelivery: "Zieladresse des WLAN-Geräts wird aktualisiert…",
     wifiTestingDelivery: "Es wird getestet, ob Tastendrücke Home Assistant erreichen…",
     wifiStepCommandAdd: (name: string | null) => (name == null ? "Befehl wird hinzugefügt…" : `Befehl "${name}" wird hinzugefügt…`),
     wifiStepCommandPayload: (name: string | null) => (name == null ? "Befehl wird aktualisiert…" : `Befehl "${name}" wird aktualisiert…`),
@@ -394,7 +393,7 @@ export const TOOLS_CARD_STRINGS_DE = {
     commandSlotDescription: "Erstelle einen Befehl an diesem Platz. Gib ihm einen Namen und wähle aus, auf welche Aktivitäten er angewendet wird. Der Name erscheint auf dem Display deiner Fernbedienung, in der mobilen App und als Sensorstatus des WLAN-Befehls.",
     syncingDeviceFallback: "WLAN-Gerät wird synchronisiert…", syncingDeviceNamed: (deviceName: string) => `${deviceName} wird synchronisiert…`, startSync: "Synchronisierung wird gestartet",
     syncMessageFailed: "Letzte Synchronisierung fehlgeschlagen.", syncShortRunning: "Wird synchronisiert", syncShortFailed: "Synchronisierung fehlgeschlagen", syncShortNeeded: "Synchronisierung erforderlich",
-    syncFailedAnotherSync: "Eine andere Synchronisierung von Wifi Commands läuft bereits.", syncFailedHubBusy: "Der Hub ist mit einem anderen Vorgang beschäftigt. Versuche es erneut, wenn er fertig ist.", syncFailedPortInUse: "Das WLAN-Gerät konnte nicht aktiviert werden: sein Port ist belegt.", syncFailedActivitiesChanged: "Die Aktivitäten auf dem Hub haben sich geändert. Wähle die Aktivitäten dieses WLAN-Geräts neu aus, speichere und synchronisiere erneut.", syncFailedHubNoAnswer: "Der Hub hat nicht geantwortet. Synchronisiere erneut.", syncFailedDeviceAmbiguous: "Mehrere WLAN-Geräte auf dem Hub passen zu diesem.", syncFailedPowerCommand: "Der Ein- oder Ausschaltbefehl ist keiner der Befehle dieses Geräts.", syncFailedDelete: "Der Hub hat das vorherige WLAN-Gerät nicht gelöscht.", syncFailedCreate: "Der Hub hat das WLAN-Gerät nicht erstellt.", syncFailedReadback: "Der Hub hat die Befehle nicht wie gesendet gespeichert; das vorherige WLAN-Gerät wurde beibehalten.", syncFailedAttach: "Das WLAN-Gerät konnte nicht zu allen Aktivitäten hinzugefügt werden.", syncFailedRetarget: "Die Aktivitätsverweise konnten nicht auf das neue WLAN-Gerät übertragen werden; das vorherige wurde beibehalten.", syncFailedWritesRefused: "Der Hub hat einige Änderungen abgelehnt. Synchronisiere erneut, um das WLAN-Gerät zu reparieren.", syncFailedRejected: "Der Hub hat eine Änderung abgelehnt. Synchronisiere erneut.", syncFailedRewrite: "Der Hub hat die neue Zieladresse nicht gespeichert. Synchronisiere erneut.", syncFailedMqttNotConnected: "Die MQTT-Integration von Home Assistant ist mit keinem Broker verbunden.", syncFailedHubMqttNotConnected: "Der Hub ist mit keinem MQTT-Broker verbunden.", syncFailedGeneric: "Die Synchronisierung wurde abgebrochen. Synchronisiere erneut.", syncFailedNotFound: "Dieses WLAN-Gerät gibt es nicht mehr. Lade die Karte neu.",
+    syncFailedAnotherSync: "Eine andere Synchronisierung von Wifi Commands läuft bereits.", syncFailedHubBusy: "Der Hub ist mit einem anderen Vorgang beschäftigt. Versuche es erneut, wenn er fertig ist.", syncFailedPortInUse: "Das WLAN-Gerät konnte nicht aktiviert werden: sein Port ist belegt.", syncFailedActivitiesChanged: "Die Aktivitäten auf dem Hub haben sich geändert. Wähle die Aktivitäten dieses WLAN-Geräts neu aus, speichere und synchronisiere erneut.", syncFailedHubNoAnswer: "Der Hub hat nicht geantwortet. Synchronisiere erneut.", syncFailedDeviceAmbiguous: "Mehrere WLAN-Geräte auf dem Hub passen zu diesem.", syncFailedPowerCommand: "Der Ein- oder Ausschaltbefehl ist keiner der Befehle dieses Geräts.", syncFailedDelete: "Der Hub hat das vorherige WLAN-Gerät nicht gelöscht.", syncFailedCreate: "Der Hub hat das WLAN-Gerät nicht erstellt.", syncFailedReadback: "Der Hub hat die Befehle nicht wie gesendet gespeichert; das vorherige WLAN-Gerät wurde beibehalten.", syncFailedAttach: "Das WLAN-Gerät konnte nicht zu allen Aktivitäten hinzugefügt werden.", syncFailedRetarget: "Die Aktivitätsverweise konnten nicht auf das neue WLAN-Gerät übertragen werden; das vorherige wurde beibehalten.", syncFailedWritesRefused: "Der Hub hat einige Änderungen abgelehnt. Synchronisiere erneut, um das WLAN-Gerät zu reparieren.", syncFailedRejected: "Der Hub hat eine Änderung abgelehnt. Synchronisiere erneut.", syncFailedRedeployNeeded: "Synchronisiere dieses WLAN-Gerät zuerst und teste es dann.", syncFailedMqttNotConnected: "Die MQTT-Integration von Home Assistant ist mit keinem Broker verbunden.", syncFailedHubMqttNotConnected: "Der Hub ist mit keinem MQTT-Broker verbunden.", syncFailedGeneric: "Die Synchronisierung wurde abgebrochen. Synchronisiere erneut.", syncFailedNotFound: "Dieses WLAN-Gerät gibt es nicht mehr. Lade die Karte neu.",
     deviceDeleting: "Wird gelöscht…", deviceSynced: "Synchronisiert", actionButtonUnavailable: "Nicht verfügbar", actionButtonSyncing: "Wird synchronisiert…", actionButtonBusy: "Beschäftigt",
     actionButtonSyncToHub: "Synchronisieren", actionButtonUpToDate: "Aktuell", createDeviceBusy: "WLAN-Gerät wird erstellt…", deviceName: "Gerätename", createDeviceNameRequired: "Gerätename ist erforderlich.", createDeviceFailed: "WLAN-Gerät konnte nicht erstellt werden",
     deleteDeviceBusy: "WLAN-Gerät wird gelöscht…", deleteDeviceFailed: "WLAN-Gerät konnte nicht gelöscht werden", createModalCancel: "Abbrechen", createModalCreate: "Erstellen",
@@ -440,20 +439,11 @@ export const TOOLS_CARD_STRINGS_DE = {
     },
   },
   wifiDelivery: {
-    directName: "Direkt an Home Assistant",
-    mqttName: "Über deinen MQTT-Broker",
-    directShort: "Direkt",
-    mqttShort: "MQTT",
-    directWebhookHint: "Nutzt den HTTP-Endpunkt von Home Assistant; ein separater HTTP-Listener ist nicht nötig.",
-    mqttWebhookHint: "Der Hub veröffentlicht an seinen konfigurierten MQTT-Broker. Home Assistant muss denselben Broker nutzen.",
     title: "So erreichen Tastendrücke Home Assistant",
-    pathWebhook: (target: string) => `Der Hub ruft Home Assistant unter ${target} auf.`,
     pathListener: (target: string) => `Der Hub ruft den HTTP-Listener dieser Integration unter ${target} auf.`,
     pathMqtt: (broker: string) => broker
       ? `Der Hub veröffentlicht an seinen MQTT-Broker; Home Assistant hört auf ${broker}.`
       : "Der Hub veröffentlicht an seinen MQTT-Broker.",
-    allowWebhook: (hubIp: string, hostPort: string) =>
-      `Wenn der Hub in einem anderen Netz oder VLAN ist, erlaube TCP vom Hub (${hubIp}) zu ${hostPort}.`,
     allowListener: (hubIp: string, port: string) =>
       `Erlaube TCP vom Hub (${hubIp}) zu Port ${port} auf dem Home-Assistant-Host; mit Docker veröffentliche Port ${port}.`,
     allowMqtt: (broker: string) => broker
@@ -466,19 +456,12 @@ export const TOOLS_CARD_STRINGS_DE = {
     testing: "Wird getestet…",
     testFailed: "Der Test konnte nicht ausgeführt werden. Versuche es erneut.",
     networkingGuide: "Netzwerk-Leitfaden",
-    targetStale: (target: string) => target ? `Home Assistant nutzt jetzt ${target}. Synchronisiere dieses Gerät, um seine Zieladresse zu aktualisieren.` : "Die Adresse von Home Assistant hat sich geändert. Synchronisiere dieses Gerät, um seine Zieladresse zu aktualisieren.",
-    updateHub: "Synchronisieren",
-    moveHint:
-      "Dieses Gerät nutzt den HTTP-Listener der Integration. Stelle es auf den HTTP-Endpunkt von Home Assistant um, der bei entsprechender Konfiguration HTTPS nutzt. Ein separater HTTP-Listener ist dann nicht nötig.",
-    moveButton: "Home-Assistant-Endpunkt nutzen",
-    moving: "Wird umgestellt…",
-    movedDock: "Das WLAN-Gerät nutzt jetzt den HTTP-Endpunkt von Home Assistant.",
     syncedNotDeliveredDock: "Synchronisiert, aber der Testbefehl hat Home Assistant nicht erreicht.",
     mqttChecking: "Broker-Verbindung wird geprüft…",
     mqttHaNotConnected: "Die MQTT-Integration von Home Assistant ist mit keinem Broker verbunden, daher ist MQTT noch nicht nutzbar.",
     mqttHubNotConnected: "Der Hub ist mit keinem MQTT-Broker verbunden. Jetzt einrichten?",
     setUpNow: "Einrichten",
-    useDirectInstead: "Direkt nutzen",
+    useHttpInstead: "HTTP nutzen",
     brokerTitle: "MQTT-Broker",
     brokerFooter: "GLOBAL",
     brokerForHub: (hub: string, status: string) => `${hub}: ${status}`,

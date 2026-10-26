@@ -146,7 +146,6 @@ export const TOOLS_CARD_STRINGS_FR = {
     wifiRefreshingMaps: "Actualisation des touches et des raccourcis…",
     wifiResyncingRemote: "Resynchronisation de la télécommande…",
     wifiCheckingBroker: "Vérification de la liaison avec le broker MQTT…",
-    wifiMovingDelivery: "Mise à jour de l’adresse de destination de l’appareil Wifi…",
     wifiTestingDelivery: "Vérification de la réception des appuis sur les touches par Home Assistant…",
     wifiStepCommandAdd: (name: string | null) => (name == null ? "Ajout d’une commande…" : `Ajout de la commande « ${name} »…`),
     wifiStepCommandPayload: (name: string | null) => (name == null ? "Mise à jour d’une commande…" : `Mise à jour de la commande « ${name} »…`),
@@ -384,7 +383,7 @@ export const TOOLS_CARD_STRINGS_FR = {
     commandSlotDescription: "Créez une commande dans cet emplacement. Nommez-la et choisissez les activités auxquelles elle s’applique. Son nom apparaîtra sur l’écran de la télécommande, dans l’application mobile et comme état du capteur de la commande Wifi.",
     syncingDeviceFallback: "Synchronisation de l’appareil Wifi…", syncingDeviceNamed: (deviceName: string) => `Synchronisation de ${deviceName}…`, startSync: "Démarrage de la synchronisation",
     syncMessageFailed: "Échec de la dernière synchronisation.", syncShortRunning: "Synchronisation", syncShortFailed: "Échec de la synchronisation", syncShortNeeded: "Synchronisation requise",
-    syncFailedAnotherSync: "Une autre synchronisation de Wifi Commands est déjà en cours.", syncFailedHubBusy: "Le hub est occupé par une autre opération. Réessayez quand elle sera terminée.", syncFailedPortInUse: "Impossible d’activer l’appareil Wifi : son port est déjà utilisé.", syncFailedActivitiesChanged: "Les activités du hub ont changé. Resélectionnez les activités de cet appareil Wifi, enregistrez et synchronisez à nouveau.", syncFailedHubNoAnswer: "Le hub n’a pas répondu. Synchronisez à nouveau.", syncFailedDeviceAmbiguous: "Plusieurs appareils Wifi du hub correspondent à celui-ci.", syncFailedPowerCommand: "La commande d’allumage ou d’extinction ne fait pas partie des commandes de cet appareil.", syncFailedDelete: "Le hub n’a pas supprimé l’ancien appareil Wifi.", syncFailedCreate: "Le hub n’a pas créé l’appareil Wifi.", syncFailedReadback: "Le hub n’a pas enregistré les commandes telles qu’envoyées ; l’ancien appareil Wifi a été conservé.", syncFailedAttach: "L’appareil Wifi n’a pas pu être ajouté à toutes les activités.", syncFailedRetarget: "Les références des activités n’ont pas pu être déplacées vers le nouvel appareil Wifi ; l’ancien a été conservé.", syncFailedWritesRefused: "Le hub a refusé certaines modifications. Synchronisez à nouveau pour réparer l’appareil Wifi.", syncFailedRejected: "Le hub a refusé une modification. Synchronisez à nouveau.", syncFailedRewrite: "Le hub n’a pas enregistré la nouvelle adresse de destination. Synchronisez à nouveau.", syncFailedMqttNotConnected: "L’intégration MQTT de Home Assistant n’est connectée à aucun broker.", syncFailedHubMqttNotConnected: "Le hub n’est connecté à aucun broker MQTT.", syncFailedGeneric: "La synchronisation s’est arrêtée. Synchronisez à nouveau.", syncFailedNotFound: "Cet appareil Wifi n’existe plus. Rechargez la carte.",
+    syncFailedAnotherSync: "Une autre synchronisation de Wifi Commands est déjà en cours.", syncFailedHubBusy: "Le hub est occupé par une autre opération. Réessayez quand elle sera terminée.", syncFailedPortInUse: "Impossible d’activer l’appareil Wifi : son port est déjà utilisé.", syncFailedActivitiesChanged: "Les activités du hub ont changé. Resélectionnez les activités de cet appareil Wifi, enregistrez et synchronisez à nouveau.", syncFailedHubNoAnswer: "Le hub n’a pas répondu. Synchronisez à nouveau.", syncFailedDeviceAmbiguous: "Plusieurs appareils Wifi du hub correspondent à celui-ci.", syncFailedPowerCommand: "La commande d’allumage ou d’extinction ne fait pas partie des commandes de cet appareil.", syncFailedDelete: "Le hub n’a pas supprimé l’ancien appareil Wifi.", syncFailedCreate: "Le hub n’a pas créé l’appareil Wifi.", syncFailedReadback: "Le hub n’a pas enregistré les commandes telles qu’envoyées ; l’ancien appareil Wifi a été conservé.", syncFailedAttach: "L’appareil Wifi n’a pas pu être ajouté à toutes les activités.", syncFailedRetarget: "Les références des activités n’ont pas pu être déplacées vers le nouvel appareil Wifi ; l’ancien a été conservé.", syncFailedWritesRefused: "Le hub a refusé certaines modifications. Synchronisez à nouveau pour réparer l’appareil Wifi.", syncFailedRejected: "Le hub a refusé une modification. Synchronisez à nouveau.", syncFailedRedeployNeeded: "Synchronisez d’abord cet appareil Wifi, puis testez-le.", syncFailedMqttNotConnected: "L’intégration MQTT de Home Assistant n’est connectée à aucun broker.", syncFailedHubMqttNotConnected: "Le hub n’est connecté à aucun broker MQTT.", syncFailedGeneric: "La synchronisation s’est arrêtée. Synchronisez à nouveau.", syncFailedNotFound: "Cet appareil Wifi n’existe plus. Rechargez la carte.",
     deviceDeleting: "Suppression…", deviceSynced: "Synchronisé", actionButtonUnavailable: "Indisponible", actionButtonSyncing: "Synchronisation…", actionButtonBusy: "Occupé",
     actionButtonSyncToHub: "Synchroniser", actionButtonUpToDate: "À jour", createDeviceBusy: "Création de l’appareil Wifi…", deviceName: "Nom de l’appareil", createDeviceNameRequired: "Le nom de l’appareil est obligatoire.", createDeviceFailed: "Impossible de créer l’appareil Wifi",
     deleteDeviceBusy: "Suppression de l’appareil Wifi…", deleteDeviceFailed: "Impossible de supprimer l’appareil Wifi", createModalCancel: "Annuler", createModalCreate: "Créer",
@@ -429,20 +428,11 @@ export const TOOLS_CARD_STRINGS_FR = {
     },
   },
   wifiDelivery: {
-    directName: "Directement à Home Assistant",
-    mqttName: "Via votre broker MQTT",
-    directShort: "Direct",
-    mqttShort: "MQTT",
-    directWebhookHint: "Utilise le point d’accès HTTP de Home Assistant ; aucun écouteur HTTP distinct n’est nécessaire.",
-    mqttWebhookHint: "Le hub publie sur son broker MQTT configuré. Home Assistant doit utiliser le même broker.",
     title: "Comment les appuis sur les touches parviennent à Home Assistant",
-    pathWebhook: (target: string) => `Le hub appelle Home Assistant à ${target}.`,
     pathListener: (target: string) => `Le hub appelle l’écouteur HTTP de cette intégration à ${target}.`,
     pathMqtt: (broker: string) => broker
       ? `Le hub publie sur son broker MQTT ; Home Assistant écoute sur ${broker}.`
       : "Le hub publie sur son broker MQTT.",
-    allowWebhook: (hubIp: string, hostPort: string) =>
-      `Si le hub est sur un autre réseau ou VLAN, autorisez TCP depuis le hub (${hubIp}) vers ${hostPort}.`,
     allowListener: (hubIp: string, port: string) =>
       `Autorisez TCP depuis le hub (${hubIp}) vers le port ${port} de l’hôte Home Assistant ; avec Docker, publiez le port ${port}.`,
     allowMqtt: (broker: string) => broker
@@ -455,19 +445,12 @@ export const TOOLS_CARD_STRINGS_FR = {
     testing: "Test en cours…",
     testFailed: "Le test n’a pas pu s’exécuter. Réessayez.",
     networkingGuide: "Guide réseau",
-    targetStale: (target: string) => target ? `Home Assistant utilise désormais ${target}. Synchronisez cet appareil pour mettre à jour son adresse de destination.` : "L’adresse de Home Assistant a changé. Synchronisez cet appareil pour mettre à jour son adresse de destination.",
-    updateHub: "Synchroniser",
-    moveHint:
-      "Cet appareil utilise l’écouteur HTTP de l’intégration. Passez au point d’accès HTTP de Home Assistant, qui utilise HTTPS si celui-ci est configuré. Aucun écouteur HTTP distinct n’est nécessaire.",
-    moveButton: "Utiliser le point d’accès Home Assistant",
-    moving: "Changement…",
-    movedDock: "L’appareil Wifi utilise désormais le point d’accès HTTP de Home Assistant.",
     syncedNotDeliveredDock: "Synchronisé, mais la commande de test n’est pas parvenue à Home Assistant.",
     mqttChecking: "Vérification de la liaison avec le broker…",
     mqttHaNotConnected: "L’intégration MQTT de Home Assistant n’est connectée à aucun broker, MQTT n’est donc pas encore utilisable.",
     mqttHubNotConnected: "Le hub n’est connecté à aucun broker MQTT. Le configurer maintenant ?",
     setUpNow: "Configurer",
-    useDirectInstead: "Utiliser Direct",
+    useHttpInstead: "Utiliser HTTP",
     brokerTitle: "Broker MQTT",
     brokerFooter: "GLOBAL",
     brokerForHub: (hub: string, status: string) => `${hub} : ${status}`,

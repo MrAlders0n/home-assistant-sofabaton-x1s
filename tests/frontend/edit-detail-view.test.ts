@@ -1758,8 +1758,7 @@ test("a managed Wifi device's delivery badge is a two-option select in the live 
   const element = managedWifiEditor();
   const text = templateText(element._renderTransportControl("device"));
   assert.match(text, /transport-select/);
-  // Direct (the listener, or the X2's webhook) and MQTT.
-  assert.match(text, /Direct/);
+  assert.match(text, /HTTP/);
   assert.match(text, /MQTT/);
   assert.doesNotMatch(text, /pending/);
 

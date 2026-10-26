@@ -246,9 +246,9 @@ export interface WifiCommandSyncState {
 export interface WifiDelivery {
   /** `not_sent`: the test command could not be sent; delivery is untested. */
   status: "delivered" | "not_delivered" | "not_sent" | string;
-  /** `http` (the listener), `webhook` (X2 direct) or `mqtt`. */
+  /** `http` (the listener) or `mqtt`. */
   transport?: string;
-  /** What the hub calls: an origin (never the webhook id) or a broker. */
+  /** What the hub calls: the listener's origin or a broker. */
   target?: string;
   hub_ip?: string;
   source_ip?: string;
@@ -258,24 +258,16 @@ export interface WifiDelivery {
 }
 
 /** command_config/delivery: how presses of one Wifi Device reach Home
- *  Assistant, and what can be done about it. */
+ *  Assistant. */
 export interface WifiDeliveryInfo {
   device_key: string;
-  /** The deployed transport, null before the first deploy. */
+  /** The deployed transport; null before the first deploy, and for a
+   *  device that needs a Sync before anything can arrive. */
   transport: string | null;
-  /** The deployed destination (never the webhook id). */
+  /** The deployed destination. */
   target: string;
-  /** The current Home Assistant endpoint, which a stale device will use after sync. */
-  desired_target?: string;
-  /** A webhook device whose records call an address Home Assistant no
-   *  longer uses (a new local address or port): a sync rewrites them. */
-  target_stale: boolean;
   hub_ip: string;
   delivery: WifiDelivery | null;
-  /** "Direct" on this hub is Home Assistant's own webhook (X2). */
-  webhook_available: boolean;
-  /** An X2 device on the listener that can move to the webhook. */
-  move_available: boolean;
 }
 
 /** hub_mqtt/status: both ends of an X2's MQTT broker link and what the
@@ -304,16 +296,12 @@ export interface WifiDeviceSummary extends WifiCommandSyncState {
   power_off_command_id?: number | null;
   requested_transport?: string;
   deployed_transport?: string | null;
-  /** Where a webhook deploy's records call (origin only). */
-  deployed_target?: string | null;
 }
 
 export interface WifiDevicesListResponse {
   devices?: WifiDeviceSummary[];
   max_devices?: number;
   mqtt_available?: boolean;
-  /** "Direct" on this hub is Home Assistant's own webhook (X2). */
-  webhook_available?: boolean;
 }
 
 export interface WifiCommandConfigResponse {
@@ -348,7 +336,6 @@ export interface WifiEventsListResponse {
   deployed_transport?: string | null;
   transport_switch_pending?: boolean;
   mqtt_available?: boolean;
-  webhook_available?: boolean;
   /** The events device's last delivery check. */
   delivery?: WifiDelivery | null;
 }

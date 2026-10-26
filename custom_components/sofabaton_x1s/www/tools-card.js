@@ -2147,7 +2147,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
     wifiResyncingRemote: "Resyncing the physical remote\u2026",
     wifiCheckingBroker: "Checking the MQTT broker link\u2026",
-    wifiMovingDelivery: "Updating the Wifi Device's destination\u2026",
     wifiTestingDelivery: "Testing that button presses reach Home Assistant\u2026",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
@@ -2727,7 +2726,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
-    syncFailedRewrite: "The hub did not save the new destination address. Sync again.",
+    syncFailedRedeployNeeded: "Sync this Wifi Device first, then test it.",
     syncFailedMqttNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
@@ -2863,21 +2862,12 @@ var TOOLS_CARD_STRINGS_EN = {
       c: "C"
     }
   },
-  // How Wifi Command presses reach Home Assistant: the delivery choice, the
-  // deploy's test press, Move to direct delivery, and an X2's MQTT broker.
+  // How Wifi Command presses reach Home Assistant: the deploy's test press
+  // and an X2's MQTT broker.
   wifiDelivery: {
-    directName: "Direct to Home Assistant",
-    mqttName: "Through your MQTT broker",
-    // Short names for the transport pills and the device editor's select.
-    directShort: "Direct",
-    mqttShort: "MQTT",
-    directWebhookHint: "Uses Home Assistant's HTTP endpoint; no separate HTTP listener is needed.",
-    mqttWebhookHint: "The hub publishes to its configured MQTT broker. Home Assistant must use the same broker.",
     title: "How button presses reach Home Assistant",
-    pathWebhook: (target) => `The hub calls Home Assistant at ${target}.`,
     pathListener: (target) => `The hub calls this integration's HTTP listener at ${target}.`,
     pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; Home Assistant listens on ${broker}.` : "The hub publishes to its MQTT broker.",
-    allowWebhook: (hubIp, hostPort) => `If the hub is on another network or VLAN, allow TCP from the hub (${hubIp}) to ${hostPort}.`,
     allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on the Home Assistant host; with Docker, publish port ${port}.`,
     allowMqtt: (broker) => broker ? `The hub must reach the same broker Home Assistant uses (${broker}), and the broker must let it publish.` : "The hub must reach the same broker Home Assistant uses, and the broker must let it publish.",
     notDelivered: "The test command did not reach Home Assistant.",
@@ -2887,19 +2877,13 @@ var TOOLS_CARD_STRINGS_EN = {
     testing: "Testing\u2026",
     testFailed: "The test could not run. Try again.",
     networkingGuide: "Networking guide",
-    targetStale: (target) => target ? `Home Assistant now uses ${target}. Sync this device to update its destination.` : "Home Assistant's address has changed. Sync this device to update its destination.",
-    updateHub: "Sync",
-    moveHint: "This device uses the integration's HTTP listener. Switch to Home Assistant's HTTP endpoint, using HTTPS when configured. No separate HTTP listener is needed.",
-    moveButton: "Use Home Assistant's endpoint",
-    moving: "Switching\u2026",
-    movedDock: "Wifi Device now uses Home Assistant's HTTP endpoint.",
     syncedNotDeliveredDock: "Synced, but the test command did not reach Home Assistant.",
     // The create dialog's MQTT option, checked before anything is written.
     mqttChecking: "Checking the broker link\u2026",
     mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
     mqttHubNotConnected: "The hub isn't connected to an MQTT broker. Set it up now?",
     setUpNow: "Set it up",
-    useDirectInstead: "Use Direct",
+    useHttpInstead: "Use HTTP",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
     // The line is global: it shows on every hub's Settings tab while an X2
@@ -3379,15 +3363,6 @@ var ControlPanelApi = class {
       device_key: deviceKey
     });
   }
-  /** Move an X2 device off the listener onto Home Assistant's webhook, in
-   *  place; answers like a sync (its `delivery` included). */
-  moveWifiDeviceToDirect(hubEntryId, deviceKey) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/command_sync/move_to_direct",
-      entry_id: hubEntryId,
-      device_key: deviceKey
-    });
-  }
   getHubMqttStatus(hubEntryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/hub_mqtt/status",
@@ -3578,8 +3553,8 @@ function localizeWifiSyncFailure(value) {
       return S5.syncFailedWritesRefused;
     case "inplace_failed":
       return S5.syncFailedRejected;
-    case "rewrite_failed":
-      return S5.syncFailedRewrite;
+    case "redeploy_needed":
+      return S5.syncFailedRedeployNeeded;
     case "mqtt_not_connected":
       return S5.syncFailedMqttNotConnected;
     case "hub_mqtt_not_connected":
@@ -3729,7 +3704,6 @@ var WIFI_DEPLOY_PHASES = {
   refreshing_maps: "wifiRefreshingMaps",
   resyncing_remote: "wifiResyncingRemote",
   checking_broker: "wifiCheckingBroker",
-  moving_delivery: "wifiMovingDelivery",
   testing_delivery: "wifiTestingDelivery",
   updated_in_place: "wifiUpdatedInPlace",
   already_current: "wifiAlreadyCurrent",
@@ -6343,15 +6317,15 @@ var HubBrokerFormController = class {
     this._error = "";
     this._errorField = null;
     this._onDone = null;
-    this._onUseDirect = null;
+    this._onUseHttp = null;
     this.close = () => {
       if (this._busy) return;
       this.open = false;
       this._password = "";
       this.host.requestUpdate();
     };
-    this._useDirect = () => {
-      const handler = this._onUseDirect;
+    this._useHttp = () => {
+      const handler = this._onUseHttp;
       this.close();
       handler?.();
     };
@@ -6453,7 +6427,7 @@ var HubBrokerFormController = class {
     this.open = false;
     this.host.requestUpdate();
   }
-  /** Open the form, prefilled from the held state. `onUseDirect` adds the
+  /** Open the form, prefilled from the held state. `onUseHttp` adds the
    *  create flow's way out; `onDone` hears the verdict. */
   openFor(entryId, opts = {}) {
     this._entryId = entryId;
@@ -6467,7 +6441,7 @@ var HubBrokerFormController = class {
     this._error = "";
     this._errorField = null;
     this._onDone = opts.onDone ?? null;
-    this._onUseDirect = opts.onUseDirect ?? null;
+    this._onUseHttp = opts.onUseHttp ?? null;
     this.open = true;
     this.host.requestUpdate();
   }
@@ -6592,7 +6566,7 @@ var HubBrokerFormController = class {
             <div class="dialog-footer-note" role="alert">${this._errorField ? "" : this._error}</div>
             <div class="dialog-footer-actions">
               ${connected ? b2`<button class="dialog-btn dialog-btn-primary broker-done" @click=${this._finish}>${S5.brokerDone}</button>` : b2`
-                    ${this._onUseDirect ? b2`<button class="dialog-btn broker-use-direct" ?disabled=${this._busy} @click=${this._useDirect}>${S5.useDirectInstead}</button>` : b2`<button class="dialog-btn" ?disabled=${this._busy} @click=${this.close}>${TOOLS_CARD_STRINGS.common.cancel}</button>`}
+                    ${this._onUseHttp ? b2`<button class="dialog-btn broker-use-http" ?disabled=${this._busy} @click=${this._useHttp}>${S5.useHttpInstead}</button>` : b2`<button class="dialog-btn" ?disabled=${this._busy} @click=${this.close}>${TOOLS_CARD_STRINGS.common.cancel}</button>`}
                     <button class="dialog-btn dialog-btn-primary broker-connect" ?disabled=${this._busy} @click=${this.submit}>
                       ${this._verdict ? S5.brokerTryAgain : S5.brokerConnect}
                     </button>
@@ -15630,9 +15604,8 @@ var SofabatonEditDetailView = class extends i4 {
     const current = bundleDeviceClass(this.bundle, Number(this.entityId)) === "wifi_mqtt" ? "mqtt" : "http";
     if (!this.mqttAvailable && current !== "mqtt") return A;
     const S5 = TOOLS_CARD_STRINGS.wifiCommands;
-    const D2 = TOOLS_CARD_STRINGS.wifiDelivery;
     if (!this.mqttAvailable) {
-      return b2`<span class="transport-pill ${current}" title=${S5.transportPillDeployedTitle}>${current === "mqtt" ? D2.mqttShort : D2.directShort}</span>`;
+      return b2`<span class="transport-pill ${current}" title=${S5.transportPillDeployedTitle}>${current === "mqtt" ? "MQTT" : "HTTP"}</span>`;
     }
     const shown = this.pendingTransport ?? current;
     const pending = shown !== current;
@@ -15647,8 +15620,8 @@ var SofabatonEditDetailView = class extends i4 {
       this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport: next }, bubbles: true, composed: true }));
     }}
       >
-        <option value="http" ?selected=${shown === "http"}>${D2.directShort}</option>
-        <option value="mqtt" ?selected=${shown === "mqtt"}>${D2.mqttShort}</option>
+        <option value="http" ?selected=${shown === "http"}>HTTP</option>
+        <option value="mqtt" ?selected=${shown === "mqtt"}>MQTT</option>
       </select>
     `;
   }
@@ -18298,7 +18271,7 @@ if (!customElements.get("sofabaton-backup-tab")) {
 // custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery.ts
 function deployedTransport(value) {
   const text = String(value ?? "").trim().toLowerCase();
-  return text === "http" || text === "webhook" || text === "mqtt" ? text : null;
+  return text === "http" || text === "mqtt" ? text : null;
 }
 function targetHostPort(target) {
   const text = String(target ?? "").trim();
@@ -18317,7 +18290,6 @@ function deliveryFailed(delivery) {
 function deliveryPathText(info) {
   const S5 = TOOLS_CARD_STRINGS.wifiDelivery;
   const transport = deployedTransport(info.transport);
-  if (transport === "webhook") return S5.pathWebhook(info.target);
   if (transport === "mqtt") return S5.pathMqtt(info.target);
   if (transport === "http") return S5.pathListener(info.target);
   return "";
@@ -18326,7 +18298,6 @@ function deliveryAllowText(info) {
   const S5 = TOOLS_CARD_STRINGS.wifiDelivery;
   const transport = deployedTransport(info.transport);
   const hubIp = String(info.hub_ip ?? "").trim() || "?";
-  if (transport === "webhook") return S5.allowWebhook(hubIp, targetHostPort(info.target));
   if (transport === "mqtt") return S5.allowMqtt(info.target);
   if (transport === "http") return S5.allowListener(hubIp, targetPort(info.target) || "8060");
   return "";
@@ -18362,7 +18333,7 @@ var wifiDeliveryStyles = i`
   .delivery-head { display: flex; align-items: center; gap: 8px; }
   .delivery-head ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); flex: 0 0 auto; }
   .delivery-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
-  .delivery-path, .delivery-note-text, .delivery-move-text {
+  .delivery-path {
     font-size: 12px;
     line-height: 1.45;
     color: var(--secondary-text-color);
@@ -18384,13 +18355,6 @@ var wifiDeliveryStyles = i`
   .delivery-alert a { color: var(--primary-color); }
   .delivery-ok { font-size: 12px; color: var(--success-color, #43a047); }
   .delivery-error { font-size: 12px; color: var(--error-color, #db4437); }
-  .delivery-note, .delivery-move {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .delivery-note-text, .delivery-move-text { flex: 1 1 240px; }
   .delivery-btn {
     border: 1px solid var(--divider-color);
     border-radius: var(--tools-radius-sm, 10px);
@@ -18404,9 +18368,7 @@ var wifiDeliveryStyles = i`
     white-space: nowrap;
   }
   .delivery-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-  .delivery-btn.primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
   .delivery-btn:disabled { opacity: 0.45; cursor: default; }
-  .delivery-move .delivery-btn { max-width: 100%; white-space: normal; }
 `;
 function renderWifiDeliveryPanel(params) {
   const info = params.info;
@@ -18436,20 +18398,6 @@ function renderWifiDeliveryPanel(params) {
             </div>
           ` : A}
       ${lastPassed ? b2`<div class="delivery-ok">${S5.delivered(formatLatency(params.lastTest?.latency_s))}</div>` : A}
-      ${info.target_stale ? b2`
-            <div class="delivery-note">
-              <span class="delivery-note-text">${S5.targetStale(info.desired_target ?? "")}</span>
-              <button class="delivery-btn primary delivery-update-btn" ?disabled=${disabled} @click=${params.onUpdate}>${S5.updateHub}</button>
-            </div>
-          ` : A}
-      ${info.move_available ? b2`
-            <div class="delivery-move">
-              <span class="delivery-move-text">${S5.moveHint}</span>
-              <button class="delivery-btn primary delivery-move-btn" ?disabled=${disabled} @click=${params.onMove}>
-                ${params.busy === "move" ? S5.moving : S5.moveButton}
-              </button>
-            </div>
-          ` : A}
       ${params.error ? b2`<div class="delivery-error" role="alert">${params.error}</div>` : A}
     </section>
   `;
@@ -18646,10 +18594,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._maxWifiDevices = 5;
     // The MQTT option shows only when the backend reports X2 + MQTT integration.
     this._mqttAvailable = false;
-    // "Direct" is Home Assistant's own webhook (X2) rather than the listener.
-    this._webhookAvailable = false;
-    // New devices default to Direct (decision 2); "http" is the Direct wish.
-    this._newDeviceTransport = "http";
+    // New devices default to MQTT where it is offered (the faster path).
+    this._newDeviceTransport = "mqtt";
     // How presses of the selected device (and of the Wifi Events device)
     // reach Home Assistant, and the Test again / Move work on them.
     this._deliveryInfo = null;
@@ -18829,9 +18775,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._openCreateDeviceModal = () => {
       if (this._hubCommandLocked()) return;
       this._newDeviceName = "";
-      this._newDeviceTransport = "http";
       this._deviceMutationError = "";
       this._brokerForm.reset();
+      this._newDeviceTransport = "http";
+      if (this._mqttAvailable) this._pickNewDeviceTransport("mqtt");
       this._createDeviceModalOpen = true;
     };
     this._closeCreateDeviceModal = () => {
@@ -19340,9 +19287,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   //
   // One panel per deployed device (and the Wifi Events device): the path
   // the hub uses, Test again, and when it applies the failed test's
-  // guidance, Move to direct delivery and Update the hub.
+  // guidance.
   _renderDeliveryPanel(deviceKey, info) {
-    const events = deviceKey === WIFI_EVENTS_DEVICE_KEY;
     return renderWifiDeliveryPanel({
       info,
       busy: this._deliveryBusy?.key === deviceKey ? this._deliveryBusy.kind : null,
@@ -19351,12 +19297,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       error: this._deliveryError?.key === deviceKey ? this._deliveryError.message : "",
       onTest: () => {
         void this._testDelivery(deviceKey);
-      },
-      onMove: () => {
-        void (events ? this._moveEventsDeviceToDirect() : this._startCommandConfigSync("move"));
-      },
-      onUpdate: () => {
-        void (events ? this._updateEventsDevice() : this._startCommandConfigSync("sync"));
       }
     });
   }
@@ -19408,48 +19348,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     await this._loadDeliveryInfo(deviceKey);
     if (deviceKey !== WIFI_EVENTS_DEVICE_KEY) await this._loadWifiDevices(true);
   }
-  /** Move the Wifi Events device to direct delivery: in place, like a user
-   *  device's move; its events and their references stay. */
-  async _moveEventsDeviceToDirect() {
-    const hubEntryId = String(this.hub?.entry_id || "").trim();
-    if (!hubEntryId || !this.hass || this._deliveryBusy || this._hubCommandLocked()) return;
-    const D2 = TOOLS_CARD_STRINGS.wifiDelivery;
-    this._deliveryBusy = { key: WIFI_EVENTS_DEVICE_KEY, kind: "move" };
-    this._deliveryError = null;
-    this._deliveryLastTest = null;
-    this._setSharedHubCommandBusy(true, D2.moving, hubEntryId);
-    try {
-      const result = await this.api().moveWifiDeviceToDirect(hubEntryId, WIFI_EVENTS_DEVICE_KEY);
-      this._announceDeployResult(result?.delivery, D2.movedDock, hubEntryId);
-    } catch (error) {
-      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
-    } finally {
-      this._deliveryBusy = null;
-      this._setSharedHubCommandBusy(false, null, hubEntryId);
-    }
-    await this._loadWifiEventsRows();
-    await this._loadDeliveryInfo(WIFI_EVENTS_DEVICE_KEY);
-  }
-  /** Update the hub: the Wifi Events device's records follow Home
-   *  Assistant's current address (its sync rewrites them in place). */
-  async _updateEventsDevice() {
-    const hubEntryId = String(this.hub?.entry_id || "").trim();
-    if (!hubEntryId || !this.hass || this._deliveryBusy || this._hubCommandLocked()) return;
-    this._deliveryBusy = { key: WIFI_EVENTS_DEVICE_KEY, kind: "update" };
-    this._deliveryError = null;
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, hubEntryId);
-    try {
-      const state = await this.api().syncWifiEvents(hubEntryId);
-      this._applyWifiEventsState(state);
-      this._announceDeployResult(state?.delivery, TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully, hubEntryId);
-    } catch (error) {
-      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
-    } finally {
-      this._deliveryBusy = null;
-      this._setSharedHubCommandBusy(false, null, hubEntryId);
-    }
-    await this._loadDeliveryInfo(WIFI_EVENTS_DEVICE_KEY);
-  }
   /** The dock line after a deploy: as before when presses arrive; when the
    *  test press did not, the deploy still landed and the dock says so (the
    *  device's panel names what to allow). */
@@ -19475,8 +19373,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     if (!opts.mqttAvailable && opts.transport !== "mqtt") return A;
     const S5 = TOOLS_CARD_STRINGS.wifiCommands;
     const title = opts.deployed && !opts.pending ? S5.transportPillDeployedTitle : S5.transportPillPreviewTitle;
-    const D2 = TOOLS_CARD_STRINGS.wifiDelivery;
-    return b2`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? D2.mqttShort : D2.directShort}</span>`;
+    return b2`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? "MQTT" : "HTTP"}</span>`;
   }
   async _loadWifiEventsRows() {
     const hubEntryId = String(this.hub?.entry_id || "").trim();
@@ -19968,7 +19865,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             ${this._mqttAvailable ? b2`
                   <div class="transport-choice">
                     <div class="transport-choice-label">${TOOLS_CARD_STRINGS.wifiCommands.transportLabel}</div>
-                    ${["http", "mqtt"].map(
+                    ${["mqtt", "http"].map(
       (option) => b2`
                         <label class="transport-option ${this._newDeviceTransport === option ? "selected" : ""}">
                           <input
@@ -19979,8 +19876,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                             @change=${() => this._pickNewDeviceTransport(option)}
                           />
                           <span class="transport-option-copy">
-                            <span class="transport-option-name">${option === "mqtt" ? TOOLS_CARD_STRINGS.wifiDelivery.mqttName : TOOLS_CARD_STRINGS.wifiDelivery.directName}</span>
-                            <span class="transport-option-hint">${option === "mqtt" ? this._webhookAvailable ? TOOLS_CARD_STRINGS.wifiDelivery.mqttWebhookHint : TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint : this._webhookAvailable ? TOOLS_CARD_STRINGS.wifiDelivery.directWebhookHint : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
+                            <span class="transport-option-name">${option === "mqtt" ? "MQTT" : "HTTP"}</span>
+                            <span class="transport-option-hint">${option === "mqtt" ? TOOLS_CARD_STRINGS.wifiCommands.transportMqttHint : TOOLS_CARD_STRINGS.wifiCommands.transportHttpHint}</span>
                             ${option === "mqtt" && this._newDeviceTransport === "mqtt" ? this._renderMqttLinkCheck() : A}
                           </span>
                         </label>
@@ -20038,20 +19935,20 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
           @click=${(event) => {
       event.preventDefault();
       this._brokerForm.openFor(entryId, {
-        onUseDirect: () => {
+        onUseHttp: () => {
           this._newDeviceTransport = "http";
         }
       });
     }}
         >${D2.setUpNow}</button>
         <button
-          class="dialog-btn transport-use-direct-btn"
+          class="dialog-btn transport-use-http-btn"
           ?disabled=${this._creatingDevice}
           @click=${(event) => {
       event.preventDefault();
       this._newDeviceTransport = "http";
     }}
-        >${D2.useDirectInstead}</button>
+        >${D2.useHttpInstead}</button>
       </span>
     `;
   }
@@ -20755,7 +20652,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const result = await this.api().getWifiCommandDevices(hubEntryId);
       if (hubEntryId !== String(this.hub?.entry_id || "").trim()) return false;
       this._mqttAvailable = Boolean(result?.mqtt_available);
-      this._webhookAvailable = Boolean(result?.webhook_available);
       this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
       if (this._selectedDeviceKey && this._syncState.status !== "idle") {
         this._wifiDevices = this._wifiDevices.map(
@@ -21283,17 +21179,14 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this._deviceMutationError = "";
     this._deleteDeviceKey = deviceKey;
   }
-  /** Deploy the selected device (`sync`), or move it off the listener onto
-   *  Home Assistant's webhook (`move`: the same deploy, records rewritten in
-   *  place). Both end with the deploy's test press. */
-  async _startCommandConfigSync(kind = "sync") {
+  /** Deploy the selected device; it ends with the deploy's test press. */
+  async _startCommandConfigSync() {
     const hubEntryId = String(this.hub?.entry_id || "").trim();
     const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!hubEntryId || !this.hass) return;
     if (this._commandSyncRunning || this._hubCommandLocked()) return;
     this._deliveryError = null;
     this._deliveryLastTest = null;
-    if (kind === "move") this._deliveryBusy = { key: deviceKey, kind: "move" };
     this._syncState = {
       ...this._syncState,
       status: "running",
@@ -21320,12 +21213,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     const busyEntryId = String(this.hub?.entry_id || "").trim();
     this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
-      const result = kind === "move" ? await this.api().moveWifiDeviceToDirect(hubEntryId, deviceKey) : await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
-      this._announceDeployResult(
-        result?.delivery,
-        kind === "move" ? TOOLS_CARD_STRINGS.wifiDelivery.movedDock : TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully,
-        hubEntryId
-      );
+      const result = await this.api().syncWifiCommandConfig(hubEntryId, deviceKey);
+      this._announceDeployResult(result?.delivery, TOOLS_CARD_STRINGS.backup.wifiDeviceDeployedSuccessfully, hubEntryId);
       await this._refreshControlPanelState();
     } catch (error) {
       this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
@@ -21493,7 +21382,6 @@ _SofabatonWifiCommandsTab.properties = {
   _creatingDevice: { state: true },
   _maxWifiDevices: { state: true },
   _mqttAvailable: { state: true },
-  _webhookAvailable: { state: true },
   _newDeviceTransport: { state: true },
   _deliveryInfo: { state: true },
   _eventsDeliveryInfo: { state: true },
@@ -22929,9 +22817,7 @@ var SofabatonActivitiesTab = class extends i4 {
     const deviceKey = isEvents ? WIFI_EVENTS_DEVICE_KEY2 : managedWifiDeviceKey(brand);
     if (!deviceKey) return true;
     const hubId = this.hub.entry_id;
-    this._syncMessage = TOOLS_CARD_STRINGS.wifiCommands.transportSwitching(
-      transport === "mqtt" ? TOOLS_CARD_STRINGS.wifiDelivery.mqttShort : TOOLS_CARD_STRINGS.wifiDelivery.directShort
-    );
+    this._syncMessage = TOOLS_CARD_STRINGS.wifiCommands.transportSwitching(transport === "mqtt" ? "MQTT" : "HTTP");
     const poll = setInterval(() => {
       void (async () => {
         try {

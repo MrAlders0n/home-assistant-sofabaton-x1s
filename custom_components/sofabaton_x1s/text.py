@@ -13,8 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CONF_HOST, CONF_MAC, DOMAIN, signal_hub
 from .hub import SofabatonHub, hub_device_info
-from .lib.network import is_local_ipv4
-from .wifi_webhook import LocalEndpointError, format_local_endpoint, parse_local_endpoint
+from .lib.network import is_local_ipv4, normalize_local_address
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,10 +88,7 @@ class SofabatonLocalAddressText(TextEntity):
     """The address of ours the hub is told to call back, per hub.
 
     Shows the address in use. Typing one makes it manual; clearing the
-    field returns to automatic selection. A manual address may carry a
-    port and an ``http://``/``https://`` scheme
-    (``https://192.168.1.5:8443``): they only change where an X2 calls
-    Home Assistant's webhook, for a remapped Docker port or a proxy.
+    field returns to automatic selection.
     """
 
     _attr_should_poll = False
@@ -130,12 +126,9 @@ class SofabatonLocalAddressText(TextEntity):
 
     async def _async_refresh(self) -> None:
         # An interface and routing lookup: kept off the event loop.
-        address = await self.hass.async_add_executor_job(self._hub.local_address_in_use)
-        self._address_in_use = format_local_endpoint(
-            address,
-            getattr(self._hub, "local_port", None),
-            getattr(self._hub, "local_scheme", None),
-        ) or address
+        self._address_in_use = await self.hass.async_add_executor_job(
+            self._hub.local_address_in_use
+        )
         self.async_write_ha_state()
 
     @property
@@ -144,13 +137,10 @@ class SofabatonLocalAddressText(TextEntity):
 
     async def async_set_value(self, value: str) -> None:
         try:
-            address, port, scheme = parse_local_endpoint(value)
-        except LocalEndpointError as err:
-            if err.code == "invalid_port":
-                raise HomeAssistantError("Enter a port number from 1 to 65535.") from err
+            address = normalize_local_address(value)
+        except ValueError as err:
             raise HomeAssistantError(
-                "Enter a valid IPv4 address, optionally with http:// or https:// and a port "
-                "(for example, https://192.168.1.5:8443), or clear the field to select it automatically."
+                "Enter a valid IPv4 address, or clear the field to select it automatically"
             ) from err
         # An address nobody answers on takes the hub offline, and it stays
         # unsettled for minutes after the address is corrected.
@@ -160,6 +150,6 @@ class SofabatonLocalAddressText(TextEntity):
             raise HomeAssistantError(
                 f"{address} is not an address of this Home Assistant host"
             )
-        await self._hub.async_set_local_address(address, port=port, scheme=scheme)
+        await self._hub.async_set_local_address(address)
         await self._async_refresh()
 

@@ -1,5 +1,5 @@
-"""The X2 URL transport for Wifi Devices, the hub's broker link, and the
-delivery probe (Wifi webhook transport plan, wave 1).
+"""URL records on X2 Wifi devices (decoded and edited, as the Sofabaton
+app writes them), the hub's broker link, and the delivery probe.
 
 Pure helpers first, then the engine (never started: no sockets, outbound
 frames go nowhere) and the facade over it with the wire stubbed.
@@ -10,10 +10,8 @@ from __future__ import annotations
 import asyncio
 import importlib
 import importlib.util
-import json
 import sys
 import types
-import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -47,69 +45,6 @@ x1_proxy_mod = importlib.import_module(f"{_pkg.__name__}.x1_proxy")
 
 BASE = "https://192.168.2.50:8123/api/webhook/abc123"
 _N = wifi.WIFI_SLOT_COUNT
-
-
-# ---------------------------------------------------------------------------
-# URL helpers and the deployment model
-# ---------------------------------------------------------------------------
-
-
-def test_record_url_puts_device_slot_and_press_in_the_query() -> None:
-    assert wifi.wifi_record_url(BASE, 4, 0, "short") == f"{BASE}?d=4&s=0&p=short"
-    assert wifi.wifi_record_url(BASE + "?x=1", 4, 9, "LONG") == f"{BASE}?x=1&d=4&s=9&p=long"
-
-
-@pytest.mark.parametrize("url", ["", "ftp://h/x", "https://", "192.168.2.50:8123/x", "https://h/x#frag"])
-def test_normalize_wifi_url_refuses(url) -> None:
-    with pytest.raises(ValueError):
-        wifi.normalize_wifi_url(url)
-
-
-def test_url_record_bodies_cover_every_record_with_url_records() -> None:
-    bodies = wifi.wifi_url_record_bodies(BASE, 7)
-
-    assert sorted(bodies) == list(range(1, 2 * _N + 1))
-    for command_id, (code_type, body) in bodies.items():
-        assert code_type == 0x21
-        fields = blob.parse_wifi_https_blob_body(body)
-        index = (command_id - 1) % _N
-        press = "long" if command_id > _N else "short"
-        query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(fields["url"]).query))
-        assert query == {"d": "7", "s": str(index), "p": press}
-        assert fields["method"] == "POST"
-        assert fields["headers"] == [["Content-Type", "application/json"]]
-        assert json.loads(fields["body"]) == {"d": 7, "s": index, "p": press}
-
-
-def test_http_record_bodies_match_what_the_create_writes() -> None:
-    target = wifi.WifiTarget("192.168.2.50", 8060, "aabbccddeeff")
-    bodies = wifi.wifi_http_record_bodies(target, 7)
-    engine = x1_proxy_mod.X1Proxy("127.0.0.1", hub_version="X2", proxy_enabled=False)
-    engine._stable_hub_action_id = lambda: "aabbccddeeff"
-
-    for command_id, (code_type, body) in bodies.items():
-        index = (command_id - 1) % _N
-        press = "long" if command_id > _N else "short"
-        path = engine._build_launch_action_path(device_id=7, command_index=index, press_type=press)
-        expected_text = engine._build_virtual_ip_http_request("192.168.2.50", 8060, path)
-        assert code_type == 0x1C
-        assert body[:4] == bytes([192, 168, 2, 50]) and body[4:6] == (8060).to_bytes(2, "big")
-        assert body[8:] == expected_text
-    with pytest.raises(ValueError):
-        wifi.wifi_http_record_bodies(wifi.WifiTarget("192.168.2.50", 8060), 7)
-
-
-def test_url_deployment_round_trips_and_needs_its_url() -> None:
-    spec = wifi.WifiDeviceSpec(name="HA").normalized()
-    dep = wifi.WifiDeployment(device_id=4, spec=spec, target=None, hub_version="X2", transport="url", url=BASE)
-    again = wifi.WifiDeployment.from_dict(json.loads(json.dumps(dep.to_dict())))
-    assert again == dep and again.url == BASE and again.target is None
-    with pytest.raises(ValueError):
-        wifi.WifiDeployment(device_id=4, spec=spec, target=None, transport="url")
-    http = wifi.WifiDeployment(device_id=4, spec=spec, target=wifi.WifiTarget("10.0.0.2", 8060), url=BASE)
-    assert http.url == ""   # only a url deployment keeps one
-    legacy = {k: v for k, v in http.to_dict().items() if k != "url"}
-    assert wifi.WifiDeployment.from_dict(legacy) == http
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +120,7 @@ def test_set_command_payload_takes_the_record_type_from_the_command_kind() -> No
 
 
 # ---------------------------------------------------------------------------
-# Engine: in-place record rewrite, the broker link, redaction
+# Engine: the broker link, redaction
 # ---------------------------------------------------------------------------
 
 
@@ -206,50 +141,6 @@ def _seed_commands(engine, dev: int, ids, *, library_type: int = 0x1C) -> None:
     for cid in ids:
         engine.state.command_metadata[dev][cid] = {"button_code": 1000 + cid, "library_type": library_type}
     engine._commands_complete.add(dev)
-
-
-def test_rewrite_wifi_records_keeps_labels_and_codes(monkeypatch) -> None:
-    engine = _engine()
-    _seed_commands(engine, 4, range(1, 2 * _N + 1))
-    writes: list[dict] = []
-    monkeypatch.setattr(engine, "overwrite_command_payload",
-                        lambda **kw: writes.append(kw) or {"status": "success"})
-    bodies = wifi.wifi_url_record_bodies(BASE, 4)
-
-    result = engine.rewrite_wifi_records(4, bodies)
-
-    assert result == {"device_id": 4, "rewritten": list(range(1, 2 * _N + 1))}
-    assert [w["command_id"] for w in writes] == list(range(1, 2 * _N + 1))
-    first = writes[0]
-    assert first["command_name"] == "Slot 1" and first["button_code"] == 1001
-    assert first["library_type"] == 0x21 and first["library_data"] == bodies[1][1]
-    assert engine.state.command_metadata[4][1]["library_type"] == 0x21
-
-
-def test_rewrite_wifi_records_refuses_a_missing_command_before_writing(monkeypatch) -> None:
-    engine = _engine()
-    _seed_commands(engine, 4, range(1, 5))
-    writes: list = []
-    monkeypatch.setattr(engine, "overwrite_command_payload", lambda **kw: writes.append(kw) or {"status": "success"})
-
-    assert engine.rewrite_wifi_records(4, wifi.wifi_url_record_bodies(BASE, 4)) is None
-    assert writes == []
-
-
-def test_rewrite_wifi_records_stops_at_a_refused_record(monkeypatch) -> None:
-    engine = _engine()
-    _seed_commands(engine, 4, range(1, 3))
-    calls: list[int] = []
-
-    def overwrite(**kw):
-        calls.append(kw["command_id"])
-        return None if kw["command_id"] == 1 else {"status": "success"}
-
-    monkeypatch.setattr(engine, "overwrite_command_payload", overwrite)
-    bodies = {cid: (0x21, _url_body()) for cid in (1, 2)}
-
-    assert engine.rewrite_wifi_records(4, bodies) is None
-    assert calls == [1]
 
 
 # The broker-setup frame for 192.168.31.88:1883, MAC DF:64:24:77:A7:65 and
@@ -361,71 +252,19 @@ def test_frame_dumps_mask_the_broker_setup_payload() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Facade: url deploy, retarget, the probe, the broker methods
+# Facade: the probe, the broker methods
 # ---------------------------------------------------------------------------
 
 
-def _facade(monkeypatch, hub_version="X2", *, device_id=4):
+def _facade(monkeypatch, hub_version="X2"):
     engine = _engine(hub_version)
-    creates: list[dict] = []
-    rewrites: list = []
-    monkeypatch.setattr(engine, "create_wifi_device",
-                        lambda **kw: creates.append(kw) or {"device_id": device_id, "status": "success"})
-    monkeypatch.setattr(engine, "rewrite_wifi_records",
-                        lambda dev, bodies: rewrites.append((dev, bodies)) or {"device_id": dev, "rewritten": sorted(bodies)})
     monkeypatch.setattr(engine, "_stable_hub_action_id", lambda: "aabbccddeeff")
 
     async def no_reread(self, device_ids, activity_ids, *, refresh_catalog=False, **kw):
         return None
 
     monkeypatch.setattr(aio.AsyncXProxy, "_reread_after_write", no_reread)
-    return engine, creates, rewrites
-
-
-def test_deploy_url_device_creates_then_rewrites_in_one_batch(monkeypatch) -> None:
-    async def main():
-        engine, creates, rewrites = _facade(monkeypatch)
-        batches: list[str] = []
-        begin, end = engine.begin_write_batch, engine.end_write_batch
-        monkeypatch.setattr(engine, "begin_write_batch", lambda *a, **kw: batches.append("begin") or begin(*a, **kw))
-        monkeypatch.setattr(engine, "end_write_batch", lambda *a, **kw: batches.append("end") or end(*a, **kw))
-        proxy = aio.AsyncXProxy.wrap(engine)
-
-        dep = await proxy.deploy_wifi_device(wifi.WifiDeviceSpec(name="HA"), transport="url", url=BASE)
-
-        assert (dep.transport, dep.url, dep.target, dep.device_id) == ("url", BASE, None, 4)
-        assert len(creates) == 1 and creates[0]["request_port"] == 8060
-        assert len(rewrites) == 1 and rewrites[0][0] == 4
-        assert all(code == 0x21 for code, _ in rewrites[0][1].values())
-        assert batches == ["begin", "end"]
-
-    asyncio.run(main())
-
-
-def test_deploy_url_device_inside_a_caller_batch_uses_that_batch(monkeypatch) -> None:
-    async def main():
-        engine, creates, rewrites = _facade(monkeypatch)
-        proxy = aio.AsyncXProxy.wrap(engine)
-        async with proxy.batch_writes():
-            dep = await proxy.deploy_wifi_device(wifi.WifiDeviceSpec(name="HA"), transport="url", url=BASE)
-        assert dep.transport == "url" and len(rewrites) == 1
-
-    asyncio.run(main())
-
-
-def test_deploy_url_device_is_x2_only(monkeypatch) -> None:
-    async def main():
-        engine, creates, rewrites = _facade(monkeypatch, "X1S")
-        proxy = aio.AsyncXProxy.wrap(engine)
-        with pytest.raises(ValueError):
-            await proxy.deploy_wifi_device(wifi.WifiDeviceSpec(name="HA"), transport="url", url=BASE)
-        engine2, creates2, _ = _facade(monkeypatch, "X2")
-        with pytest.raises(ValueError):
-            await aio.AsyncXProxy.wrap(engine2).deploy_wifi_device(wifi.WifiDeviceSpec(name="HA"), transport="url",
-                                                                   url="ftp://x/y")
-        assert creates == [] and creates2 == []
-
-    asyncio.run(main())
+    return engine
 
 
 def _http_deployment(hub_version="X2"):
@@ -434,47 +273,9 @@ def _http_deployment(hub_version="X2"):
                                labels=wifi.labels_from_spec(spec), hub_version=hub_version)
 
 
-def test_retarget_moves_records_both_ways(monkeypatch) -> None:
-    async def main():
-        engine, _, rewrites = _facade(monkeypatch)
-        proxy = aio.AsyncXProxy.wrap(engine)
-
-        moved = await proxy.retarget_wifi_device(_http_deployment(), transport="url", url=BASE)
-        back = await proxy.retarget_wifi_device(moved, transport="http", host="192.168.2.60", port=8060)
-
-        assert (moved.transport, moved.url, moved.target) == ("url", BASE, None)
-        assert moved.labels == _http_deployment().labels
-        assert back.transport == "http" and back.target == wifi.WifiTarget("192.168.2.60", 8060, "aabbccddeeff")
-        assert all(code == 0x21 for code, _ in rewrites[0][1].values())
-        assert all(code == 0x1C for code, _ in rewrites[1][1].values())
-
-    asyncio.run(main())
-
-
-def test_retarget_refuses_mqtt_x1_and_x1s_url(monkeypatch) -> None:
-    async def main():
-        engine, _, rewrites = _facade(monkeypatch)
-        proxy = aio.AsyncXProxy.wrap(engine)
-        mqtt = wifi.WifiDeployment(device_id=4, spec=_http_deployment().spec, target=None, transport="mqtt")
-        with pytest.raises(ValueError):
-            await proxy.retarget_wifi_device(mqtt, transport="url", url=BASE)
-        with pytest.raises(ValueError):
-            await proxy.retarget_wifi_device(_http_deployment(), transport="mqtt")
-        x1s, _, _ = _facade(monkeypatch, "X1S")
-        with pytest.raises(ValueError):
-            await aio.AsyncXProxy.wrap(x1s).retarget_wifi_device(_http_deployment("X1S"), transport="url", url=BASE)
-        x1, _, _ = _facade(monkeypatch, "X1")
-        with pytest.raises(ValueError):
-            await aio.AsyncXProxy.wrap(x1).retarget_wifi_device(_http_deployment("X1"), transport="http",
-                                                                 host="192.168.2.60", port=8060)
-        assert rewrites == []
-
-    asyncio.run(main())
-
-
 def test_probe_reports_delivery_and_latency(monkeypatch) -> None:
     async def main():
-        engine, _, _ = _facade(monkeypatch)
+        engine = _facade(monkeypatch)
         presses: list = []
         monkeypatch.setattr(engine, "send_command", lambda dev, cmd: presses.append((dev, cmd)) or True)
         proxy = aio.AsyncXProxy.wrap(engine)
@@ -500,7 +301,7 @@ def test_probe_reports_delivery_and_latency(monkeypatch) -> None:
 
 def test_facade_broker_methods(monkeypatch) -> None:
     async def main():
-        engine, _, _ = _facade(monkeypatch)
+        engine = _facade(monkeypatch)
         monkeypatch.setattr(engine, "query_hub_mqtt_status", lambda timeout=3.0: True)
         calls: list = []
         monkeypatch.setattr(engine, "set_hub_mqtt_broker", lambda **kw: calls.append(kw) or {"connected": True})
@@ -514,7 +315,7 @@ def test_facade_broker_methods(monkeypatch) -> None:
         with pytest.raises(errors.HubRejectedError):
             await proxy.set_hub_mqtt_broker(host="192.168.2.50", port=1883, username="ha", password="pw")
 
-        x1s, _, _ = _facade(monkeypatch, "X1S")
+        x1s = _facade(monkeypatch, "X1S")
         with pytest.raises(ValueError):
             await aio.AsyncXProxy.wrap(x1s).set_hub_mqtt_broker(host="192.168.2.50", port=1883, username="",
                                                                  password="")

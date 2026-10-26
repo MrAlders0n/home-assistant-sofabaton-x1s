@@ -178,7 +178,6 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     wifiRefreshingMaps: "正在刷新活动按键和快捷项…",
     wifiResyncingRemote: "正在重新同步物理遥控器…",
     wifiCheckingBroker: "正在检查 MQTT broker 连接…",
-    wifiMovingDelivery: "正在更新 Wifi 设备的目标地址…",
     wifiTestingDelivery: "正在测试按键事件能否传送到 Home Assistant…",
     wifiStepCommandAdd: (name: string | null) => (name == null ? "正在添加命令…" : `正在添加命令“${name}”…`),
     wifiStepCommandPayload: (name: string | null) => (name == null ? "正在更新命令…" : `正在更新命令“${name}”…`),
@@ -434,7 +433,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     commandSlotDescription: "在此槽位创建命令。请为其命名并选择适用的活动。该名称会显示在遥控器屏幕、移动应用和 Wifi 命令传感器状态中。",
     syncingDeviceFallback: "正在同步 Wifi 设备…", syncingDeviceNamed: (deviceName: string) => `正在同步 ${deviceName}…`, startSync: "正在开始同步",
     syncMessageFailed: "上次同步失败。", syncShortRunning: "正在同步", syncShortFailed: "同步失败", syncShortNeeded: "需要同步",
-    syncFailedAnotherSync: "另一个 Wifi Commands 同步正在进行。", syncFailedHubBusy: "Hub 正忙于其他操作。请在完成后重试。", syncFailedPortInUse: "无法启用 Wifi 设备：其端口已被占用。", syncFailedActivitiesChanged: "Hub 上的活动已更改。请重新选择此 Wifi 设备的活动，保存后再次同步。", syncFailedHubNoAnswer: "Hub 没有响应。请再次同步。", syncFailedDeviceAmbiguous: "Hub 上有多个 Wifi 设备与此设备匹配。", syncFailedPowerCommand: "开机或关机命令不是此设备的命令。", syncFailedDelete: "Hub 未删除之前的 Wifi 设备。", syncFailedCreate: "Hub 未创建 Wifi 设备。", syncFailedReadback: "Hub 未按发送内容保存命令；已保留之前的 Wifi 设备。", syncFailedAttach: "无法将 Wifi 设备添加到所有活动。", syncFailedRetarget: "无法将活动引用移到新的 Wifi 设备；已保留之前的设备。", syncFailedWritesRefused: "Hub 拒绝了部分更改。请再次同步以修复 Wifi 设备。", syncFailedRejected: "Hub 拒绝了一项更改。请再次同步。", syncFailedRewrite: "Hub 未保存新的目标地址。请再次同步。", syncFailedMqttNotConnected: "Home Assistant 的 MQTT 集成未连接到 broker。", syncFailedHubMqttNotConnected: "Hub 未连接到 MQTT broker。", syncFailedGeneric: "同步已停止。请再次同步。", syncFailedNotFound: "此 Wifi 设备已不存在。请重新加载卡片。",
+    syncFailedAnotherSync: "另一个 Wifi Commands 同步正在进行。", syncFailedHubBusy: "Hub 正忙于其他操作。请在完成后重试。", syncFailedPortInUse: "无法启用 Wifi 设备：其端口已被占用。", syncFailedActivitiesChanged: "Hub 上的活动已更改。请重新选择此 Wifi 设备的活动，保存后再次同步。", syncFailedHubNoAnswer: "Hub 没有响应。请再次同步。", syncFailedDeviceAmbiguous: "Hub 上有多个 Wifi 设备与此设备匹配。", syncFailedPowerCommand: "开机或关机命令不是此设备的命令。", syncFailedDelete: "Hub 未删除之前的 Wifi 设备。", syncFailedCreate: "Hub 未创建 Wifi 设备。", syncFailedReadback: "Hub 未按发送内容保存命令；已保留之前的 Wifi 设备。", syncFailedAttach: "无法将 Wifi 设备添加到所有活动。", syncFailedRetarget: "无法将活动引用移到新的 Wifi 设备；已保留之前的设备。", syncFailedWritesRefused: "Hub 拒绝了部分更改。请再次同步以修复 Wifi 设备。", syncFailedRejected: "Hub 拒绝了一项更改。请再次同步。", syncFailedRedeployNeeded: "请先同步此 Wifi 设备，然后再测试。", syncFailedMqttNotConnected: "Home Assistant 的 MQTT 集成未连接到 broker。", syncFailedHubMqttNotConnected: "Hub 未连接到 MQTT broker。", syncFailedGeneric: "同步已停止。请再次同步。", syncFailedNotFound: "此 Wifi 设备已不存在。请重新加载卡片。",
     deviceDeleting: "正在删除…", deviceSynced: "已同步", actionButtonUnavailable: "不可用", actionButtonSyncing: "正在同步…", actionButtonBusy: "正忙",
     actionButtonSyncToHub: "同步", actionButtonUpToDate: "已是最新", createDeviceBusy: "正在创建 Wifi 设备…", deviceName: "设备名称", createDeviceNameRequired: "必须填写设备名称。",
     createDeviceFailed: "无法创建 Wifi 设备", deleteDeviceBusy: "正在删除 Wifi 设备…", deleteDeviceFailed: "无法删除 Wifi 设备",
@@ -482,20 +481,11 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     },
   },
   wifiDelivery: {
-    directName: "直接发送到 Home Assistant",
-    mqttName: "通过你的 MQTT broker",
-    directShort: "直连",
-    mqttShort: "MQTT",
-    directWebhookHint: "使用 Home Assistant 的 HTTP 端点，无需单独的 HTTP 监听器。",
-    mqttWebhookHint: "Hub 向已配置的 MQTT broker 发布消息。Home Assistant 必须使用同一个 broker。",
     title: "按键事件如何传送到 Home Assistant",
-    pathWebhook: (target: string) => `Hub 通过 ${target} 调用 Home Assistant。`,
     pathListener: (target: string) => `Hub 通过 ${target} 调用本集成的 HTTP 监听器。`,
     pathMqtt: (broker: string) => broker
       ? `Hub 发布到它的 MQTT broker；Home Assistant 在 ${broker} 上监听。`
       : "Hub 发布到它的 MQTT broker。",
-    allowWebhook: (hubIp: string, hostPort: string) =>
-      `如果 Hub 位于其他网络或 VLAN，请允许从 Hub（${hubIp}）到 ${hostPort} 的 TCP 连接。`,
     allowListener: (hubIp: string, port: string) =>
       `请允许从 Hub（${hubIp}）到 Home Assistant 主机端口 ${port} 的 TCP 连接；使用 Docker 时，请发布端口 ${port}。`,
     allowMqtt: (broker: string) => broker
@@ -508,19 +498,12 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     testing: "正在测试…",
     testFailed: "测试无法运行。请重试。",
     networkingGuide: "网络指南",
-    targetStale: (target: string) => target ? `Home Assistant 现在使用 ${target}。请同步此设备以更新其目标地址。` : "Home Assistant 的地址已更改。请同步此设备以更新其目标地址。",
-    updateHub: "同步",
-    moveHint:
-      "此设备使用集成的 HTTP 监听器。可切换为使用 Home Assistant 的 HTTP 端点；如果已配置 HTTPS，该端点将使用 HTTPS。无需单独的 HTTP 监听器。",
-    moveButton: "使用 Home Assistant 端点",
-    moving: "正在切换…",
-    movedDock: "Wifi 设备现在使用 Home Assistant 的 HTTP 端点。",
     syncedNotDeliveredDock: "已同步，但测试命令未传送到 Home Assistant。",
     mqttChecking: "正在检查 broker 连接…",
     mqttHaNotConnected: "Home Assistant 的 MQTT 集成未连接到 broker，因此暂时无法使用 MQTT。",
     mqttHubNotConnected: "Hub 未连接到 MQTT broker。现在设置吗？",
     setUpNow: "设置",
-    useDirectInstead: "改用直连",
+    useHttpInstead: "使用 HTTP",
     brokerTitle: "MQTT broker",
     brokerFooter: "全局",
     brokerForHub: (hub: string, status: string) => `${hub}：${status}`,

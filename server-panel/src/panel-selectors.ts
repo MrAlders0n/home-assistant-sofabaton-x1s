@@ -210,8 +210,8 @@ const JOB_OPERATIONS: Record<string, BackendOperation> = {
 const ENTITY_PHASES = new Set(["stale_check", "plan", "settling", "cache_refresh", "completed", "complete"]);
 const REFRESH_PHASES = new Set(["preparing", "finalizing", "completed", "complete"]);
 const RESTORE_PHASES = new Set(["validation", "erase", "hub", "cache_warm"]);
-/** The card's copy for these names Home Assistant: the server's own message says "the server". */
-const HA_WIFI_PHASES = new Set(["moving_delivery", "testing_delivery"]);
+/** The card's copy for this phase names Home Assistant: the server's own message says "the server". */
+const HA_WIFI_PHASES = new Set(["testing_delivery"]);
 
 /** The job's progress in the card's shape (the server reports the library's WriteProgress). */
 function progressLike(job: JobView, operation: BackendOperation): ProgressLike {

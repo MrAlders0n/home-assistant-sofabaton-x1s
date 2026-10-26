@@ -1,9 +1,8 @@
 // "How presses reach Home Assistant" for one deployed Wifi Device (or the
 // Wifi Events device): the path the hub uses, built from what was deployed,
 // with Test again next to it. When the last test failed it names the TCP
-// flow to allow and links the networking guide; it offers Move to direct
-// delivery for an X2 device on the listener, and Update the hub when
-// Home Assistant's address changed (docs/internal/wifi-webhook-transport-plan.md §4.4).
+// flow to allow and links the networking guide
+// (docs/internal/wifi-webhook-transport-plan.md §4.4).
 
 import { css, html, nothing } from "lit";
 import type { WifiDelivery, WifiDeliveryInfo } from "../shared/ha-context";
@@ -17,7 +16,7 @@ import {
 } from "../shared/utils/wifi-delivery";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
-export type WifiDeliveryBusy = "test" | "move" | "update" | null;
+export type WifiDeliveryBusy = "test" | null;
 
 export const wifiDeliveryStyles = css`
   .delivery-panel {
@@ -35,7 +34,7 @@ export const wifiDeliveryStyles = css`
   .delivery-head { display: flex; align-items: center; gap: 8px; }
   .delivery-head ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); flex: 0 0 auto; }
   .delivery-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--primary-text-color); }
-  .delivery-path, .delivery-note-text, .delivery-move-text {
+  .delivery-path {
     font-size: 12px;
     line-height: 1.45;
     color: var(--secondary-text-color);
@@ -57,13 +56,6 @@ export const wifiDeliveryStyles = css`
   .delivery-alert a { color: var(--primary-color); }
   .delivery-ok { font-size: 12px; color: var(--success-color, #43a047); }
   .delivery-error { font-size: 12px; color: var(--error-color, #db4437); }
-  .delivery-note, .delivery-move {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .delivery-note-text, .delivery-move-text { flex: 1 1 240px; }
   .delivery-btn {
     border: 1px solid var(--divider-color);
     border-radius: var(--tools-radius-sm, 10px);
@@ -77,9 +69,7 @@ export const wifiDeliveryStyles = css`
     white-space: nowrap;
   }
   .delivery-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-  .delivery-btn.primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
   .delivery-btn:disabled { opacity: 0.45; cursor: default; }
-  .delivery-move .delivery-btn { max-width: 100%; white-space: normal; }
 `;
 
 export function renderWifiDeliveryPanel(params: {
@@ -91,8 +81,6 @@ export function renderWifiDeliveryPanel(params: {
   lastTest: WifiDelivery | null;
   error: string;
   onTest: () => void;
-  onMove: () => void;
-  onUpdate: () => void;
 }) {
   const info = params.info;
   if (!info || !deployedTransport(info.transport)) return nothing;
@@ -123,24 +111,6 @@ export function renderWifiDeliveryPanel(params: {
           `
         : nothing}
       ${lastPassed ? html`<div class="delivery-ok">${S.delivered(formatLatency(params.lastTest?.latency_s))}</div>` : nothing}
-      ${info.target_stale
-        ? html`
-            <div class="delivery-note">
-              <span class="delivery-note-text">${S.targetStale(info.desired_target ?? "")}</span>
-              <button class="delivery-btn primary delivery-update-btn" ?disabled=${disabled} @click=${params.onUpdate}>${S.updateHub}</button>
-            </div>
-          `
-        : nothing}
-      ${info.move_available
-        ? html`
-            <div class="delivery-move">
-              <span class="delivery-move-text">${S.moveHint}</span>
-              <button class="delivery-btn primary delivery-move-btn" ?disabled=${disabled} @click=${params.onMove}>
-                ${params.busy === "move" ? S.moving : S.moveButton}
-              </button>
-            </div>
-          `
-        : nothing}
       ${params.error ? html`<div class="delivery-error" role="alert">${params.error}</div>` : nothing}
     </section>
   `;

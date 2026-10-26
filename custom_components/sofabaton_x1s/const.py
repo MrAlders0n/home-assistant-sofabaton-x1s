@@ -45,11 +45,6 @@ CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"
 # Manual local IPv4 address for this hub; absent selects automatically.
 CONF_LOCAL_ADDRESS = "local_address"
-# Port and scheme an X2 calls Home Assistant's webhook on, when they are
-# not Home Assistant's own (a remapped Docker port, a proxy in front);
-# absent uses Home Assistant's. Set together with the local address.
-CONF_LOCAL_PORT = "local_port"
-CONF_LOCAL_SCHEME = "local_scheme"
 CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
 CONF_ROKU_SERVER_ENABLED = "roku_server_enabled"
 CONF_ROKU_LISTEN_PORT = "roku_listen_port"
