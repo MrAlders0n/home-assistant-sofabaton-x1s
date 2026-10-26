@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { X2_ICON_PATHS } from "../../custom_components/sofabaton_x1s/www/src/shared/x2-icons";
+import { X1_ICON_PATHS, X2_ICON_PATHS } from "../../custom_components/sofabaton_x1s/www/src/shared/x2-icons";
 import * as geometry from "../../scripts/x2-icons/geometry.mjs";
-import { ICONS } from "../../scripts/x2-icons/icons.mjs";
+import { ICONS, X1_ICONS } from "../../scripts/x2-icons/icons.mjs";
 
 test("x2 icon set covers ids 1-45", () => {
   assert.deepEqual(
@@ -12,16 +12,25 @@ test("x2 icon set covers ids 1-45", () => {
   );
 });
 
-test("x2 icon paths are single relative-path strings", () => {
-  for (const [id, path] of Object.entries(X2_ICON_PATHS)) {
-    assert.match(path, /^M[\d.]/, `icon ${id} starts with an absolute move`);
-    assert.match(path, /^[MmLlHhVvCcQqAaZz\d.\s-]+$/, `icon ${id} uses path syntax only`);
-    assert.ok(path.endsWith("z"), `icon ${id} closes its last subpath`);
+test("x1-only icons are the X1 ids the X2 set has no counterpart for", () => {
+  assert.deepEqual(Object.keys(X1_ICON_PATHS).map(Number), [6, 7, 8, 10, 12, 14, 17, 18, 22, 25]);
+});
+
+test("icon paths are single relative-path strings", () => {
+  for (const [set, paths] of [["x2", X2_ICON_PATHS], ["x1", X1_ICON_PATHS]] as const) {
+    for (const [id, path] of Object.entries(paths)) {
+      assert.match(path, /^M[\d.]/, `${set} icon ${id} starts with an absolute move`);
+      assert.match(path, /^[MmLlHhVvCcQqAaZz\d.\s-]+$/, `${set} icon ${id} uses path syntax only`);
+      assert.ok(path.endsWith("z"), `${set} icon ${id} closes its last subpath`);
+    }
   }
 });
 
 test("generated x2-icons.ts matches scripts/x2-icons (run npm run build:x2-icons)", () => {
   for (const [id, [name, draw]] of Object.entries(ICONS)) {
     assert.equal(X2_ICON_PATHS[Number(id)], geometry.build(draw(geometry)), `icon ${id} (${name}) is stale`);
+  }
+  for (const [id, [name, draw]] of Object.entries(X1_ICONS)) {
+    assert.equal(X1_ICON_PATHS[Number(id)], geometry.build(draw(geometry)), `X1 icon ${id} (${name}) is stale`);
   }
 });
