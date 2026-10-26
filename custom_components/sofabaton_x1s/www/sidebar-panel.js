@@ -3448,7 +3448,11 @@ var sidebarRemoteStyles = i`
     min-height: 0;
     display: flex;
     flex-direction: column;
+    /* clip, not a scroll container: hidden can still be scrolled (a focus
+       or scrollIntoView while the sheet slides in moved the whole remote
+       up). hidden stays the fallback where clip is unknown. */
     overflow: hidden;
+    overflow: clip;
     /* No background of its own: the panel host paints the dashboard ground
        (wallpaper themes carry a fixed-attachment image, and painting that
        twice doubles the repaint cost of every resize frame). */
@@ -4421,7 +4425,9 @@ var SofabatonSidebarRemote = class extends i4 {
     const cy = fromPoint && at ? at.y : r4.top + r4.height / 2;
     const ring = document.createElement("div");
     ring.className = failed ? "ring err" : "ring";
-    ring.style.cssText = `left:${cx - base.left - d3 / 2}px;top:${cy - base.top - d3 / 2}px;width:${d3}px;height:${d3}px`;
+    const left = cx - base.left + app.scrollLeft - d3 / 2;
+    const top = cy - base.top + app.scrollTop - d3 / 2;
+    ring.style.cssText = `left:${left}px;top:${top}px;width:${d3}px;height:${d3}px`;
     app.appendChild(ring);
     ring.addEventListener("animationend", () => ring.remove());
     setTimeout(() => ring.remove(), 1500);

@@ -66,7 +66,11 @@ export const sidebarRemoteStyles = css`
     min-height: 0;
     display: flex;
     flex-direction: column;
+    /* clip, not a scroll container: hidden can still be scrolled (a focus
+       or scrollIntoView while the sheet slides in moved the whole remote
+       up). hidden stays the fallback where clip is unknown. */
     overflow: hidden;
+    overflow: clip;
     /* No background of its own: the panel host paints the dashboard ground
        (wallpaper themes carry a fixed-attachment image, and painting that
        twice doubles the repaint cost of every resize frame). */

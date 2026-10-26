@@ -398,7 +398,11 @@ export class SofabatonSidebarRemote extends LitElement {
     const cy = fromPoint && at ? at.y : r.top + r.height / 2;
     const ring = document.createElement("div");
     ring.className = failed ? "ring err" : "ring";
-    ring.style.cssText = `left:${cx - base.left - d / 2}px;top:${cy - base.top - d / 2}px;width:${d}px;height:${d}px`;
+    // The app's scroll offset, for a browser where it can still be scrolled
+    // (overflow: clip unknown): an absolute child moves with the content.
+    const left = cx - base.left + app.scrollLeft - d / 2;
+    const top = cy - base.top + app.scrollTop - d / 2;
+    ring.style.cssText = `left:${left}px;top:${top}px;width:${d}px;height:${d}px`;
     app.appendChild(ring);
     ring.addEventListener("animationend", () => ring.remove());
     setTimeout(() => ring.remove(), 1500);
