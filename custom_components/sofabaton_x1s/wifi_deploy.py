@@ -20,20 +20,12 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     HUB_VERSION_X1,
-    HUB_VERSION_X2,
     signal_commands,
     signal_devices,
     signal_command_sync,
 )
 from . import hub_mqtt_link
-from .lib.blob_decoders import try_decode_blob
-from .lib.protocol_const import DEVICE_CLASS_WIFI_IP, WIFI_URL_RECORD_CODE
-from .lib.wifi_device import WIFI_PROBE_COMMAND_ID, wifi_url_record_body
-from .wifi_webhook import (
-    MAX_WEBHOOK_SOURCES,
-    async_webhook_base_url,
-    webhook_transport_ready,
-)
+from .lib.wifi_device import WIFI_PROBE_COMMAND_ID
 from .lib.wifi_inplace_plan import (
     REFERENCED_RECORD_STEP_KINDS,
     baseline_snapshot_from_bundle,
@@ -58,17 +50,14 @@ from .command_config import (
     compute_commands_hash,
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
-    hash_listen_port_for_transport,
     is_wifi_events_device_key,
     normalize_power_command_id,
-    normalize_requested_transport,
+    normalize_deployed_transport,
     normalize_wifi_transport,
     record_hash_listen_port,
-    url_origin,
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
-    WIFI_TRANSPORT_WEBHOOK,
-    wifi_transport_family,
+    WIFI_TRANSPORT_LEGACY_WEBHOOK,
 )
 
 # Same logger name as hub.py: log lines keep their source name.
@@ -80,8 +69,7 @@ _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.
 # id offset always equals the record's slot count (long = short + N,
 # live-validated at N=6/10/50 — docs/internal/wifi-events-plan.md §11).
 _WIFI_COMMAND_SLOT_COUNT = 10
-# How long the deploy's test press may take to reach Home Assistant (one
-# webhook delivery over https took ~2 s including the hub's DNS lookup).
+# How long the deploy's test press may take to reach Home Assistant.
 WIFI_PROBE_TIMEOUT_S = 10.0
 
 
@@ -107,9 +95,9 @@ WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {
     ),
     "writes_refused": "The hub refused some changes. Sync again to repair the Wifi Device.",
     "inplace_failed": "The hub refused a change. Sync again.",
-    "rewrite_failed": "The hub did not take the new delivery address. Sync again.",
     "mqtt_not_connected": "Home Assistant's MQTT integration is not connected to a broker.",
     "hub_mqtt_not_connected": "The hub is not connected to an MQTT broker.",
+    "redeploy_needed": "This Wifi Device must be synced again before it can be tested.",
     "sync_failed": "The sync stopped. Sync again.",
 }
 
@@ -175,12 +163,9 @@ class _DeployRun:
     activities_with_favorites: set[int] = field(default_factory=set)
     failed_writes: list[str] = field(default_factory=list)
     # A transport switch (wifi-events-transport-plan §4): the transport the
-    # managed device is deployed with now, when the deploy moves it to the
-    # other delivery choice (Direct <-> MQTT). None for every other deploy.
+    # managed device is deployed with now, when it differs from
+    # selected_transport. None for every other deploy.
     transport_switch_from: str | None = None
-    # The base URL a webhook deploy writes into the records (X2 direct
-    # delivery); None for the other transports.
-    webhook_url: str | None = None
     # What the deploy's test press found (see async_probe_wifi_delivery).
     delivery: dict[str, Any] | None = None
     # Replace path: the live activity reads taken before the new device
@@ -384,35 +369,23 @@ class WifiDeployMixin:
                 hashes.add(command_hash)
         return sorted(hashes)
 
-    def wifi_webhook_available(self) -> bool:
-        """Whether "Direct to Home Assistant" means Home Assistant's own
-        webhook on this hub: an X2 (URL records) with Home Assistant's
-        webhook endpoint up. Every other hub calls the bundled listener."""
-
-        return self.version == HUB_VERSION_X2 and webhook_transport_ready(self.hass)
-
-    def _direct_wifi_transport(self) -> str:
-        return WIFI_TRANSPORT_WEBHOOK if self.wifi_webhook_available() else WIFI_TRANSPORT_HTTP
-
-    def _select_wifi_command_transport(
-        self, command_payload: dict[str, Any], *, move_to_direct: bool = False
-    ) -> str:
+    def _select_wifi_command_transport(self, command_payload: dict[str, Any]) -> str:
         """Pick the transport this deploy writes.
 
-        ``requested_transport`` is the user's choice, Direct (``http``) or
-        MQTT (wifi-events-transport-plan §2); which Direct path a deploy
-        writes follows the hub model (webhook on the X2, the listener
-        elsewhere). A deployed record keeps its ``deployed_transport``
-        unless the desired choice differs AND can be deployed (MQTT needs
-        an X2 with the MQTT integration loaded); then this deploy is a
-        transport switch and the caller forces the replace path. A wish for
-        MQTT on a hub where it is unavailable is kept in the store and
-        ignored here, so the record keeps working Direct. An X2 record on
-        the listener stays there until the user moves it
-        (``move_to_direct``: in place, never automatic).
+        ``requested_transport`` is the desired transport
+        (wifi-events-transport-plan §2). A deployed record keeps its
+        ``deployed_transport`` unless the desired one differs AND can be
+        deployed (MQTT needs an X2 with the MQTT integration loaded); then
+        this deploy is a transport switch and the caller forces the replace
+        path. A wish for MQTT on a hub where it is unavailable is kept in
+        the store and ignored here, so the record keeps working over HTTP.
+        Fresh deploys honour the desired transport under the same
+        availability rule; everything else is HTTP. A device the 0.7.2 test
+        releases deployed as X2 "Direct" (a webhook, since removed) is
+        always a switch: it is replaced over the desired transport.
         """
 
-        requested = normalize_requested_transport(command_payload.get("requested_transport"))
+        requested = normalize_wifi_transport(command_payload.get("requested_transport"))
         mqtt_ok = requested != WIFI_TRANSPORT_MQTT or self.wifi_mqtt_available()
         already_deployed = isinstance(
             command_payload.get("deployed_device_id"), int
@@ -420,30 +393,20 @@ class WifiDeployMixin:
         if already_deployed:
             # Absent ⇒ HTTP: every record that predates the MQTT work
             # deployed over HTTP.
-            deployed = normalize_wifi_transport(command_payload.get("deployed_transport"))
-            if (
-                move_to_direct
-                and requested == WIFI_TRANSPORT_HTTP
-                and deployed == WIFI_TRANSPORT_HTTP
-                and self.wifi_webhook_available()
-            ):
-                return WIFI_TRANSPORT_WEBHOOK
-            if wifi_transport_family(requested) == wifi_transport_family(deployed) or not mqtt_ok:
-                return deployed
-            return WIFI_TRANSPORT_MQTT if requested == WIFI_TRANSPORT_MQTT else self._direct_wifi_transport()
-        if requested == WIFI_TRANSPORT_MQTT and mqtt_ok:
-            return WIFI_TRANSPORT_MQTT
-        return self._direct_wifi_transport()
+            deployed = normalize_deployed_transport(command_payload.get("deployed_transport"))
+            if deployed == WIFI_TRANSPORT_LEGACY_WEBHOOK:
+                return requested if mqtt_ok else WIFI_TRANSPORT_HTTP
+            if requested != deployed and mqtt_ok:
+                return requested
+            return deployed
+        if not mqtt_ok:
+            return WIFI_TRANSPORT_HTTP
+        return requested
 
-    async def _async_wifi_delivery_target(
-        self, transport: str, *, webhook_url: str | None, request_port: int
-    ) -> str:
-        """What the hub calls for a transport, safe to show: the webhook's
-        origin (never its id), the listener's address and port, or Home
-        Assistant's MQTT broker."""
+    async def _async_wifi_delivery_target(self, transport: str, *, request_port: int) -> str:
+        """What the hub calls for a transport, safe to show: the listener's
+        address and port, or Home Assistant's MQTT broker."""
 
-        if transport == WIFI_TRANSPORT_WEBHOOK:
-            return url_origin(webhook_url) or ""
         if transport == WIFI_TRANSPORT_MQTT:
             broker = hub_mqtt_link.ha_mqtt_broker(self.hass)
             return f"{broker['host']}:{broker['port']}" if broker and broker["host"] else ""
@@ -462,7 +425,7 @@ class WifiDeployMixin:
         """Press slot 1 of a deployed Wifi Device and wait for it to arrive.
 
         The press runs over our own hub connection; the ingress it arrives
-        at (listener, webhook, MQTT subscription) hands it to the waiting
+        at (listener, MQTT subscription) hands it to the waiting
         test instead of running the slot's Action. The result is stored on
         the device: a failed test lights a warning until a test passes or a
         real press arrives. Never raises for a press that did not arrive:
@@ -513,19 +476,6 @@ class WifiDeployMixin:
             await store.async_set_delivery(self.entry_id, device_key, delivery)
         except KeyError:
             pass
-        source = delivery["source_ip"]
-        if (
-            status == "delivered"
-            and transport == WIFI_TRANSPORT_WEBHOOK
-            and source
-            and source != str(self.host or "")
-        ):
-            # A NAT between the hub's network and Home Assistant's: the
-            # webhook accepts this source from now on (decision 6).
-            known = [ip for ip in store.get_webhook_sources(self.entry_id) if ip != source]
-            await store.async_set_webhook_sources(
-                self.entry_id, [*known[-(MAX_WEBHOOK_SOURCES - 1):], source]
-            )
         async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
         return delivery
 
@@ -541,15 +491,15 @@ class WifiDeployMixin:
             dev_id = payload.get("deployed_device_id")
             if not isinstance(dev_id, int):
                 raise KeyError(device_key)
+            if normalize_deployed_transport(payload.get("deployed_transport")) == WIFI_TRANSPORT_LEGACY_WEBHOOK:
+                # Its records call a webhook that is gone: nothing can arrive
+                # until the Sync that replaces it.
+                raise WifiSyncError("redeploy_needed", "The Wifi Device needs a Sync before a test")
             transport = normalize_wifi_transport(payload.get("deployed_transport"))
-            webhook_url = None
-            if transport == WIFI_TRANSPORT_WEBHOOK:
-                webhook_url = await async_webhook_base_url(self.hass, self, create=True)
-            elif transport == WIFI_TRANSPORT_MQTT:
+            if transport == WIFI_TRANSPORT_MQTT:
                 await self.async_update_wifi_mqtt_ingress()
             target = await self._async_wifi_delivery_target(
                 transport,
-                webhook_url=webhook_url,
                 request_port=int(payload.get("deployed_request_port") or 0)
                 or self._listener_port(),
             )
@@ -564,25 +514,6 @@ class WifiDeployMixin:
         from .runtime import _resolve_roku_listen_port  # local import: runtime imports hub
 
         return _resolve_roku_listen_port(self.hass, self.entry_id)
-
-    async def _async_rewrite_wifi_records_to_url(
-        self, dev_id: int, webhook_url: str, *, slot_count: int, long_records: bool
-    ) -> bool:
-        """Point every record of a managed Wifi Device at the webhook, in
-        place: labels and 48-bit codes stay, so nothing that references the
-        records changes and the remote needs no sync."""
-
-        rows = [(index + 1, index, "short") for index in range(slot_count)]
-        if long_records:
-            rows += [(index + 1 + slot_count, index, "long") for index in range(slot_count)]
-        bodies = {
-            command_id: (WIFI_URL_RECORD_CODE, wifi_url_record_body(webhook_url, dev_id, index, press))
-            for command_id, index, press in rows
-        }
-        result = await self.hass.async_add_executor_job(
-            self._proxy.rewrite_wifi_records, int(dev_id), bodies
-        )
-        return isinstance(result, dict)
 
     async def async_delete_wifi_event_records(
         self,
@@ -672,13 +603,7 @@ class WifiDeployMixin:
         return touched_acts
 
     async def _async_fill_wifi_command_adds(
-        self,
-        plan: Any,
-        *,
-        dev_id: int,
-        live_ids: set[int],
-        slot_count: int,
-        webhook_url: str | None = None,
+        self, plan: Any, *, dev_id: int, live_ids: set[int], slot_count: int
     ) -> Any:
         """Give each ``command_add`` step the record it writes.
 
@@ -688,34 +613,16 @@ class WifiDeployMixin:
         sibling's record with its own callback, so one live sibling is
         fetched and cloned per added id. A step left without bytes fails
         as before rather than writing a record with a foreign callback.
-        A webhook device's record is built from ``webhook_url`` instead:
-        everything it holds is known without a sibling.
         """
 
-        def _slot(command_id: int) -> tuple[int, str]:
-            if command_id <= slot_count:
-                return command_id - 1, "short"
-            return command_id - 1 - slot_count, "long"
-
         def _launch_tail(command_id: int) -> str:
-            index, press = _slot(command_id)
+            if command_id <= slot_count:
+                index, press = command_id - 1, "short"
+            else:
+                index, press = command_id - 1 - slot_count, "long"
             return self._proxy._build_launch_action_path(
                 device_id=dev_id, command_index=index, press_type=press
             )
-
-        if webhook_url:
-            steps = []
-            for step in plan.steps:
-                if step.kind == "command_add":
-                    index, press = _slot(int(step.payload.get("command_id") or 0))
-                    decoded = try_decode_blob(
-                        DEVICE_CLASS_WIFI_IP, wifi_url_record_body(webhook_url, dev_id, index, press)
-                    )
-                    if decoded is not None:
-                        decoded["edited"] = True
-                        step = replace(step, payload={**step.payload, "restore_data": {"decoded": decoded}})
-                steps.append(step)
-            return replace(plan, steps=tuple(steps))
 
         added = {
             int(step.payload.get("command_id") or 0)
@@ -772,7 +679,6 @@ class WifiDeployMixin:
         store: Any,
         slot_count: int = _WIFI_COMMAND_SLOT_COUNT,
         selected_transport: str | None = None,
-        webhook_url: str | None = None,
     ) -> dict[str, Any] | None:
         """Attempt an in-place re-sync of the matched managed Wifi Device.
 
@@ -783,11 +689,6 @@ class WifiDeployMixin:
         LAST step, so an interrupted run leaves the device reading
         out-of-step and the next sync re-offers (no rollback needed; see
         docs/internal/wifi-inplace-deploy-plan.md).
-
-        A webhook deploy (``selected_transport``) whose records call another
-        URL than ``webhook_url`` (a listener device moving to direct
-        delivery, a new local address or port) rewrites every record in
-        place after the plan; the device, its id and its references stay.
         """
         dev_id = int(managed_device_id)
         deployed_transport = normalize_wifi_transport(command_payload.get("deployed_transport"))
@@ -797,8 +698,8 @@ class WifiDeployMixin:
         # Gate 1: the callback port is baked into the deployed listener
         # records; only the replace path can change it. None = pre-upgrade
         # deploy with no recorded port — one replace-path sync backfills it.
-        # MQTT records carry no port at all and webhook records are
-        # rewritten whole below, so the gate does not apply to them.
+        # MQTT records carry no port at all, so the gate does not apply to
+        # them.
         deployed_request_port = command_payload.get("deployed_request_port")
         if selected_transport == WIFI_TRANSPORT_HTTP and deployed_request_port != request_port:
             _LOGGER.info(
@@ -992,7 +893,6 @@ class WifiDeployMixin:
                 dev_id=dev_id,
                 live_ids=set(baseline.slots),
                 slot_count=slot_count,
-                webhook_url=webhook_url if selected_transport == WIFI_TRANSPORT_WEBHOOK else None,
             )
 
         total_steps = len(plan.steps) + 2
@@ -1074,46 +974,7 @@ class WifiDeployMixin:
                     "[%s] post-inplace cache persist failed", self.entry_id, exc_info=True
                 )
 
-        # Webhook records that call another URL (a listener device moving to
-        # direct delivery, a new local address or port): rewritten in place.
-        rewrite = (
-            selected_transport == WIFI_TRANSPORT_WEBHOOK
-            and bool(webhook_url)
-            and (
-                deployed_transport != WIFI_TRANSPORT_WEBHOOK
-                or store is None
-                or store.get_deployed_url(self.entry_id, normalized_device_key) != webhook_url
-            )
-        )
-        if rewrite and webhook_url:
-            self._set_command_sync_progress(
-                device_key=normalized_device_key,
-                current_step=total_steps - 1,
-                total_steps=total_steps,
-                phase="moving_delivery",
-                step_kind=None,
-                step_name=None,
-                message="Pointing the Wifi Device at Home Assistant",
-            )
-            rewritten = await self._async_rewrite_wifi_records_to_url(
-                dev_id, webhook_url, slot_count=slot_count, long_records=not single_record
-            )
-            self._bump_cache_generation()
-            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-            if not rewritten:
-                raise WifiSyncError(
-                    "rewrite_failed",
-                    f"The hub refused a record rewrite of Wifi Device {dev_id}; sync again",
-                )
-
         if store is not None:
-            # A webhook deploy stamps where its records call (and a move,
-            # the transport it moved to); nothing else changes those.
-            webhook_stamp: dict[str, Any] = {}
-            if selected_transport == WIFI_TRANSPORT_WEBHOOK:
-                webhook_stamp["deployed_url"] = webhook_url
-                if deployed_transport != selected_transport:
-                    webhook_stamp["deployed_transport"] = selected_transport
             await store.async_save_deployed_wifi_commands(
                 self.entry_id,
                 normalized_device_key,
@@ -1121,7 +982,6 @@ class WifiDeployMixin:
                 deployed_device_id=dev_id,
                 commands_hash=commands_hash,
                 request_port=request_port if selected_transport == WIFI_TRANSPORT_HTTP else None,
-                **webhook_stamp,
             )
 
         # The test press runs before the remote sync: the hub runs Wifi
@@ -1130,7 +990,6 @@ class WifiDeployMixin:
             device_key=normalized_device_key,
             hub_device_id=dev_id,
             transport=selected_transport,
-            webhook_url=webhook_url,
             request_port=request_port,
             current_step=total_steps - 1,
             total_steps=total_steps,
@@ -1157,9 +1016,9 @@ class WifiDeployMixin:
             status="success",
             current_step=total_steps,
             total_steps=total_steps,
-            phase="updated_in_place" if plan.steps or rewrite else "already_current",
+            phase="updated_in_place" if plan.steps else "already_current",
             message="Wifi Device updated in place"
-            if plan.steps or rewrite
+            if plan.steps
             else "Wifi Device already up to date",
             wifi_device_id=dev_id,
             commands_hash=commands_hash,
@@ -1185,7 +1044,6 @@ class WifiDeployMixin:
         device_key: str,
         hub_device_id: int,
         transport: str,
-        webhook_url: str | None,
         request_port: int,
         current_step: int,
         total_steps: int,
@@ -1206,9 +1064,7 @@ class WifiDeployMixin:
         try:
             if transport == WIFI_TRANSPORT_MQTT:
                 await self.async_update_wifi_mqtt_ingress()
-            target = await self._async_wifi_delivery_target(
-                transport, webhook_url=webhook_url, request_port=request_port
-            )
+            target = await self._async_wifi_delivery_target(transport, request_port=request_port)
             return await self.async_probe_wifi_delivery(
                 device_key=device_key,
                 hub_device_id=hub_device_id,
@@ -1231,14 +1087,8 @@ class WifiDeployMixin:
         request_port: int,
         device_key: str = DEFAULT_WIFI_DEVICE_KEY,
         device_name: str = "Home Assistant",
-        move_to_direct: bool = False,
     ) -> dict[str, Any]:
-        """Deploy one Wifi Device's config to the hub and test delivery.
-
-        ``move_to_direct`` moves an X2 device off the listener onto Home
-        Assistant's webhook ("Move to direct delivery"): the same sync, with
-        every record rewritten in place.
-        """
+        """Deploy one Wifi Device's config to the hub and test delivery."""
 
         if self._command_sync_lock.locked():
             raise WifiSyncError("sync_in_progress", "sync_in_progress")
@@ -1264,49 +1114,34 @@ class WifiDeployMixin:
             commands_hash = str(command_payload.get("commands_hash") or "")
             deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
             deployed_device_id = command_payload.get("deployed_device_id")
-            selected_transport = self._select_wifi_command_transport(
-                command_payload, move_to_direct=move_to_direct
-            )
-            webhook_url: str | None = None
-            if selected_transport == WIFI_TRANSPORT_WEBHOOK:
-                # Makes the hub's webhook id on first use and registers it,
-                # before any record that calls it exists.
-                webhook_url = await async_webhook_base_url(self.hass, self, create=True)
-                if webhook_url is None:
-                    selected_transport = WIFI_TRANSPORT_HTTP
+            selected_transport = self._select_wifi_command_transport(command_payload)
             # A transport switch: the record is deployed over the other
-            # delivery choice (wifi-events-transport-plan §4). Listener and
-            # webhook are both Direct: moving between them is an in-place
-            # rewrite, never a switch.
+            # transport (wifi-events-transport-plan §4).
             transport_switch_from: str | None = None
             already_deployed = isinstance(deployed_device_id, int) or bool(
                 deployed_commands_hash.strip()
             )
             if already_deployed:
-                deployed_transport_now = normalize_wifi_transport(
+                deployed_transport_now = normalize_deployed_transport(
                     command_payload.get("deployed_transport")
                 )
-                if wifi_transport_family(deployed_transport_now) != wifi_transport_family(
-                    selected_transport
-                ):
-                    transport_switch_from = deployed_transport_now
                 if deployed_transport_now != selected_transport:
+                    transport_switch_from = deployed_transport_now
                     self._log.info(
-                        "[%s] Wifi Device %s %s delivery from %s to %s",
+                        "[%s] Wifi Device %s switches delivery from %s to %s",
                         self.entry_id,
                         normalized_device_key,
-                        "switches" if transport_switch_from is not None else "moves",
                         deployed_transport_now,
                         selected_transport,
                     )
             # The store's commands_hash follows the record's stored transport
             # (deployed, else requested); this deploy may write another one
-            # (a switch, a Direct deploy that falls back from an unavailable
-            # MQTT wish), whose listener-port rule then decides. The brand and
-            # the deployed hash written below match what the store computes
-            # once deployed_transport has moved (wifi-events-transport-plan
-            # §4, §5).
-            target_hash_port = hash_listen_port_for_transport(selected_transport, request_port)
+            # (a switch, an HTTP deploy that falls back from an unavailable
+            # MQTT wish), whose listener-port rule then decides (MQTT hashes
+            # with port 0). The brand and the deployed hash written below
+            # match what the store computes once deployed_transport has moved
+            # (wifi-events-transport-plan §4, §5).
+            target_hash_port = 0 if selected_transport == WIFI_TRANSPORT_MQTT else int(request_port)
             if target_hash_port != record_hash_listen_port(command_payload, request_port):
                 commands_hash = compute_commands_hash(
                     commands,
@@ -1353,7 +1188,6 @@ class WifiDeployMixin:
                 request_port=request_port,
                 device_name=device_name,
                 transport_switch_from=transport_switch_from,
-                webhook_url=webhook_url,
             )
 
             try:
@@ -1371,8 +1205,7 @@ class WifiDeployMixin:
                 # A transport switch never runs in place: the device class
                 # is fixed at create (wifi-events-transport-plan §4), so it
                 # takes the replace path, whose retarget step keeps the
-                # references. A move between listener and webhook does: the
-                # class stays, only the records are rewritten.
+                # references.
                 if len(run.managed) == 1 and run.transport_switch_from is None:
                     inplace_result = await self._async_try_inplace_command_sync(
                         managed_device_id=run.managed[0][0],
@@ -1386,19 +1219,9 @@ class WifiDeployMixin:
                         store=store,
                         slot_count=slot_count,
                         selected_transport=selected_transport,
-                        webhook_url=webhook_url,
                     )
                     if inplace_result is not None:
                         return inplace_result
-                if move_to_direct:
-                    # Moving keeps the device as it is: a replace would make
-                    # a new one (new id, references moved). A device that
-                    # cannot be edited in place is synced first.
-                    raise WifiSyncError(
-                        "rewrite_failed",
-                        "The Wifi Device could not be moved in place; sync it, then move it",
-                    )
-
                 await self._deploy_replace_create_and_verify(run)
                 await self._deploy_attach(run)
                 return await self._deploy_epilogue(run)
@@ -1776,24 +1599,6 @@ class WifiDeployMixin:
             raise WifiSyncError("create_failed", "Failed creating Wifi Device")
 
         wifi_device_id = int(created["device_id"])
-        if selected_transport == WIFI_TRANSPORT_WEBHOOK and run.webhook_url:
-            # The create writes listener records; an X2 stores and runs a
-            # URL record written over one in place (bench W4), so the new
-            # device's records are pointed at the webhook before anything
-            # references it.
-            rewritten = await self._async_rewrite_wifi_records_to_url(
-                wifi_device_id,
-                run.webhook_url,
-                slot_count=slot_count,
-                long_records=not is_wifi_events_device_key(normalized_device_key),
-            )
-            if not rewritten:
-                await self.async_delete_device(wifi_device_id)
-                raise WifiSyncError(
-                    "rewrite_failed",
-                    "The hub refused a record of the new Wifi Device; the previous "
-                    "device was kept unchanged",
-                )
         # An ACK only proves the hub accepted each frame. Verify that
         # every command row survived the create transaction before
         # touching activities or deleting the old managed device.
@@ -2596,11 +2401,6 @@ class WifiDeployMixin:
                     request_port if selected_transport == WIFI_TRANSPORT_HTTP else None
                 ),
                 deployed_transport=selected_transport,
-                **(
-                    {"deployed_url": run.webhook_url}
-                    if selected_transport == WIFI_TRANSPORT_WEBHOOK
-                    else {}
-                ),
             )
 
         await self.async_update_wifi_mqtt_ingress()
@@ -2611,7 +2411,6 @@ class WifiDeployMixin:
                 device_key=normalized_device_key,
                 hub_device_id=wifi_device_id,
                 transport=selected_transport,
-                webhook_url=run.webhook_url,
                 request_port=request_port,
                 current_step=8,
                 total_steps=total_steps,

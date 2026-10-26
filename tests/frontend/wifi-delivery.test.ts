@@ -1,9 +1,8 @@
 /**
  * How Wifi Command presses reach Home Assistant, in the control panel
  * (docs/internal/wifi-webhook-transport-plan.md, wave 3): the path line and
- * the TCP flow to allow, the delivery panel, Test again / Move to direct
- * delivery in the Wifi tab, the create dialog's MQTT check, and the hub's
- * broker form.
+ * the TCP flow to allow, the delivery panel, Test again in the Wifi tab, the
+ * create dialog's MQTT check, and the hub's broker form.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -48,15 +47,12 @@ function templateText(template: unknown): string {
   return "";
 }
 
-const WEBHOOK_INFO: WifiDeliveryInfo = {
+const LISTENER_INFO: WifiDeliveryInfo = {
   device_key: "lights",
-  transport: "webhook",
-  target: "https://192.168.2.50:8123",
-  target_stale: false,
+  transport: "http",
+  target: "http://192.168.2.50:8060",
   hub_ip: "192.168.2.123",
-  delivery: { status: "delivered", transport: "webhook" },
-  webhook_available: true,
-  move_available: false,
+  delivery: { status: "delivered", transport: "http" },
 };
 
 const LINK: HubMqttLinkState = {
@@ -72,25 +68,22 @@ const LINK: HubMqttLinkState = {
 
 test("the path line and the flow to allow name the actual addresses", () => {
   setToolsCardLanguage("en");
-  assert.equal(deployedTransport("webhook"), "webhook");
+  assert.equal(deployedTransport("http"), "http");
+  // A device the 0.7.2 test releases deployed as Direct has no path any more.
+  assert.equal(deployedTransport("webhook"), null);
   assert.equal(deployedTransport("bogus"), null);
   assert.equal(targetHostPort("https://192.168.2.50:8123"), "192.168.2.50:8123");
   assert.equal(targetHostPort("core-mosquitto:1883"), "core-mosquitto:1883");
   assert.equal(targetPort("http://192.168.2.50:8060"), "8060");
 
-  assert.equal(deliveryPathText(WEBHOOK_INFO), "The hub calls Home Assistant at https://192.168.2.50:8123.");
-  assert.equal(
-    deliveryAllowText(WEBHOOK_INFO),
-    "If the hub is on another network or VLAN, allow TCP from the hub (192.168.2.123) to 192.168.2.50:8123.",
-  );
-  const listener = { transport: "http", target: "http://192.168.2.50:8060", hub_ip: "192.168.2.123" };
-  assert.match(deliveryPathText(listener), /listener at http:\/\/192\.168\.2\.50:8060/);
-  assert.match(deliveryAllowText(listener), /port 8060 on the Home Assistant host; with Docker, publish port 8060/);
+  assert.match(deliveryPathText(LISTENER_INFO), /listener at http:\/\/192\.168\.2\.50:8060/);
+  assert.match(deliveryAllowText(LISTENER_INFO), /port 8060 on the Home Assistant host; with Docker, publish port 8060/);
+  assert.equal(deliveryPathText({ transport: "webhook", target: "https://192.168.2.50:8123" }), "");
   const mqtt = { transport: "mqtt", target: "core-mosquitto:1883", hub_ip: "192.168.2.123" };
   assert.match(deliveryPathText(mqtt), /listens on core-mosquitto:1883/);
   assert.match(deliveryAllowText(mqtt), /same broker Home Assistant uses \(core-mosquitto:1883\)/);
   assert.match(deliveryDocUrl("mqtt"), /networking\.md#optional--mqtt-delivery-x2$/);
-  assert.match(deliveryDocUrl("webhook"), /networking\.md#optional--wifi-commands-and-wifi-events$/);
+  assert.match(deliveryDocUrl("http"), /networking\.md#optional--wifi-commands-and-wifi-events$/);
 
   assert.equal(deliveryFailed({ status: "not_delivered" }), true);
   assert.equal(deliveryFailed({ status: "not_sent" }), true);
@@ -102,31 +95,23 @@ test("the path line and the flow to allow name the actual addresses", () => {
 test("the delivery panel stays quiet on success and guides on failure", () => {
   setToolsCardLanguage("en");
   const S = TOOLS_CARD_STRINGS.wifiDelivery;
-  const base = { busy: null, locked: false, lastTest: null, error: "", onTest() {}, onMove() {}, onUpdate() {} };
+  const base = { busy: null, locked: false, lastTest: null, error: "", onTest() {} };
   // Not deployed: no panel.
-  assert.equal(templateText(renderWifiDeliveryPanel({ ...base, info: { ...WEBHOOK_INFO, transport: null } })), "");
-  const ok = templateText(renderWifiDeliveryPanel({ ...base, info: WEBHOOK_INFO }));
+  assert.equal(templateText(renderWifiDeliveryPanel({ ...base, info: { ...LISTENER_INFO, transport: null } })), "");
+  const ok = templateText(renderWifiDeliveryPanel({ ...base, info: LISTENER_INFO }));
   assert.match(ok, new RegExp(S.title));
   assert.match(ok, /Test again/);
   assert.doesNotMatch(ok, new RegExp(S.notDelivered));
-  assert.doesNotMatch(ok, /Use Home Assistant's endpoint/);
 
   const failed = templateText(renderWifiDeliveryPanel({
     ...base,
-    info: { ...WEBHOOK_INFO, delivery: { status: "not_delivered", transport: "webhook" } },
+    info: { ...LISTENER_INFO, delivery: { status: "not_delivered", transport: "http" } },
   }));
   assert.match(failed, new RegExp(S.notDelivered));
-  assert.match(failed, /allow TCP from the hub \(192\.168\.2\.123\) to 192\.168\.2\.50:8123/);
+  assert.match(failed, /Allow TCP from the hub \(192\.168\.2\.123\) to port 8060/);
   assert.match(failed, /Networking guide/);
 
-  const listener = templateText(renderWifiDeliveryPanel({
-    ...base,
-    info: { ...WEBHOOK_INFO, transport: "http", target: "http://192.168.2.50:8060", move_available: true, target_stale: true },
-  }));
-  assert.match(listener, /Use Home Assistant's endpoint/);
-  assert.match(listener, /Sync/);
-
-  const passed = templateText(renderWifiDeliveryPanel({ ...base, info: WEBHOOK_INFO, lastTest: { status: "delivered", latency_s: 0.42 } }));
+  const passed = templateText(renderWifiDeliveryPanel({ ...base, info: LISTENER_INFO, lastTest: { status: "delivered", latency_s: 0.42 } }));
   assert.match(passed, /Test command received \(0\.4 s\)/);
 });
 
@@ -144,7 +129,7 @@ test("delivery info is read for deployed devices only", async () => {
   const calls: Array<Record<string, unknown>> = [];
   const tab = makeTab(async (msg) => {
     calls.push(msg);
-    return WEBHOOK_INFO;
+    return LISTENER_INFO;
   });
   tab._wifiDevices = [
     { device_key: "lights", device_name: "Lights", deployed_device_id: 9 },
@@ -158,7 +143,7 @@ test("delivery info is read for deployed devices only", async () => {
   tab._selectedDeviceKey = "lights";
   await tab._loadDeliveryInfo("lights");
   assert.deepEqual(calls.map((msg) => msg.type), ["sofabaton_x1s/command_config/delivery"]);
-  assert.equal(tab._deliveryInfo.target, "https://192.168.2.50:8123");
+  assert.equal(tab._deliveryInfo.target, "http://192.168.2.50:8060");
 });
 
 test("Test again presses through the backend and shows the verdict", async () => {
@@ -167,7 +152,7 @@ test("Test again presses through the backend and shows the verdict", async () =>
     types.push(String(msg.type));
     if (msg.type === "sofabaton_x1s/command_config/test_delivery") return { status: "delivered", latency_s: 1.5 };
     if (msg.type === "sofabaton_x1s/command_devices/list") return { devices: tab._wifiDevices };
-    return WEBHOOK_INFO;
+    return LISTENER_INFO;
   });
   tab._wifiDevices = [{ device_key: "lights", device_name: "Lights", deployed_device_id: 9 }];
   tab._selectedDeviceKey = "lights";
@@ -181,8 +166,8 @@ test("a deploy whose test press did not arrive says so in the dock", async () =>
   setToolsCardLanguage("en");
   const notices: Array<{ tone: string; label: string }> = [];
   const tab = makeTab(async (msg) => {
-    if (msg.type === "sofabaton_x1s/command_sync/move_to_direct") {
-      return { status: "success", delivery: { status: "not_delivered", transport: "webhook" } };
+    if (msg.type === "sofabaton_x1s/command_sync/run") {
+      return { status: "success", delivery: { status: "not_delivered", transport: "http" } };
     }
     if (msg.type === "sofabaton_x1s/command_devices/list") return { devices: tab._wifiDevices };
     return {};
@@ -190,17 +175,20 @@ test("a deploy whose test press did not arrive says so in the dock", async () =>
   tab.showCompletion = (notice: { tone: string; label: string }) => notices.push(notice);
   tab._wifiDevices = [{ device_key: "lights", device_name: "Lights", deployed_device_id: 9 }];
   tab._selectedDeviceKey = "lights";
-  await tab._startCommandConfigSync("move");
+  await tab._startCommandConfigSync();
   assert.deepEqual(notices, [{ tone: "error", label: TOOLS_CARD_STRINGS.wifiDelivery.syncedNotDeliveredDock }]);
 });
 
-test("new devices default to Direct; MQTT waits for the broker link", async () => {
+test("new devices default to MQTT where it is offered; MQTT waits for the broker link", async () => {
+  const plain = makeTab(async () => LINK);
+  plain._openCreateDeviceModal();
+  assert.equal(plain._newDeviceTransport, "http");
+  assert.equal(plain._mqttChoiceBlocked(), false);
+
   const tab = makeTab(async () => LINK);
   tab._mqttAvailable = true;
   tab._openCreateDeviceModal();
-  assert.equal(tab._newDeviceTransport, "http");
-  assert.equal(tab._mqttChoiceBlocked(), false);
-  tab._pickNewDeviceTransport("mqtt");
+  assert.equal(tab._newDeviceTransport, "mqtt");
   // The link is being read: Create waits.
   assert.equal(tab._mqttChoiceBlocked(), true);
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -274,17 +262,6 @@ test("latency uses the selected locale and never turns missing data into zero", 
   setToolsCardLanguage("en");
 });
 
-test("stale delivery names the deployed and desired addresses separately", () => {
-  setToolsCardLanguage("en");
-  const text = templateText(renderWifiDeliveryPanel({
-    info: { ...WEBHOOK_INFO, target_stale: true, desired_target: "https://192.168.2.60:8443" },
-    busy: null, locked: false, lastTest: null, error: "", onTest() {}, onMove() {}, onUpdate() {},
-  }));
-  assert.match(text, /The hub calls Home Assistant at https:\/\/192\.168\.2\.50:8123/);
-  assert.match(text, /Home Assistant now uses https:\/\/192\.168\.2\.60:8443/);
-  assert.doesNotMatch(text, /The hub calls Home Assistant at https:\/\/192\.168\.2\.60/);
-});
-
 test("an unsent test does not claim a delivery failure or prescribe firewall changes", () => {
   setToolsCardLanguage("en");
   const notices: any[] = [];
@@ -293,8 +270,8 @@ test("an unsent test does not claim a delivery failure or prescribe firewall cha
   tab._announceDeployResult({ status: "not_sent" }, "Synced", "entry-1");
   assert.equal(notices[0].label, "Synced, but delivery could not be tested.");
   const text = templateText(renderWifiDeliveryPanel({
-    info: { ...WEBHOOK_INFO, delivery: { status: "not_sent" } },
-    busy: null, locked: false, lastTest: null, error: "", onTest() {}, onMove() {}, onUpdate() {},
+    info: { ...LISTENER_INFO, delivery: { status: "not_sent" } },
+    busy: null, locked: false, lastTest: null, error: "", onTest() {},
   }));
   assert.match(text, /Could not send the test command/);
   assert.doesNotMatch(text, /did not reach|allow TCP/);

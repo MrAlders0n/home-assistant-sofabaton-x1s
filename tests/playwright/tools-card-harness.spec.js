@@ -141,7 +141,7 @@ test.describe("tools-card browser harness", () => {
       () => window.__toolsCardHarness.supportedLanguages,
     );
     const scenarios = ["1", "add-device", "activities-capture", "backup-edit", "automation-events", "18", "21", "24",
-      "wifi-delivery-failed", "wifi-move-direct", "wifi-create-mqtt-no-broker", "settings-x2-broker"];
+      "wifi-delivery-failed", "wifi-create-mqtt-no-broker", "settings-x2-broker"];
     const failures = [];
 
     for (const language of languages) {
@@ -175,7 +175,7 @@ test.describe("tools-card browser harness", () => {
 
           const failures = [];
           for (const root of roots) {
-            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-panel, .delivery-head, .delivery-move, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions")) {
+            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-panel, .delivery-head, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions")) {
               const text = element.textContent?.replace(/\s+/g, " ").trim();
               if (!text || !element.getClientRects().length) continue;
               if (element.scrollWidth > element.clientWidth + 1) {
@@ -590,8 +590,8 @@ test.describe("tools-card browser harness", () => {
       return root?.querySelector(".delivery-panel")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
     });
     await expect.poll(panelText).toContain("The test command did not reach Home Assistant.");
-    expect(await panelText()).toContain("The hub calls Home Assistant at https://192.168.1.10:8123.");
-    expect(await panelText()).toContain("allow TCP from the hub (192.168.1.110) to 192.168.1.10:8123.");
+    expect(await panelText()).toContain("The hub calls this integration's HTTP listener at http://192.168.1.10:8060.");
+    expect(await panelText()).toContain("Allow TCP from the hub (192.168.1.110) to port 8060 on the Home Assistant host");
     expect(await page.evaluate(() => {
       const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
       return root.querySelector(".delivery-panel a").getAttribute("href");
@@ -604,32 +604,6 @@ test.describe("tools-card browser harness", () => {
     expect(await panelText()).not.toContain("did not reach");
     const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
     expect(calls.some((call) => call.message?.type === "sofabaton_x1s/command_config/test_delivery")).toBe(true);
-  });
-
-  test("an X2 listener device moves to direct delivery in place", async ({ page }) => {
-    await page.goto("/tests/tools-card-harness.html");
-    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-move-direct"));
-    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot
-      ?.querySelector("sofabaton-wifi-commands-tab")?.shadowRoot?.querySelector(".delivery-move-btn")));
-    await page.evaluate(() => {
-      window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab")
-        .shadowRoot.querySelector(".delivery-move-btn").click();
-    });
-    const dock = () => page.evaluate(() =>
-      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".card-bottom-dock-status")?.textContent?.trim() ?? "");
-    await expect.poll(dock).toBe("Wifi Device now uses Home Assistant's HTTP endpoint.");
-    const state = await page.evaluate(() => {
-      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
-      return {
-        path: root.querySelector(".delivery-path")?.textContent?.trim(),
-        move: Boolean(root.querySelector(".delivery-move-btn")),
-      };
-    });
-    expect(state).toEqual({ path: "The hub calls Home Assistant at https://192.168.1.10:8123.", move: false });
-    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
-    // One in-place move; never a plain sync that would replace the device.
-    expect(calls.filter((call) => call.message?.type === "sofabaton_x1s/command_sync/move_to_direct")).toHaveLength(1);
-    expect(calls.some((call) => call.message?.type === "sofabaton_x1s/command_sync/run")).toBe(false);
   });
 
   test("MQTT waits for the hub's broker, and Set it up connects it with Home Assistant's login", async ({ page }) => {
@@ -646,18 +620,9 @@ test.describe("tools-card browser harness", () => {
         createDisabled: Boolean(root.querySelector(".dialog-footer .dialog-btn-primary")?.disabled),
       };
     });
-    // Direct is the default.
-    expect(await dialog()).toEqual({
-      options: ["Direct to Home Assistant", "Through your MQTT broker"],
-      selected: "Direct to Home Assistant",
-      check: "",
-      createDisabled: false,
-    });
-    await page.evaluate(() => {
-      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
-      root.querySelectorAll(".transport-option input")[1].click();
-    });
+    // MQTT is preselected where it is offered, and its broker link is read at once.
     await expect.poll(async () => (await dialog()).check).toBe("The hub isn't connected to an MQTT broker. Set it up now?");
+    expect(await dialog()).toMatchObject({ options: ["MQTT", "HTTP"], selected: "MQTT" });
     expect((await dialog()).createDisabled).toBe(true);
     await page.evaluate(() => {
       const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;

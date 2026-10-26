@@ -12927,7 +12927,6 @@ var TOOLS_CARD_STRINGS_EN = {
     wifiRefreshingMaps: "Refreshing activity buttons and shortcuts\u2026",
     wifiResyncingRemote: "Resyncing the physical remote\u2026",
     wifiCheckingBroker: "Checking the MQTT broker link\u2026",
-    wifiMovingDelivery: "Updating the Wifi Device's destination\u2026",
     wifiTestingDelivery: "Testing that button presses reach Home Assistant\u2026",
     wifiUpdatedInPlace: "Wifi Device updated.",
     wifiAlreadyCurrent: "Wifi Device already up to date.",
@@ -13507,7 +13506,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedRetarget: "The activity references could not be moved to the new Wifi Device; the previous one was kept.",
     syncFailedWritesRefused: "The hub refused some changes. Sync again to repair the Wifi Device.",
     syncFailedRejected: "The hub refused a change. Sync again.",
-    syncFailedRewrite: "The hub did not save the new destination address. Sync again.",
+    syncFailedRedeployNeeded: "Sync this Wifi Device first, then test it.",
     syncFailedMqttNotConnected: "Home Assistant's MQTT integration is not connected to a broker.",
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
@@ -13643,21 +13642,12 @@ var TOOLS_CARD_STRINGS_EN = {
       c: "C"
     }
   },
-  // How Wifi Command presses reach Home Assistant: the delivery choice, the
-  // deploy's test press, Move to direct delivery, and an X2's MQTT broker.
+  // How Wifi Command presses reach Home Assistant: the deploy's test press
+  // and an X2's MQTT broker.
   wifiDelivery: {
-    directName: "Direct to Home Assistant",
-    mqttName: "Through your MQTT broker",
-    // Short names for the transport pills and the device editor's select.
-    directShort: "Direct",
-    mqttShort: "MQTT",
-    directWebhookHint: "Uses Home Assistant's HTTP endpoint; no separate HTTP listener is needed.",
-    mqttWebhookHint: "The hub publishes to its configured MQTT broker. Home Assistant must use the same broker.",
     title: "How button presses reach Home Assistant",
-    pathWebhook: (target) => `The hub calls Home Assistant at ${target}.`,
     pathListener: (target) => `The hub calls this integration's HTTP listener at ${target}.`,
     pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; Home Assistant listens on ${broker}.` : "The hub publishes to its MQTT broker.",
-    allowWebhook: (hubIp, hostPort) => `If the hub is on another network or VLAN, allow TCP from the hub (${hubIp}) to ${hostPort}.`,
     allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on the Home Assistant host; with Docker, publish port ${port}.`,
     allowMqtt: (broker) => broker ? `The hub must reach the same broker Home Assistant uses (${broker}), and the broker must let it publish.` : "The hub must reach the same broker Home Assistant uses, and the broker must let it publish.",
     notDelivered: "The test command did not reach Home Assistant.",
@@ -13667,19 +13657,13 @@ var TOOLS_CARD_STRINGS_EN = {
     testing: "Testing\u2026",
     testFailed: "The test could not run. Try again.",
     networkingGuide: "Networking guide",
-    targetStale: (target) => target ? `Home Assistant now uses ${target}. Sync this device to update its destination.` : "Home Assistant's address has changed. Sync this device to update its destination.",
-    updateHub: "Sync",
-    moveHint: "This device uses the integration's HTTP listener. Switch to Home Assistant's HTTP endpoint, using HTTPS when configured. No separate HTTP listener is needed.",
-    moveButton: "Use Home Assistant's endpoint",
-    moving: "Switching\u2026",
-    movedDock: "Wifi Device now uses Home Assistant's HTTP endpoint.",
     syncedNotDeliveredDock: "Synced, but the test command did not reach Home Assistant.",
     // The create dialog's MQTT option, checked before anything is written.
     mqttChecking: "Checking the broker link\u2026",
     mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
     mqttHubNotConnected: "The hub isn't connected to an MQTT broker. Set it up now?",
     setUpNow: "Set it up",
-    useDirectInstead: "Use Direct",
+    useHttpInstead: "Use HTTP",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
     // The line is global: it shows on every hub's Settings tab while an X2
@@ -13833,7 +13817,6 @@ var WIFI_DEPLOY_PHASES = {
   refreshing_maps: "wifiRefreshingMaps",
   resyncing_remote: "wifiResyncingRemote",
   checking_broker: "wifiCheckingBroker",
-  moving_delivery: "wifiMovingDelivery",
   testing_delivery: "wifiTestingDelivery",
   updated_in_place: "wifiUpdatedInPlace",
   already_current: "wifiAlreadyCurrent",
@@ -14066,7 +14049,7 @@ var JOB_OPERATIONS = {
 var ENTITY_PHASES = /* @__PURE__ */ new Set(["stale_check", "plan", "settling", "cache_refresh", "completed", "complete"]);
 var REFRESH_PHASES = /* @__PURE__ */ new Set(["preparing", "finalizing", "completed", "complete"]);
 var RESTORE_PHASES = /* @__PURE__ */ new Set(["validation", "erase", "hub", "cache_warm"]);
-var HA_WIFI_PHASES = /* @__PURE__ */ new Set(["moving_delivery", "testing_delivery"]);
+var HA_WIFI_PHASES = /* @__PURE__ */ new Set(["testing_delivery"]);
 function progressLike(job, operation) {
   const p4 = job.progress ?? {};
   const stepKind = typeof p4.step_kind === "string" ? p4.step_kind.trim().toLowerCase() : "";

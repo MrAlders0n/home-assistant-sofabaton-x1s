@@ -67,7 +67,7 @@ export class HubBrokerFormController implements ReactiveController {
   private _error = "";
   private _errorField: BrokerField | null = null;
   private _onDone: ((connected: boolean) => void) | null = null;
-  private _onUseDirect: (() => void) | null = null;
+  private _onUseHttp: (() => void) | null = null;
 
   constructor(
     private readonly host: ReactiveControllerHost,
@@ -114,11 +114,11 @@ export class HubBrokerFormController implements ReactiveController {
     this.host.requestUpdate();
   }
 
-  /** Open the form, prefilled from the held state. `onUseDirect` adds the
+  /** Open the form, prefilled from the held state. `onUseHttp` adds the
    *  create flow's way out; `onDone` hears the verdict. */
   openFor(
     entryId: string,
-    opts: { onDone?: (connected: boolean) => void; onUseDirect?: () => void } = {},
+    opts: { onDone?: (connected: boolean) => void; onUseHttp?: () => void } = {},
   ) {
     this._entryId = entryId;
     this._host = this.state?.suggested_host ?? "";
@@ -131,7 +131,7 @@ export class HubBrokerFormController implements ReactiveController {
     this._error = "";
     this._errorField = null;
     this._onDone = opts.onDone ?? null;
-    this._onUseDirect = opts.onUseDirect ?? null;
+    this._onUseHttp = opts.onUseHttp ?? null;
     this.open = true;
     this.host.requestUpdate();
   }
@@ -143,8 +143,8 @@ export class HubBrokerFormController implements ReactiveController {
     this.host.requestUpdate();
   };
 
-  private _useDirect = () => {
-    const handler = this._onUseDirect;
+  private _useHttp = () => {
+    const handler = this._onUseHttp;
     this.close();
     handler?.();
   };
@@ -337,8 +337,8 @@ export class HubBrokerFormController implements ReactiveController {
               ${connected
                 ? html`<button class="dialog-btn dialog-btn-primary broker-done" @click=${this._finish}>${S.brokerDone}</button>`
                 : html`
-                    ${this._onUseDirect
-                      ? html`<button class="dialog-btn broker-use-direct" ?disabled=${this._busy} @click=${this._useDirect}>${S.useDirectInstead}</button>`
+                    ${this._onUseHttp
+                      ? html`<button class="dialog-btn broker-use-http" ?disabled=${this._busy} @click=${this._useHttp}>${S.useHttpInstead}</button>`
                       : html`<button class="dialog-btn" ?disabled=${this._busy} @click=${this.close}>${TOOLS_CARD_STRINGS.common.cancel}</button>`}
                     <button class="dialog-btn dialog-btn-primary broker-connect" ?disabled=${this._busy} @click=${this.submit}>
                       ${this._verdict ? S.brokerTryAgain : S.brokerConnect}

@@ -1,9 +1,8 @@
 """Wifi Commands ingress for SofabatonHub (R6, CR-H1-13).
 
-Presses arriving over the Roku HTTP listener, Home Assistant's webhook
-(X2) or MQTT, their action dispatch, the delivery test's arrivals, the
-MQTT activity-state ingress, and the IP-command and IR emission records
-the sensors read.
+Presses arriving over the Roku HTTP listener or MQTT, their action
+dispatch, the delivery test's arrivals, the MQTT activity-state
+ingress, and the IP-command and IR emission records the sensors read.
 """
 
 from __future__ import annotations
@@ -30,7 +29,6 @@ from .command_config import (
     normalize_command_name,
     WIFI_TRANSPORT_HTTP,
     WIFI_TRANSPORT_MQTT,
-    WIFI_TRANSPORT_WEBHOOK,
     wifi_device_requires_listener,
 )
 from .hub_identity import real_hub_mac
@@ -144,80 +142,6 @@ class WifiIngressMixin:
             command_label or "<unresolved>",
             press_type,
             path,
-        )
-        await self._async_dispatch_wifi_press(
-            record=record,
-            resolved_slot=resolved_slot,
-            command_index=command_index,
-            device_id=device_id,
-            command_label=command_label,
-            press_type=press_type,
-        )
-
-    async def async_handle_wifi_webhook_press(
-        self,
-        *,
-        device_id: int,
-        command_index: int,
-        press_type: str,
-        source_ip: str,
-    ) -> None:
-        """A press from an X2 URL record, through Home Assistant's webhook.
-
-        The webhook id names the hub; the call names device, slot and
-        press, resolved against the deployed snapshot like the listener's
-        indexed path. Only the hub (or a source a delivery test arrived
-        from) may fire Actions: a leaked webhook id is useless elsewhere.
-        """
-
-        if self._claim_wifi_probe(
-            device_id, command_index, press_type,
-            transport=WIFI_TRANSPORT_WEBHOOK, source_ip=source_ip,
-        ):
-            return
-        store = await async_get_command_config_store(self.hass)
-        accepted = {str(self.host or ""), *store.get_webhook_sources(self.entry_id)}
-        if not source_ip or source_ip not in accepted:
-            self._log.info(
-                "[WIFI_WEBHOOK] press from %s ignored: not the hub (%s)",
-                source_ip or "unknown",
-                self.host,
-            )
-            return
-        deployed = store.get_deployed_wifi_commands(self.entry_id, hub_device_id=device_id)
-        resolved_slot = deployed[command_index] if 0 <= command_index < len(deployed) else None
-        command_label = str((resolved_slot or {}).get("name") or "")
-
-        timestamp = datetime.now(timezone.utc)
-        resolved_device_name = (
-            self._get_cached_device_name(device_id)
-            or self.devices.get(device_id, {}).get("name")
-        )
-        record = {
-            "entity_id": device_id,
-            "entity_kind": "device",
-            "entity_name": resolved_device_name,
-            "command_id": command_label,
-            "command_index": command_index,
-            "command_label": command_label,
-            "button_label": command_label,
-            "press_type": press_type,
-            "timestamp": timestamp.timestamp(),
-            "iso_time": timestamp.isoformat(),
-            "source_ip": source_ip,
-            # The path carries the webhook id: never recorded.
-            "path": "",
-            "body": "",
-            "headers": {},
-            "transport": WIFI_TRANSPORT_WEBHOOK,
-        }
-        self._log.info(
-            "[WIFI_WEBHOOK] press source_ip=%s device_id=%s index=%s press=%s command=%s",
-            source_ip,
-            device_id,
-            command_index,
-            press_type,
-            command_label or "<unresolved>",
         )
         await self._async_dispatch_wifi_press(
             record=record,

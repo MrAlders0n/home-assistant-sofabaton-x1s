@@ -92,9 +92,6 @@ setup notice that stays English) goes on the test's allowlist with a reason.
   assignment term per locale and use it throughout both cards; internal keys
   such as `binding*` are implementation details, not translation guidance.
 - Call the callback component the **HTTP listener**, never the HTTP service.
-- **Direct** is the non-MQTT delivery choice, covering both the integration's
-  HTTP listener and Home Assistant's own HTTP endpoint. Name the migration by
-  its destination (**Use Home Assistant's endpoint**), not “direct delivery”.
 - In broker setup, **credentials** means the username and password: German
   `Zugangsdaten`, Spanish `credenciales`, French `identifiants de connexion`,
   Dutch `inloggegevens`, and Simplified Chinese `登录凭据`. Describe the

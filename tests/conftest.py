@@ -382,27 +382,6 @@ def _install_homeassistant_stubs() -> None:
     http.HomeAssistantView = HomeAssistantView
     sys.modules.setdefault("homeassistant.components.http", http)
 
-    # Webhook registry stub: records what the integration registers, keyed
-    # by webhook id, and refuses a second registration of one id as HA does.
-    webhook = types.ModuleType("homeassistant.components.webhook")
-    webhook.registered = {}
-
-    def _webhook_register(hass, domain, name, webhook_id, handler, *, local_only=False, allowed_methods=None):
-        if webhook_id in webhook.registered:
-            raise ValueError("Handler is already defined!")
-        webhook.registered[webhook_id] = {
-            "domain": domain,
-            "name": name,
-            "handler": handler,
-            "local_only": local_only,
-            "allowed_methods": allowed_methods,
-        }
-
-    webhook.async_register = _webhook_register
-    webhook.async_unregister = lambda hass, webhook_id: webhook.registered.pop(webhook_id, None)
-    sys.modules.setdefault("homeassistant.components.webhook", webhook)
-    components.webhook = webhook
-
     # Minimal aiohttp.web stub — the integration imports ``web.Request``
     # and constructs ``web.Response``. Tests that don't actually serve
     # HTTP can use these inert placeholders, and the import succeeds.

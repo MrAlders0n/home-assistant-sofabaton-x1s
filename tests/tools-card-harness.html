@@ -1821,7 +1821,6 @@
                 devices: mock.wifiDevices,
                 max_devices: scenario.maxWifiDevices ?? 5,
                 mqtt_available: scenario.mqttAvailable ?? false,
-                webhook_available: scenario.webhookAvailable ?? false,
               });
             case "sofabaton_x1s/command_config/delivery": {
               // How presses reach Home Assistant, from what the device
@@ -1834,14 +1833,9 @@
               return respond(type, {
                 device_key: key,
                 transport,
-                target: transport === "webhook"
-                  ? "https://192.168.1.10:8123"
-                  : transport === "mqtt" ? "192.168.1.10:1883" : "http://192.168.1.10:8060",
-                target_stale: false,
+                target: transport === "mqtt" ? "192.168.1.10:1883" : "http://192.168.1.10:8060",
                 hub_ip: HUB_1.ip_address,
                 delivery: device?.delivery ?? null,
-                webhook_available: scenario.webhookAvailable ?? false,
-                move_available: Boolean(scenario.webhookAvailable) && transport === "http" && key !== "haevents",
                 ...(scenario.wifiDelivery?.[key] ?? {}),
               });
             }
@@ -1851,14 +1845,6 @@
               mock.wifiDevices = mock.wifiDevices.map((item) => (item.device_key === key ? { ...item, delivery } : item));
               if (scenario.wifiDelivery?.[key]) scenario.wifiDelivery[key] = { ...scenario.wifiDelivery[key], delivery };
               return respond(type, delivery);
-            }
-            case "sofabaton_x1s/command_sync/move_to_direct": {
-              const key = String(message.device_key ?? "");
-              const delivery = { status: "delivered", transport: "webhook", latency_s: 0.6, via: "test" };
-              mock.wifiDevices = mock.wifiDevices.map((item) => (
-                item.device_key === key ? { ...item, deployed_transport: "webhook", delivery } : item));
-              if (scenario.wifiDelivery?.[key]) delete scenario.wifiDelivery[key];
-              return respond(type, { status: "success", inplace: true, delivery });
             }
             case "sofabaton_x1s/hub_mqtt/status":
               return respond(type, mock.hubMqtt);
@@ -3074,39 +3060,22 @@
       },
       {
         id: "wifi-delivery-failed", group: "WiFi Commands",
-        label: "X2 direct delivery: the test press did not arrive",
+        label: "Wifi Device: the test press did not arrive",
         states: STATES_CONNECTED,
         state: {
           ...BASE_STATE,
           hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
         },
         mqttAvailable: true,
-        webhookAvailable: true,
         wifiDevices: [
           {
             ...WIFI_DEVICE_LR,
-            deployed_transport: "webhook",
+            deployed_transport: "http",
             requested_transport: "http",
-            delivery: { status: "not_delivered", transport: "webhook", target: "https://192.168.1.10:8123", hub_ip: "192.168.1.110", via: "test" },
+            delivery: { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.110", via: "test" },
           },
           WIFI_DEVICE_BR,
         ],
-        wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
-        async postLoad(card) {
-          await clickTab(card, "Automation");
-          await clickWifiDevice(card, "Living Room Remote");
-        },
-      },
-      {
-        id: "wifi-move-direct", group: "WiFi Commands",
-        label: "X2 listener device: Move to direct delivery",
-        states: STATES_CONNECTED,
-        state: {
-          ...BASE_STATE,
-          hubs: [{ ...HUB_1, broker_setup_available: true, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
-        },
-        webhookAvailable: true,
-        wifiDevices: [{ ...WIFI_DEVICE_LR, deployed_transport: "http", requested_transport: "http" }, WIFI_DEVICE_BR],
         wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
         async postLoad(card) {
           await clickTab(card, "Automation");
@@ -3122,7 +3091,6 @@
           hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
         },
         mqttAvailable: true,
-        webhookAvailable: true,
         hubMqtt: {
           available: true,
           ha_connected: true,
