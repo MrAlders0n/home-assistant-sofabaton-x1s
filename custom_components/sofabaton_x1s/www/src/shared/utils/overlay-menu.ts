@@ -111,6 +111,8 @@ export interface AnchoredMenuOptions {
    *  opens over whatever lies beside it. */
   minWidth: number;
   within?: HTMLElement | null;
+  /** The tallest the menu may grow (320 px when absent). */
+  maxHeight?: number;
 }
 
 /**
@@ -126,12 +128,12 @@ export function anchoredListPosition(trigger: HTMLElement, menu: AnchoredMenuOpt
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null,
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight } : null,
   );
 }
 
 /** The pure math behind anchoredListPosition: `anchor` and `inner` in the same coordinates as `bounds`. */
-export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, menu: { minWidth: number; rtl?: boolean } | null): string {
+export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, menu: { minWidth: number; rtl?: boolean; maxHeight?: number } | null): string {
   const room = inner ?? bounds;
   const gap = 4;
   const margin = 8;
@@ -143,7 +145,7 @@ export function anchoredListStyle(anchor: Box, bounds: Box, inner: Box | null, m
   const below = bottom - anchor.bottom - gap - margin;
   const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
-  const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
+  const maxHeight = Math.max(120, Math.min(menu?.maxHeight ?? 320, openUp ? above : below));
   const vertical = openUp
     ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;`
     : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;

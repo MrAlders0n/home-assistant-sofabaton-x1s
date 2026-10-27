@@ -933,10 +933,10 @@ function shortcutsRowEnabled(layout) {
 var SHORTCUT_SLOTS = ["left", "middle", "right"];
 function normalizedShortcutSlot(value) {
   if (!value || typeof value !== "object") return null;
-  const icon7 = String(value.icon ?? "").trim();
+  const icon8 = String(value.icon ?? "").trim();
   const commandId = Number(value.command_id);
-  if (!icon7 || !Number.isFinite(commandId)) return null;
-  return { icon: icon7, command_id: commandId };
+  if (!icon8 || !Number.isFinite(commandId)) return null;
+  return { icon: icon8, command_id: commandId };
 }
 function deviceShortcutsFromConfig(config, deviceId) {
   const result = {};
@@ -3580,7 +3580,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   if (!item || typeof item !== "object") return null;
   const name = String(item.name ?? item.label ?? "").trim();
   if (!name) return null;
-  const icon7 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+  const icon8 = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
   const action = item.action && typeof item.action === "object" ? item.action : item.tap_action && typeof item.tap_action === "object" ? item.tap_action : null;
   const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
   const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
@@ -3592,7 +3592,7 @@ function normalizeCustomFavorite(item, idx = 0) {
   return {
     __custom: true,
     name,
-    icon: icon7,
+    icon: icon8,
     action: hasAction ? action : null,
     command_id: Number.isFinite(cmd) ? cmd : null,
     device_id: Number.isFinite(dev) ? dev : null,
@@ -4984,12 +4984,12 @@ function automationAssistButtonYaml(capture, entityId, hubIntegration) {
   if (!capture || !entityId) return "";
   const kind = capture.kind || "button";
   const label = capture.label || str().assist.automationAssistName;
-  const icon7 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
+  const icon8 = kind === "activity" ? "mdi:television-classic" : kind === "power" ? "mdi:power" : capture.commandType === "favorite" ? "mdi:star" : capture.commandType === "macro" ? "mdi:cogs" : capture.icon || "mdi:remote";
   const serviceYaml = automationAssistRemoteYaml(capture, entityId, hubIntegration).split("\n").map((line) => `  ${line}`).join("\n");
   return [
     "type: button",
     `name: ${yamlScalar(label)}`,
-    `icon: ${icon7}`,
+    `icon: ${icon8}`,
     "tap_action:",
     "  action: perform-action",
     "  perform_" + serviceYaml.substring(2),
@@ -6206,16 +6206,16 @@ var SbKeyButton = class extends BaseElement {
     control.type = "button";
     control.className = "sb-key-control";
     control.disabled = this._disabled;
-    const icon7 = document.createElement("ha-icon");
-    icon7.className = "sb-key-control__icon";
+    const icon8 = document.createElement("ha-icon");
+    icon8.className = "sb-key-control__icon";
     const label = document.createElement("span");
     label.className = "sb-key-control__label";
     const trailingIcon = document.createElement("ha-icon");
     trailingIcon.className = "sb-key-control__trailing-icon";
-    control.append(icon7, label, trailingIcon);
+    control.append(icon8, label, trailingIcon);
     root.appendChild(control);
     this._control = control;
-    this._iconEl = icon7;
+    this._iconEl = icon8;
     this._trailingIconEl = trailingIcon;
     this._labelEl = label;
     this.syncContent();
@@ -8631,8 +8631,8 @@ var MDI_ICON_PATHS = {
 
 // remote-card/src/shims/ha-icon.ts
 var FALLBACK_PATH = "M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z";
-function mdiPathFor(icon7) {
-  const name = String(icon7 ?? "").trim().replace(/^mdi:/, "");
+function mdiPathFor(icon8) {
+  const name = String(icon8 ?? "").trim().replace(/^mdi:/, "");
   if (!name) return null;
   return MDI_ICON_PATHS[name] ?? null;
 }
@@ -8659,10 +8659,10 @@ var SbHaIcon = class extends HTMLElement {
     this._render();
   }
   _render() {
-    const icon7 = this.icon;
-    if (this._rendered === icon7) return;
-    this._rendered = icon7;
-    const path = mdiPathFor(icon7) ?? FALLBACK_PATH;
+    const icon8 = this.icon;
+    if (this._rendered === icon8) return;
+    this._rendered = icon8;
+    const path = mdiPathFor(icon8) ?? FALLBACK_PATH;
     this._shadow.innerHTML = `
       <style>
         :host {
@@ -13696,6 +13696,23 @@ var TOOLS_CARD_STRINGS_EN = {
     testFailed: "The test could not run. Try again.",
     networkingGuide: "Networking guide",
     syncedNotDeliveredDock: "Synced, but the test command did not reach Home Assistant.",
+    // The delivery pill (Hub editor and Wifi Commands device view) and its dropdown.
+    pillLabel: (method) => `Delivery method: ${method}`,
+    pillAttention: "Button presses need attention.",
+    test: "Test",
+    notTested: "Not tested yet.",
+    notTestedHint: "Test sends one command from the hub and waits for it here.",
+    pressReceived: "A button press arrived.",
+    notOnHub: "Not on the hub yet.",
+    notOnHubHint: "The first Sync puts it there and sends a test command.",
+    needsSync: "Sync this device before button presses can reach Home Assistant.",
+    brokerHaFix: "Button presses can't arrive until it is. Check the MQTT integration in Home Assistant.",
+    onHubTag: "on the hub",
+    afterSyncTag: "after Sync",
+    switchPending: (next, current) => `Switches to ${next} on the next Sync. Until then, button presses keep using ${current}.`,
+    undo: "Undo",
+    mqttNeedsIntegration: "MQTT needs Home Assistant's MQTT integration.",
+    firstSyncMethod: "The first Sync uses this method.",
     // The create dialog's MQTT option, checked before anything is written.
     mqttChecking: "Checking the broker link\u2026",
     mqttHaNotConnected: "Home Assistant's MQTT integration isn't connected to a broker, so MQTT can't be used yet.",
@@ -15542,7 +15559,7 @@ var SofabatonServerPanel = class extends i4 {
   }
   _onNavigate(event) {
     const d5 = event.detail;
-    if (d5.page) this._go(toolRoute(d5.page));
+    if (d5.page) this._go(toolRoute(d5.page, d5.sub));
     else if (d5.tab) this._go(hubRoute(null, d5.tab, d5.sub, d5.entity, d5.item));
   }
   // -- render ---------------------------------------------------------------------------
@@ -16877,13 +16894,13 @@ function hubIcon(kind, classes = "") {
       <path d="M25.79,130c-7.42,0-14.04-1.44-19.67-4.22,5.85,12.19,14.63,22.79,26.26,31.66,9.25,7.11,24.67,15.57,45.76,15.57h264c14.9,0,28.65-4.5,42.02-13.76,12.95-9.01,22.84-19.89,29.61-32.48-6.92,2.72-14.25,3.23-20.98,3.23H25.79Z"></path>
     </svg>`;
   }
-  const icon7 = {
+  const icon8 = {
     activities: "mdi:play-circle-outline",
     devices: "mdi:audio-video",
     ip: "mdi:router-wireless",
     version: "mdi:cog-outline"
   }[kind];
-  return b2`<ha-icon class=${className.trim()} icon=${icon7}></ha-icon>`;
+  return b2`<ha-icon class=${className.trim()} icon=${icon8}></ha-icon>`;
 }
 
 // custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form.ts
@@ -17462,10 +17479,10 @@ function setBundleEntityAppearance(bundle, kind, entityId, appearance) {
 function bundleEntityAppearance(bundle, kind, entityId) {
   const list = kind === "activity" ? bundle?.activities : bundle?.devices;
   const block = (list ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(entityId))?.device;
-  const icon7 = Number(block?.icon);
+  const icon8 = Number(block?.icon);
   const colorId = Number(block?.color_id);
   return {
-    icon: block?.icon != null && Number.isInteger(icon7) ? icon7 : null,
+    icon: block?.icon != null && Number.isInteger(icon8) ? icon8 : null,
     colorId: block?.color_id != null && Number.isInteger(colorId) ? colorId : null
   };
 }
@@ -20946,11 +20963,11 @@ function entityColor(hubVersion, colorId) {
 }
 
 // remote-card/src/entity-icons/entity-tile.ts
-function entityTile(hubVersion, icon7, colorId) {
-  if (typeof icon7 !== "number") return null;
-  const path = entityIconPath(hubVersion, icon7);
+function entityTile(hubVersion, icon8, colorId) {
+  if (typeof icon8 !== "number") return null;
+  const path = entityIconPath(hubVersion, icon8);
   if (!path) return null;
-  return { path, color: entityColor(hubVersion, colorId), name: entityIconName(hubVersion, icon7) };
+  return { path, color: entityColor(hubVersion, colorId), name: entityIconName(hubVersion, icon8) };
 }
 var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] };
 var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
@@ -21175,9 +21192,9 @@ function renderAppearanceEditor(params) {
   const version = params.hubVersion;
   const colors = entityColorsSupported(version);
   const draft = params.draft;
-  const icon7 = draft.icon ?? 1;
+  const icon8 = draft.icon ?? 1;
   const colorId = draft.colorId ?? 0;
-  const tile = entityTile(version, icon7, colorId);
+  const tile = entityTile(version, icon8, colorId);
   const changeLabel = colors ? labels.changeIconAndColor : labels.changeIcon;
   const tab = colors ? params.tab : "icon";
   return b2`
@@ -21198,7 +21215,7 @@ function renderAppearanceEditor(params) {
                 </button>
               </div>` : A}
           <div class="appearance-pane">
-            ${renderPane({ hubVersion: version, icon: icon7, colorId, tab, labels, onPick: (picked) => params.onPick({ ...draft, ...picked }) })}
+            ${renderPane({ hubVersion: version, icon: icon8, colorId, tab, labels, onPick: (picked) => params.onPick({ ...draft, ...picked }) })}
           </div>
         ` : b2`<button class="appearance-reveal" type="button" aria-expanded="false" @click=${params.onToggle}>
           <ha-icon icon=${colors ? "mdi:palette-outline" : "mdi:shape-outline"}></ha-icon><span>${changeLabel}</span><ha-icon icon="mdi:chevron-down"></ha-icon>
@@ -21209,9 +21226,9 @@ function renderAppearanceToggle(params) {
   const { labels, state } = params;
   const version = params.hubVersion;
   const colors = entityColorsSupported(version);
-  const icon7 = state.icon ?? 1;
+  const icon8 = state.icon ?? 1;
   const colorId = state.colorId ?? 0;
-  const tile = entityTile(version, icon7, colorId);
+  const tile = entityTile(version, icon8, colorId);
   if (!tile) return A;
   const tab = colors ? state.tab : "icon";
   const set = (patch) => params.onChange({ ...state, ...patch });
@@ -21228,7 +21245,7 @@ function renderAppearanceToggle(params) {
                   <button role="tab" type="button" class=${tab === "color" ? "active" : ""} aria-selected=${tab === "color" ? "true" : "false"} @click=${() => set({ tab: "color" })}>${labels.colorName(colorId >= 1 ? colorId : 1)}</button>
                 </div>` : A}
             <div class="cache-dialog-appearance-pane">
-              ${renderPane({ hubVersion: version, icon: icon7, colorId, tab, labels, onPick: (picked) => set(picked) })}
+              ${renderPane({ hubVersion: version, icon: icon8, colorId, tab, labels, onPick: (picked) => set(picked) })}
             </div>
           ` : A}
     </div>
@@ -22196,7 +22213,7 @@ function anchoredListPosition(trigger, menu = null) {
     trigger.getBoundingClientRect(),
     fixedFrameBox(trigger),
     menu?.within?.getBoundingClientRect() ?? null,
-    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger) } : null
+    menu ? { minWidth: menu.minWidth, rtl: isRtl(trigger), maxHeight: menu.maxHeight } : null
   );
 }
 function anchoredListStyle(anchor, bounds, inner, menu) {
@@ -22210,7 +22227,7 @@ function anchoredListStyle(anchor, bounds, inner, menu) {
   const below = bottom - anchor.bottom - gap - margin;
   const above = anchor.top - top - gap - margin;
   const openUp = below < 200 && above > below;
-  const maxHeight = Math.max(120, Math.min(320, openUp ? above : below));
+  const maxHeight = Math.max(120, Math.min(menu?.maxHeight ?? 320, openUp ? above : below));
   const vertical = openUp ? `bottom: ${Math.round(bounds.bottom - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom - bounds.top + gap)}px; bottom: auto;`;
   const width = menu ? Math.min(Math.max(anchor.width, menu.minWidth), maxX - minX) : anchor.width;
   const ideal = menu && !menu.rtl ? anchor.right - width : anchor.left;
@@ -27278,8 +27295,8 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<div class="field"><label><span class="field-label">${label}</span><select aria-label=${label} @change=${(event) => set(event.target.value)}>
       ${options.map((option) => b2`<option value=${option.value} .selected=${option.value === value}>${option.label}</option>`)}</select></label></div>`;
   }
-  _heading(label, icon7) {
-    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon7}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
+  _heading(label, icon8) {
+    return b2`<summary><svg class="mdi" viewBox="0 0 24 24" aria-hidden="true"><path d=${icon8}></path></svg><span>${label}</span><svg class="mdi chevron" viewBox="0 0 24 24" aria-hidden="true"><path d=${mdiChevronDown}></path></svg></summary>`;
   }
   _groups() {
     const c7 = this.config, s7 = this.selection, e6 = str2().editor;
@@ -27396,13 +27413,13 @@ var SbPanelRemoteEditor = class extends i4 {
    * Draft edit: the slot is written (and the preview updates) the moment
    * both fields are valid; an incomplete draft leaves the stored slot alone.
    */
-  _draft(icon7, command) {
-    this._icon = icon7;
+  _draft(icon8, command) {
+    this._icon = icon8;
     this._command = command;
     const id = parseDeviceLayoutKey(this.selection);
     const commandId = command !== "" && Number.isFinite(Number(command)) ? Number(command) : null;
-    if (id == null || !this._slot || !icon7.trim() || commandId == null) return;
-    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon7.trim(), command_id: commandId }).nextConfig;
+    if (id == null || !this._slot || !icon8.trim() || commandId == null) return;
+    const next = applyShortcutSlotPatch(this.config, id, this._slot, { icon: icon8.trim(), command_id: commandId }).nextConfig;
     if (JSON.stringify(next) !== JSON.stringify(this.config)) this._emit(next);
   }
   /** Reset clears the stored slot and the draft; the panel stays open. */
@@ -27419,10 +27436,10 @@ var SbPanelRemoteEditor = class extends i4 {
     const stored = deviceShortcutsFromConfig(this.config, id);
     const label = (slot) => slot === "left" ? e6.shortcutSlotLeft : slot === "middle" ? e6.shortcutSlotMiddle : e6.shortcutSlotRight;
     return b2`<div class="shortcut-strip">${SHORTCUT_SLOTS.map((slot) => {
-      const icon7 = stored[slot]?.icon ?? null;
+      const icon8 = stored[slot]?.icon ?? null;
       const open = this._slot === slot;
-      return b2`<button type="button" class="shortcut-slot ${icon7 ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
-        @click=${() => this._toggleSlot(slot)}>${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : A}</button>`;
+      return b2`<button type="button" class="shortcut-slot ${icon8 ? "is-configured" : ""} ${open ? "is-open" : ""}" aria-label=${label(slot)} aria-expanded=${open ? "true" : "false"}
+        @click=${() => this._toggleSlot(slot)}>${icon8 ? b2`<ha-icon icon=${icon8}></ha-icon>` : A}</button>`;
     })}</div>`;
   }
   _slotPanel(id) {
@@ -27459,8 +27476,8 @@ var SbPanelRemoteEditor = class extends i4 {
    */
   _iconPicker() {
     const e6 = str2().editor;
-    const icon7 = this._icon.trim();
-    const query = icon7.toLowerCase().replace(/^mdi:/, "");
+    const icon8 = this._icon.trim();
+    const query = icon8.toLowerCase().replace(/^mdi:/, "");
     const matches = this._iconOpen ? ICON_NAMES.filter((name) => name.includes(query)).slice(0, 80) : [];
     const pick = (name) => {
       this._draft(`mdi:${name}`, this._command);
@@ -27489,7 +27506,7 @@ var SbPanelRemoteEditor = class extends i4 {
     return b2`<div class="icon-picker">
       <div class="field"><label><span class="field-label">${e6.shortcutIcon}</span>
         <div class="icon-field">
-          ${icon7 ? b2`<ha-icon icon=${icon7}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
+          ${icon8 ? b2`<ha-icon icon=${icon8}></ha-icon>` : b2`<span class="icon-blank" aria-hidden="true"></span>`}
           <input role="combobox" aria-label=${e6.shortcutIcon} aria-autocomplete="list" aria-expanded=${this._iconOpen ? "true" : "false"} aria-controls="icon-options"
             autocomplete="off" spellcheck="false" .value=${l5(this._icon)}
             @focus=${() => {
@@ -27508,7 +27525,7 @@ var SbPanelRemoteEditor = class extends i4 {
             @keydown=${onKey}>
         </div></label></div>
       ${matches.length ? b2`<div class="icon-options" id="icon-options" role="listbox" aria-label=${e6.shortcutIcon}>${matches.map((name, index) => b2`
-        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon7 === `mdi:${name}` ? "true" : "false"}
+        <button type="button" role="option" class="icon-option ${index === this._iconActive ? "is-active" : ""}" aria-selected=${icon8 === `mdi:${name}` ? "true" : "false"}
           @pointerdown=${(ev) => ev.preventDefault()} @click=${() => pick(name)}><ha-icon icon=${`mdi:${name}`}></ha-icon><span>mdi:${name}</span></button>`)}</div>` : A}
     </div>`;
   }
@@ -28615,6 +28632,18 @@ function deliveryFailed(delivery) {
   const status = String(delivery?.status ?? "");
   return status === "not_delivered" || status === "not_sent";
 }
+function formatCheckedAgo(checkedAt, now = Date.now(), locale = toolsCardLanguage()) {
+  const time = Date.parse(String(checkedAt ?? ""));
+  if (!Number.isFinite(time)) return "";
+  const seconds = Math.round((time - now) / 1e3);
+  const size = Math.abs(seconds);
+  const [value, unit] = size < 60 ? [seconds, "second"] : size < 3600 ? [Math.round(seconds / 60), "minute"] : size < 86400 ? [Math.round(seconds / 3600), "hour"] : [Math.round(seconds / 86400), "day"];
+  try {
+    return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
+  } catch {
+    return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(value, unit);
+  }
+}
 function formatLatency(seconds, locale = toolsCardLanguage()) {
   if (seconds == null) return "?";
   const value = Number(seconds);
@@ -28624,6 +28653,129 @@ function formatLatency(seconds, locale = toolsCardLanguage()) {
   } catch {
     return new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
   }
+}
+
+// server-panel/src/components/delivery-pill.ts
+var D2 = TOOLS_CARD_STRINGS.wifiDelivery;
+var W = TOOLS_CARD_STRINGS.wifiCommands;
+var transportName = (transport) => transport === "mqtt" ? "MQTT" : "HTTP";
+function icon6(path, cls = "") {
+  return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
+}
+var DELIVERY_PILL_CSS = i`
+  .transport-pill { display: inline-flex; align-items: center; align-self: center; gap: 3px; border-radius: 999px; padding: 3px 9px; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: 1.25; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; }
+  .transport-pill.mqtt { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-accent); }
+  .transport-pill.attention { border-color: color-mix(in srgb, var(--sbp-warn) 60%, var(--sbp-line)); background: color-mix(in srgb, var(--sbp-warn) 14%, var(--sbp-panel)); color: var(--sbp-text); }
+  .transport-pill .mdi { width: 13px; height: 13px; flex: 0 0 auto; }
+  .transport-pill .delivery-pill-alert { color: var(--sbp-warn); margin-inline-start: -3px; }
+  button.delivery-pill { padding-inline-end: 5px; cursor: pointer; }
+  button.delivery-pill:hover { border-color: color-mix(in srgb, var(--sbp-accent) 60%, var(--sbp-line)); }
+  button.delivery-pill:focus-visible { outline: 2px solid var(--sbp-accent); outline-offset: 2px; }
+  button.delivery-pill[aria-expanded="true"] { box-shadow: 0 0 0 3px rgba(var(--sbp-accent-rgb), 0.24); }
+  .delivery-pill-wrap { display: inline-flex; align-self: center; flex: 0 0 auto; }
+  .delivery-backdrop { position: fixed; inset: 0; z-index: 8; border: 0; border-radius: 0; padding: 0; margin: 0; background: transparent; cursor: default; }
+  .delivery-backdrop:hover { border: 0; }
+  .delivery-pop { z-index: 9; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1); color: var(--sbp-text); font-size: 12.5px; line-height: 1.45; text-align: start; white-space: normal; -webkit-user-select: text; user-select: text; }
+  .delivery-main { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+  .delivery-head { display: flex; align-items: center; gap: 10px; }
+  .delivery-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; }
+  .delivery-path { margin: 0; color: var(--sbp-muted); overflow-wrap: anywhere; }
+  .delivery-status { display: flex; gap: 8px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--sbp-text) 6%, transparent); }
+  .delivery-status > .mdi { width: 17px; height: 17px; flex: 0 0 auto; color: var(--sbp-muted); }
+  .delivery-status.ok { background: color-mix(in srgb, var(--sbp-ok) 13%, transparent); }
+  .delivery-status.ok > .mdi { color: var(--sbp-ok); }
+  .delivery-status.warn { background: color-mix(in srgb, var(--sbp-warn) 14%, transparent); }
+  .delivery-status.warn > .mdi { color: var(--sbp-warn); }
+  .delivery-status.brief { padding: 0 2px; background: transparent; }
+  .delivery-status-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+  .delivery-status-title { font-weight: 500; }
+  .delivery-status.warn:not(.brief) .delivery-status-title { font-weight: 700; }
+  /* The broker problem is the server's whole sentence, not a short title. */
+  .delivery-status.problem .delivery-status-title { font-weight: 500; }
+  .delivery-status-meta { font-size: 12px; color: var(--sbp-muted); }
+  .delivery-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 3px; }
+  .delivery-btn { border: 1px solid var(--sbp-line); border-radius: 9px; padding: 5px 10px; background: transparent; color: var(--sbp-text); font: inherit; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+  .delivery-btn.primary { border-color: var(--sbp-accent); background: var(--sbp-accent); color: #fff; }
+  .delivery-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
+  .delivery-btn:disabled { opacity: 0.45; cursor: default; }
+  .delivery-error { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--sbp-err); }
+  .delivery-error-detail { color: var(--sbp-muted); }
+  .delivery-spin { animation: delivery-spin 0.9s linear infinite; }
+  @keyframes delivery-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .delivery-spin { animation: none; } }
+`;
+function renderReadOnlyDeliveryPill(params) {
+  return b2`<span class="transport-pill ${params.transport}${params.attention ? " attention" : ""}"
+    title=${params.attention ? D2.pillAttention : W.transportPillDeployedTitle}
+  >${params.attention ? icon6(mdiAlertOutline, "delivery-pill-alert") : A}${transportName(params.transport)}</span>`;
+}
+var STATUS_ICONS = {
+  testing: mdiLoading,
+  delivered: mdiCheckCircle,
+  not_delivered: mdiAlertOutline,
+  not_sent: mdiAlertOutline,
+  untested: mdiHelpCircleOutline,
+  not_on_hub: mdiInformationOutline,
+  stale: mdiInformationOutline
+};
+function renderStatus(prefix, status) {
+  const brief = Boolean(status.brief);
+  return b2`
+    <div class="delivery-status ${status.tone}${brief ? " brief" : ""}" id="${prefix}-delivery-status" data-status=${status.kind}
+      role=${status.tone === "warn" && !brief ? "alert" : A}>
+      ${icon6(STATUS_ICONS[status.kind], status.kind === "testing" ? "delivery-spin" : "")}
+      <div class="delivery-status-copy">
+        <span class="delivery-status-title">${status.title}</span>
+        ${status.meta && !brief ? b2`<span class="delivery-status-meta">${status.meta}</span>` : A}
+      </div>
+    </div>`;
+}
+function renderProblem(prefix, problem) {
+  return b2`
+    <div class="delivery-status warn problem" id="${prefix}-delivery-broker" role="alert">
+      ${icon6(mdiAlertOutline)}
+      <div class="delivery-status-copy">
+        <span class="delivery-status-title">${problem.text}</span>
+        ${problem.action ? b2`<span class="delivery-actions"><button class="delivery-btn primary" id="${prefix}-delivery-broker-settings" type="button" @click=${problem.action.onClick}>${problem.action.label}</button></span>` : A}
+      </div>
+    </div>`;
+}
+function renderDeliveryPill(params) {
+  const prefix = params.idPrefix;
+  const name = transportName(params.transport);
+  const onKeydown = (event) => {
+    if (event.key !== "Escape" || !params.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    params.onClose();
+  };
+  return b2`
+    <span class="delivery-pill-wrap" @keydown=${onKeydown}>
+      <button
+        class="transport-pill delivery-pill ${params.transport}${params.attention ? " attention" : ""}"
+        id="${prefix}-delivery-pill"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded=${params.open ? "true" : "false"}
+        aria-label=${params.attention ? `${D2.pillLabel(name)}. ${D2.pillAttention}` : D2.pillLabel(name)}
+        title=${W.transportPillDeployedTitle}
+        @click=${(event) => params.onToggle(event.currentTarget)}
+      >${params.attention ? icon6(mdiAlertOutline, "delivery-pill-alert") : A}<span>${name}</span>${icon6(mdiChevronDown)}</button>
+      ${params.open ? b2`
+            <button class="delivery-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${params.onClose} @wheel=${(event) => event.preventDefault()}></button>
+            <div class="delivery-pop" id="${prefix}-delivery" role="dialog" aria-label=${params.heading} style=${params.menuStyle}>
+              <div class="delivery-main">
+                <div class="delivery-head">
+                  <span class="delivery-title">${params.heading}</span>
+                  <button class="delivery-btn" id="${prefix}-test-delivery" type="button" ?disabled=${params.test.disabled} @click=${params.test.onClick}>${params.test.label}</button>
+                </div>
+                ${params.path ? b2`<p class="delivery-path" id="${prefix}-delivery-path">${params.path}</p>` : A}
+                ${params.problem ? renderProblem(prefix, params.problem) : A}
+                ${params.status ? renderStatus(prefix, params.status) : A}
+                ${params.error ? b2`<div class="delivery-error" id="${prefix}-delivery-error" role="alert"><span>${D2.testFailed}</span>${params.error !== D2.testFailed ? b2`<span class="delivery-error-detail">${params.error}</span>` : A}</div>` : A}
+              </div>
+            </div>` : A}
+    </span>`;
 }
 
 // server-panel/src/views/wifi-devices-state.ts
@@ -28895,6 +29047,28 @@ function mqttProblem(device, mqtt) {
   if (!mqtt.connected) return `The server is not connected to the MQTT broker at ${mqtt.host}:${mqtt.port}${mqtt.last_error ? ` (${mqtt.last_error})` : ""}, so presses cannot arrive. It keeps trying.`;
   return null;
 }
+function deliveryOnHub(device) {
+  return device.device_id != null && !device.stale;
+}
+function deliveryAttention(device, mqtt) {
+  if (!deliveryOnHub(device)) return false;
+  return deliveryFailed(device.delivery) || mqttProblem(device, mqtt) !== null;
+}
+function deliveryVerdict(device, testing = false) {
+  if (testing) return "testing";
+  if (device.stale) return "stale";
+  if (device.device_id == null) return "not_on_hub";
+  const status = String(device.delivery?.status ?? "");
+  return status === "delivered" || status === "not_delivered" || status === "not_sent" ? status : "untested";
+}
+function deliveryTarget(device, mqtt) {
+  if (device.transport === "mqtt") {
+    if (mqtt?.configured && mqtt.host) return mqtt.port != null ? `${mqtt.host}:${mqtt.port}` : mqtt.host;
+    return device.delivery?.transport === "mqtt" ? String(device.delivery.target ?? "") : "";
+  }
+  if (device.target) return `http://${device.target.host}:${device.target.port}`;
+  return device.delivery?.transport === "http" ? String(device.delivery.target ?? "") : "";
+}
 function pressIsFresh(press, now) {
   if (!press) return false;
   const elapsed = now - press.at;
@@ -28912,7 +29086,7 @@ function pressMatchesSlot(press, device, index) {
 var S7 = TOOLS_CARD_STRINGS.wifiCommands;
 var B5 = TOOLS_CARD_STRINGS.backup;
 var A4 = TOOLS_CARD_STRINGS.activities;
-var D2 = TOOLS_CARD_STRINGS.wifiDelivery;
+var D3 = TOOLS_CARD_STRINGS.wifiDelivery;
 var T2 = {
   subtitle: "Use Wifi Commands to put buttons on your physical remote that call this server. Every press arrives as a press event on the event stream. Choose a Wifi Device to edit its command slots, or add a new one.",
   slotDescription: "Create a Command in this slot. Give it a name and decide which activities to apply it to. The name will appear on your remote's display, in the mobile app, and on every press event.",
@@ -28933,12 +29107,18 @@ var T2 = {
   callsBack: (where) => `Presses call ${where} and arrive on the event stream.`,
   x1Note: "An X1 hub fires its power and input callbacks on its own, so those options are not shown.",
   leaveBody: "This Wifi Device has changes that are not on the hub yet. Sync them now, or leave and lose them.",
-  // The delivery test (the card's "How presses reach Home Assistant", for this server).
+  // The delivery pill's dropdown (the card's "How presses reach Home Assistant", for this server).
   deliveryTitle: "How button presses reach the server",
+  pathListener: (target) => `The hub calls this server's callback listener at ${target}.`,
+  pathMqtt: (broker) => broker ? `The hub publishes to its MQTT broker; this server listens on ${broker}.` : "The hub publishes to its MQTT broker.",
   notDelivered: "The test command did not reach the server.",
-  allowListener: (hubIp, target, port) => `The hub (${hubIp}) calls ${target}. Allow TCP from the hub to port ${port} on this server's host; with Docker, publish port ${port}.`,
+  allowListener: (hubIp, port) => `Allow TCP from the hub (${hubIp}) to port ${port} on this server's host; with Docker, publish port ${port}.`,
   allowMqtt: (broker) => `The hub must publish to the same broker this server uses${broker ? ` (${broker})` : ""}, and the broker must let it.`,
-  delivered: (seconds) => `Test command received (${seconds} s).`
+  delivered: (seconds) => `Test command received (${seconds} s).`,
+  // A real press settles a check without a latency.
+  staleStatus: "The hub no longer has this device.",
+  staleHint: "Redeploy it, then test again.",
+  brokerSettings: "Broker settings"
 };
 var BUTTON_ICONS = {
   up: mdiArrowUpBold,
@@ -28972,11 +29152,14 @@ var BUTTON_ICONS = {
 var BUTTON_COLORS = { red: "#ef4444", green: "#22c55e", yellow: "#facc15", blue: "#3b82f6" };
 var BUTTON_GROUP_TITLES = { navigation: S7.navigationGroup, transport: S7.transportGroup, media: S7.mediaGroup, abc: S7.abcGroup, color: S7.colorGroup };
 var WIFI_DEVICES_VIEW_TAG = "sb-panel-wifi-devices";
-function icon6(path, cls = "") {
+function icon7(path, cls = "") {
   return b2`<svg class="mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d=${path}></path></svg>`;
 }
 function jobFailure(job) {
   return jobOutcomeText(job);
+}
+function pillTransport(device) {
+  return device.transport === "mqtt" ? "mqtt" : "http";
 }
 var SbPanelWifiDevices = class extends i4 {
   constructor() {
@@ -29010,8 +29193,11 @@ var SbPanelWifiDevices = class extends i4 {
     this._workingKind = null;
     /** The device being deleted: the confirm is closed, its row says "Deleting…" (the card's way). */
     this._deletingKey = null;
-    /** A Test again run from here, shown once when it passed. */
-    this._testResult = null;
+    /** The delivery pill's dropdown is open, at `_deliveryStyle` (measured when it opened). */
+    this._deliveryOpen = false;
+    this._deliveryStyle = "";
+    /** Why the last Test run from the dropdown could not run. */
+    this._testError = null;
     this._syncError = null;
     this._flashTick = 0;
     this._loadedFor = null;
@@ -29176,17 +29362,43 @@ var SbPanelWifiDevices = class extends i4 {
       if (error) this._syncError = error;
       await this._load();
     };
-    /** Test again: the deploy's test press on its own; the verdict lands on the record (and in the dock). */
+    /** Test: the deploy's test press on its own; the verdict lands on the record (and in the dock). */
     this._testDelivery = async () => {
       const device = this._device;
       const hubId = this._hubId;
-      if (!device || !hubId || this._locked || device.stale || device.device_id == null) return;
-      this._testResult = null;
-      const { job, error } = await this._runJob(D2.testing, () => this.api.testWifiDelivery(hubId, device.key), "test");
-      if (error) this._syncError = error;
+      if (!device || !hubId || this._locked || !deliveryOnHub(device)) return;
+      this._testError = null;
+      const { job, error } = await this._runJob(D3.testing, () => this.api.testWifiDelivery(hubId, device.key), "test");
+      if (error) this._testError = error;
       const delivery = job?.result?.delivery ?? null;
-      if (delivery) this._testResult = { key: device.key, delivery };
+      if (delivery && this._list) {
+        this._list = { ...this._list, devices: this._list.devices.map((row) => row.key === device.key ? { ...row, delivery } : row) };
+      }
       await this._load();
+    };
+    // -- the delivery pill's dropdown ------------------------------------------------------------------------
+    this._toggleDelivery = (trigger) => {
+      if (this._deliveryOpen) {
+        this._closeDelivery();
+        return;
+      }
+      this._deliveryStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view") });
+      this._deliveryOpen = true;
+    };
+    this._closeDelivery = () => {
+      if (!this._deliveryOpen) return;
+      this._deliveryOpen = false;
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-delivery-pill")?.focus());
+    };
+    this._onDocumentKeydown = (event) => {
+      if (event.key !== "Escape" || !this._deliveryOpen) return;
+      event.preventDefault();
+      this._closeDelivery();
+    };
+    /** The broker problem's button: the server's MQTT broker page (the card's "Set up"). */
+    this._openBrokerSettings = () => {
+      this._deliveryOpen = false;
+      this.dispatchEvent(new CustomEvent("sb-navigate", { bubbles: true, composed: true, detail: { page: "server", sub: "mqtt" } }));
     };
     this._back = () => {
       this.askToLeave(() => this._navigate(null));
@@ -29229,6 +29441,8 @@ var SbPanelWifiDevices = class extends i4 {
     this._offStream?.();
     this._offStream = null;
     this._follow.cancel();
+    document.removeEventListener("keydown", this._onDocumentKeydown);
+    this._deliveryOpen = false;
     if (this._flashTimer) clearTimeout(this._flashTimer);
     this._flashTimer = null;
     this._flashFor = null;
@@ -29298,6 +29512,8 @@ var SbPanelWifiDevices = class extends i4 {
         this._create = this._delete = this._slotEdit = this._rename = null;
         this._powerPicker = null;
         this._confirmClear = null;
+        this._deliveryOpen = false;
+        this._testError = null;
         this._follow.cancel();
         this._loadedVersion = null;
         if (hubId) void this._load();
@@ -29311,10 +29527,18 @@ var SbPanelWifiDevices = class extends i4 {
         if (hubId && this.ctx?.gate === "pass" && this._loadedGate !== "pass" && !this._working) void this._load();
       }
     }
+    if (changed.has("deviceKey")) {
+      this._deliveryOpen = false;
+      this._testError = null;
+    }
     if (changed.has("deviceKey") || changed.has("_list")) this._adoptDraft();
     this._scheduleFlashEnd();
   }
-  updated() {
+  updated(changed) {
+    if (changed.has("_deliveryOpen")) {
+      if (this._deliveryOpen) document.addEventListener("keydown", this._onDocumentKeydown);
+      else document.removeEventListener("keydown", this._onDocumentKeydown);
+    }
     this._reportDirty(this.hasUnsyncedChanges());
     if (this.deviceKey && this._list !== null && !this._device && !this._working) this._navigate(null);
   }
@@ -29473,15 +29697,72 @@ var SbPanelWifiDevices = class extends i4 {
     return Boolean(device) && !this._locked && !device.stale && device.device_id != null;
   }
   // -- render: shared bits -----------------------------------------------------------------------------------------
-  _renderTransportPill(device) {
-    if (this._transports.length < 2 && device.transport === "http") return A;
-    return b2`<span class="transport-pill ${device.transport}" title=${S7.transportPillDeployedTitle}>${device.transport}</span>`;
+  /** A roster row's pill: read-only (the row opens the device), amber when presses need attention. */
+  _renderRowPill(device) {
+    return renderReadOnlyDeliveryPill({ transport: pillTransport(device), attention: deliveryAttention(device, this._mqtt) });
+  }
+  /** The detail header's pill and its dropdown (the card's layout A, without the method switch). */
+  _renderDeliveryPill(device) {
+    const onHub = deliveryOnHub(device);
+    const problem = onHub ? mqttProblem(device, this._mqtt) : null;
+    const target = deliveryTarget(device, this._mqtt);
+    const testing = this._workingKind === "test";
+    return renderDeliveryPill({
+      idPrefix: "wifi",
+      transport: pillTransport(device),
+      attention: deliveryAttention(device, this._mqtt),
+      open: this._deliveryOpen,
+      menuStyle: this._deliveryStyle,
+      heading: T2.deliveryTitle,
+      path: !onHub ? "" : device.transport === "mqtt" ? T2.pathMqtt(target) : target ? T2.pathListener(target) : "",
+      test: {
+        label: testing ? D3.testing : device.delivery ? D3.testAgain : D3.test,
+        disabled: !onHub || this._locked,
+        onClick: () => void this._testDelivery()
+      },
+      problem: problem ? { text: problem, action: { label: this._mqtt?.configured ? T2.brokerSettings : D3.brokerSetUp, onClick: this._openBrokerSettings } } : null,
+      status: this._deliveryStatus(device, testing, problem !== null),
+      error: this._testError,
+      onToggle: this._toggleDelivery,
+      onClose: this._closeDelivery
+    });
+  }
+  /** The dropdown's result block; one line under a broker problem, which already says why. */
+  _deliveryStatus(device, testing, brief) {
+    const delivery = device.delivery ?? null;
+    const kind = deliveryVerdict(device, testing);
+    switch (kind) {
+      case "testing":
+        return { kind, tone: "idle", title: D3.testing };
+      case "stale":
+        return { kind, tone: "idle", title: T2.staleStatus, meta: T2.staleHint };
+      case "not_on_hub":
+        return { kind, tone: "idle", title: D3.notOnHub };
+      case "delivered": {
+        const latency = delivery?.latency_s;
+        const title = delivery?.via === "press" ? D3.pressReceived : T2.delivered(formatLatency(latency));
+        return { kind, tone: "ok", title, meta: formatCheckedAgo(delivery?.checked_at) };
+      }
+      case "not_delivered":
+        return { kind, tone: "warn", title: T2.notDelivered, meta: this._allowText(device), brief };
+      case "not_sent":
+        return { kind, tone: "warn", title: D3.notSent, brief };
+      default:
+        return { kind, tone: "idle", title: D3.notTested, meta: D3.notTestedHint };
+    }
+  }
+  /** The flow to allow when the test press did not arrive, naming the actual addresses. */
+  _allowText(device) {
+    const delivery = device.delivery ?? null;
+    if (device.transport === "mqtt") return T2.allowMqtt(delivery?.target ?? "");
+    const hubIp = delivery?.hub_ip || this.ctx?.hub?.config?.host || "?";
+    return T2.allowListener(hubIp, targetPort(delivery?.target ?? "") || String(device.target?.port ?? "8060"));
   }
   _renderListenerNotice() {
     const listener = this._listener;
     if (!listener || !listener.wanted || listener.bound) return A;
     const port = listener.port != null ? String(listener.port) : "";
-    return b2`<div class="wifi-notice error" id="wifi-listener-notice">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.listenerDown(port)}${listener.last_error ? ` ${String(listener.last_error)}` : ""}</span><button class="btn" type="button" @click=${this._retryListener}>${T2.listenerRetry}</button></div>`;
+    return b2`<div class="wifi-notice error" id="wifi-listener-notice">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.listenerDown(port)}${listener.last_error ? ` ${String(listener.last_error)}` : ""}</span><button class="btn" type="button" @click=${this._retryListener}>${T2.listenerRetry}</button></div>`;
   }
   // -- render: the roster ---------------------------------------------------------------------------------------------
   _renderList() {
@@ -29494,11 +29775,11 @@ var SbPanelWifiDevices = class extends i4 {
         <div class="list-header">
           <div class="list-header-copy"><div class="section-subtitle">${T2.subtitle}</div></div>
           <div class="list-header-action">
-            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon6(mdiPlus)}<span>${S7.addDeviceButton}</span></button>
+            <button class="quick-access-add-btn" id="wifi-add" type="button" ?disabled=${!canAdd || this._locked || this._list === null} @click=${this._openCreate}>${icon7(mdiPlus)}<span>${S7.addDeviceButton}</span></button>
           </div>
         </div>
         <div class="wifi-notices">${this._renderListenerNotice()}</div>
-        ${this._error ? b2`<div class="wifi-notice error" id="wifi-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${this._error}</span></div>` : A}
+        ${this._error ? b2`<div class="wifi-notice error" id="wifi-error">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${this._error}</span></div>` : A}
         ${this._loading ? b2`<div class="wifi-state">${TOOLS_CARD_STRINGS.common.loading}</div>` : devices.length ? b2`<div class="device-list">
                 ${devices.map((device) => {
       const deleting = this._deletingKey === device.key;
@@ -29517,17 +29798,17 @@ var SbPanelWifiDevices = class extends i4 {
         }
       }}>
                       <div class="device-card-main">
-                        <span class="device-card-lead">${icon6(mdiWifi)}</span>
+                        <span class="device-card-lead">${icon7(mdiWifi)}</span>
                         <div class="device-card-copy">
                           <div class="device-card-name">${device.spec.name}</div>
                           <div class="device-card-count">${S7.configuredSlots(configuredCount(draftFromSpec(device.spec)))}</div>
                         </div>
                         <div class="device-card-meta">
-                          ${this._renderTransportPill(device)}
-                          <span class="status-pill device-status-pill ${status.tone}">${icon6(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
+                          ${this._renderRowPill(device)}
+                          <span class="status-pill device-status-pill ${status.tone}">${icon7(statusIcon)}<span class="device-status-pill-label">${status.label}</span></span>
                         </div>
                       </div>
-                      <button class="device-delete-btn" type="button" title=${S7.deleteDeviceAria} aria-label=${S7.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon6(mdiTrashCanOutline)}</button>
+                      <button class="device-delete-btn" type="button" title=${S7.deleteDeviceAria} aria-label=${S7.deleteDeviceAria} ?disabled=${this._locked || deleting} @click=${(event) => this._promptDelete(device.key, event)}>${icon7(mdiTrashCanOutline)}</button>
                       ${this._flash(Boolean(press && pressMatchesDevice(press, device)), press?.at ?? 0)}
                     </div>`;
     })}
@@ -29558,11 +29839,11 @@ var SbPanelWifiDevices = class extends i4 {
       <ul class="device-power-lines" id="wifi-power-lines">
         ${rows.map(({ kind, label, slot }) => b2`
           <li class="hub-event-line">
-            <span class="hub-event-icon ${kind === "on" ? "power-on" : "power-off"}">${icon6(mdiPower)}</span>
+            <span class="hub-event-icon ${kind === "on" ? "power-on" : "power-off"}">${icon7(mdiPower)}</span>
             <span class="hub-event-text">${label},
               <button class="hub-event-action-link" type="button" data-power=${kind} ?disabled=${this._locked} @click=${() => {
       this._powerPicker = kind;
-    }}>${slot !== null ? S7.devicePowerPerform(draft.slots[slot - 1].label) : S7.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S7.hubEventClearTitle} aria-label=${S7.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon6(mdiClose)}</button>` : A}.
+    }}>${slot !== null ? S7.devicePowerPerform(draft.slots[slot - 1].label) : S7.hubEventDoNothing}</button>${slot !== null ? b2`<button class="hub-event-clear" type="button" title=${S7.hubEventClearTitle} aria-label=${S7.hubEventClearTitle} ?disabled=${this._locked} @click=${() => this._pickPower(kind, null)}>${icon7(mdiClose)}</button>` : A}.
             </span>
           </li>`)}
       </ul>`;
@@ -29602,50 +29883,27 @@ var SbPanelWifiDevices = class extends i4 {
           <span class="slot-text-wrap">
             <span class="slot-name">${name}</span>
             <span class="slot-meta">
-              ${row.favorite ? b2`<span class="slot-favorite">${icon6(mdiHeart)}</span>` : A}
-              ${button ? b2`<span class="slot-meta-icon" data-button=${button.name} style=${BUTTON_COLORS[button.name] ? `color:${BUTTON_COLORS[button.name]}` : ""}>${icon6(BUTTON_ICONS[button.name] ?? mdiGestureTapButton)}</span>` : A}
-              ${row.longPress ? b2`<span class="slot-meta-icon" data-long-press>${icon6(mdiTimerSandFull)}</span>` : A}
-              ${meta.kind === "unconfigured" ? b2`<span class="slot-meta-icon warning">${icon6(mdiAlertCircle)}</span>` : A}
+              ${row.favorite ? b2`<span class="slot-favorite">${icon7(mdiHeart)}</span>` : A}
+              ${button ? b2`<span class="slot-meta-icon" data-button=${button.name} style=${BUTTON_COLORS[button.name] ? `color:${BUTTON_COLORS[button.name]}` : ""}>${icon7(BUTTON_ICONS[button.name] ?? mdiGestureTapButton)}</span>` : A}
+              ${row.longPress ? b2`<span class="slot-meta-icon" data-long-press>${icon7(mdiTimerSandFull)}</span>` : A}
+              ${meta.kind === "unconfigured" ? b2`<span class="slot-meta-icon warning">${icon7(mdiAlertCircle)}</span>` : A}
               <span class="slot-meta-label">${metaLabel}</span>
             </span>
           </span>
         </button>
         <div class="slot-actions">
-          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S7.powerBothCommand}>${icon6(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S7.powerOnCommand}>${icon6(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S7.powerOffCommand}>${icon6(mdiPower)}</span>` : A}
-          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S7.inputFor(this._activityName(row.inputActivityId)) : S7.inputCommand}>${icon6(mdiVideoInputHdmi)}</span>` : A}
+          ${isOn && isOff ? b2`<span class="slot-flag power-both" title=${S7.powerBothCommand}>${icon7(mdiPower)}</span>` : isOn ? b2`<span class="slot-flag power-on" title=${S7.powerOnCommand}>${icon7(mdiPower)}</span>` : isOff ? b2`<span class="slot-flag power-off" title=${S7.powerOffCommand}>${icon7(mdiPower)}</span>` : A}
+          ${isInput ? b2`<span class="slot-flag input" title=${row.inputActivityId !== null ? S7.inputFor(this._activityName(row.inputActivityId)) : S7.inputCommand}>${icon7(mdiVideoInputHdmi)}</span>` : A}
           <button class="slot-clear" type="button" aria-label=${S7.clearSlotTitle} title=${S7.clearSlotTitle} ?disabled=${this._locked} @click=${() => {
       this._confirmClear = index;
-    }}>${icon6(mdiClose)}</button>
+    }}>${icon7(mdiClose)}</button>
         </div>
         ${flash}
-      </div>`;
-  }
-  /** The delivery test's verdict: quiet when presses arrive, the flow to allow when they do not, Test again either way. */
-  _renderDelivery(device) {
-    if (device.device_id == null || device.stale) return A;
-    const delivery = device.delivery ?? null;
-    const failed = deliveryFailed(delivery);
-    const last = this._testResult?.key === device.key ? this._testResult.delivery : null;
-    const passed = !failed && last?.status === "delivered";
-    let guidance = "";
-    if (failed && delivery?.status === "not_delivered") {
-      const hubIp = delivery.hub_ip || this.ctx?.hub?.config?.host || "?";
-      guidance = device.transport === "mqtt" ? T2.allowMqtt(delivery.target ?? "") : T2.allowListener(hubIp, delivery.target || (device.target ? `http://${device.target.host}:${device.target.port}` : "?"), targetPort(delivery.target ?? "") || String(device.target?.port ?? "8060"));
-    }
-    return b2`
-      <div class="wifi-delivery" id="wifi-delivery">
-        <div class="wifi-delivery-head">
-          <span class="wifi-delivery-title">${T2.deliveryTitle}</span>
-          <button class="btn" id="wifi-test-delivery" type="button" ?disabled=${this._locked} @click=${() => void this._testDelivery()}>${this._workingKind === "test" ? D2.testing : D2.testAgain}</button>
-        </div>
-        ${failed ? b2`<div class="wifi-notice" id="wifi-delivery-failed" role="alert">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy"><b>${delivery?.status === "not_sent" ? D2.notSent : T2.notDelivered}</b>${guidance ? b2` ${guidance}` : A}</span></div>` : A}
-        ${passed ? b2`<div class="wifi-delivery-ok" id="wifi-delivery-ok">${T2.delivered(formatLatency(last?.latency_s))}</div>` : A}
       </div>`;
   }
   _renderDetail(device, draft) {
     const press = this._activePress();
     const target = device.target ? `${device.target.host}:${device.target.port}` : "";
-    const mqttNotice = mqttProblem(device, this._mqtt);
     const now = device.effective_destination ? `${device.effective_destination.host}:${device.effective_destination.port}` : "";
     const deploying = this._workingKind === "sync" || this._workingKind === "redeploy";
     return b2`
@@ -29654,10 +29912,10 @@ var SbPanelWifiDevices = class extends i4 {
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon6(mdiArrowLeft)}</button>
+                <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon7(mdiArrowLeft)}</button>
                 ${this._renderHeaderTile(device)}
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon6(mdiPencilOutline)}</button>
-                ${this._renderTransportPill(device)}
+                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon7(mdiPencilOutline)}</button>
+                ${this._renderDeliveryPill(device)}
               </div>
               <div class="detail-title-actions">${this._renderSyncButton(device)}</div>
             </div>
@@ -29667,23 +29925,21 @@ var SbPanelWifiDevices = class extends i4 {
       mode: "wifi-deploy",
       title: S7.deployingTitle,
       message: jobStepMessage(activeJob(this.ctx?.hub)) || TOOLS_CARD_STRINGS.backendState.wifiSyncing
-    })}</div>` : this._renderDetailBody(device, draft, { press, target, mqttNotice, now })}
+    })}</div>` : this._renderDetailBody(device, draft, { press, target, now })}
         </div>
       </div>
     `;
   }
-  _renderDetailBody(device, draft, { press, target, mqttNotice, now }) {
+  _renderDetailBody(device, draft, { press, target, now }) {
     return b2`
           <div class="detail-scroll">
             <div class="wifi-notices">
-              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S7.syncMessageFailed} ${this._syncError}</span></div>` : A}
-              ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
-              ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon6(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
-              ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
-              ${mqttNotice ? b2`<div class="wifi-notice error" id="wifi-mqtt-notice">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${mqttNotice}</span></div>` : A}
+              ${this._syncError ? b2`<div class="wifi-notice error" id="wifi-sync-error">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${S7.syncMessageFailed} ${this._syncError}</span></div>` : A}
+              ${device.stale ? b2`<div class="wifi-notice error" id="wifi-stale">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.staleNotice}</span></div>` : A}
+              ${device.pending && !device.stale ? b2`<div class="wifi-notice" id="wifi-pending">${icon7(mdiProgressClock)}<span class="wifi-notice-copy">${T2.pendingNotice}</span></div>` : A}
+              ${targetMoved(device) ? b2`<div class="wifi-notice" id="wifi-moved">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.movedNotice(target, now)}</span></div>` : A}
               ${device.transport === "mqtt" ? A : this._renderListenerNotice()}
             </div>
-            ${this._renderDelivery(device)}
             ${this._renderPowerLines(draft)}
             <div class="command-grid" id="wifi-slots">
               ${draft.slots.map((_slot, index) => this._renderSlot(draft, index, this._flash(Boolean(press && pressMatchesSlot(press, device, index)), press?.at ?? 0)))}
@@ -29719,7 +29975,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeCreate}>
         <div class="dialog small" id="wifi-create-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S7.addDevice}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeCreate}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.addDevice}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeCreate}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             ${this._nameInput("wifi-new-name", state.name, S7.deviceName, state.busy, (name) => {
       this._create = { ...state, name, error: "" };
@@ -29753,10 +30009,10 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeDelete}>
         <div class="dialog small" id="wifi-delete-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S7.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeDelete}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.deleteModalTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeDelete}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-text">${T2.deleteBody(device.spec.name)}</div>
-            ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon6(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
+            ${state.referenced ? b2`<div class="wifi-notice" id="wifi-delete-referenced">${icon7(mdiAlertCircleOutline)}<span class="wifi-notice-copy">${T2.deleteReferenced}</span></div>` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="wifi-delete-error">${state.error}</div>
@@ -29794,7 +30050,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${this._closeSlot}>
         <div class="dialog" id="wifi-slot-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${S7.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeSlot}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${S7.commandSlotTitle(state.index)}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${this._closeSlot}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-note">${T2.slotDescription}</div>
             <div class="config-block">
@@ -29803,10 +30059,10 @@ var SbPanelWifiDevices = class extends i4 {
                 ${this._powerInput ? b2`
                       <button class="advanced-toggle ${state.advanced ? "expanded" : ""}" id="wifi-slot-advanced" type="button" aria-expanded=${String(state.advanced)} @click=${() => {
       this._slotEdit = { ...state, advanced: !state.advanced };
-    }}><span>${S7.advanced}</span>${icon6(mdiChevronDown)}</button>
+    }}><span>${S7.advanced}</span>${icon7(mdiChevronDown)}</button>
                       ${state.advanced ? b2`<div class="advanced-panel">
                             <label class="checkbox-row ${inputOn ? "active" : ""} ${hasActivities ? "" : "disabled"}">
-                              <span class="checkbox-icon">${icon6(mdiVideoInputHdmi)}</span>
+                              <span class="checkbox-icon">${icon7(mdiVideoInputHdmi)}</span>
                               <span class="checkbox-copy"><span>${S7.activityInput}</span><span class="checkbox-subtext" id="wifi-slot-input-hint">${inputHint}</span></span>
                               <input class="sb-switch" id="wifi-slot-input" type="checkbox" .checked=${inputOn} ?disabled=${!hasActivities} @change=${(event) => setInput(event.currentTarget.checked)} />
                             </label>
@@ -29820,7 +30076,7 @@ var SbPanelWifiDevices = class extends i4 {
               </div>
               <div class="config-group">
                 <label class="checkbox-row ${edit.favorite ? "active" : ""}">
-                  <span class="checkbox-icon plain">${icon6(mdiHeart)}</span>
+                  <span class="checkbox-icon plain">${icon7(mdiHeart)}</span>
                   <span class="checkbox-copy"><span>${S7.favorite}</span></span>
                   <input class="sb-switch" id="wifi-slot-favorite" type="checkbox" .checked=${edit.favorite} @change=${(event) => this._patchSlot({ favorite: event.currentTarget.checked })} />
                 </label>
@@ -29836,7 +30092,7 @@ var SbPanelWifiDevices = class extends i4 {
                 </label>
                 ${buttonHints.length ? b2`<div id="wifi-slot-button-hint">${buttonHints.map((hint) => b2`<div class="button-conflict-hint">${hint}</div>`)}</div>` : A}
                 <label class="checkbox-row nested-control ${edit.button !== null && edit.longPress ? "active" : ""} ${edit.button === null ? "disabled" : ""}">
-                  <span class="checkbox-icon plain">${icon6(mdiTimerSandFull)}</span>
+                  <span class="checkbox-icon plain">${icon7(mdiTimerSandFull)}</span>
                   <span class="checkbox-copy"><span>${S7.enableLongPress}</span></span>
                   <input class="sb-switch" id="wifi-slot-long-press" type="checkbox" .checked=${edit.button !== null && edit.longPress} ?disabled=${edit.button === null} @change=${(event) => this._patchSlot({ longPress: event.currentTarget.checked })} />
                 </label>
@@ -29872,7 +30128,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${appearance ? B5.editDevice : T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${appearance ? B5.editDevice : T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">${appearance ? renderAppearanceEditor({
       hubVersion: this._hubVersion,
       draft: appearance,
@@ -29912,7 +30168,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-power-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S7.devicePowerOnLabel : S7.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${kind === "on" ? S7.devicePowerOnLabel : S7.devicePowerOffLabel}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body">
             <div class="dialog-note">${S7.devicePowerHint}</div>
             <div class="device-power-options">
@@ -29932,7 +30188,7 @@ var SbPanelWifiDevices = class extends i4 {
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-leave-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${A4.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A4.syncKeepEditing} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-header"><div class="dialog-title">${A4.exitUnsyncedTitle}</div><button class="dialog-close" type="button" aria-label=${A4.syncKeepEditing} @click=${close}>${icon7(mdiClose)}</button></div>
           <div class="dialog-body"><div class="dialog-text">${T2.leaveBody}</div></div>
           <div class="dialog-footer">
             <button class="btn btn-danger" id="wifi-leave-discard" type="button" @click=${this._leaveWithoutSync}>${A4.exitWithoutSync}</button>
@@ -29977,7 +30233,8 @@ SbPanelWifiDevices.properties = {
   _working: { state: true },
   _workingKind: { state: true },
   _deletingKey: { state: true },
-  _testResult: { state: true },
+  _deliveryOpen: { state: true },
+  _testError: { state: true },
   stream: { attribute: false },
   _syncError: { state: true },
   _flashTick: { state: true }
@@ -29990,6 +30247,7 @@ SbPanelWifiDevices.styles = [
   EDITOR_CSS,
   FIRMWARE_BLOCK_CSS,
   OPERATION_PROGRESS_CSS,
+  DELIVERY_PILL_CSS,
   i`
       /* -- the roster (the card's .list-header / .device-card rules) --------------------------- */
       .list-header { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: 16px; row-gap: 8px; margin-bottom: 14px; }
@@ -30013,8 +30271,6 @@ SbPanelWifiDevices.styles = [
       .status-pill.sync-error { border-color: color-mix(in srgb, var(--sbp-err) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-err) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-err) 12%, var(--sbp-panel)); }
       .status-pill.sync-running { border-color: color-mix(in srgb, var(--sbp-accent) 35%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-accent) 12%, var(--sbp-panel)); }
       .status-pill.sync-pending { border-color: color-mix(in srgb, var(--sbp-warn) 40%, var(--sbp-line)); color: color-mix(in srgb, var(--sbp-warn) 30%, var(--sbp-text)); background: color-mix(in srgb, var(--sbp-warn) 12%, var(--sbp-panel)); }
-      .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--sbp-line); color: var(--sbp-muted); background: var(--sbp-panel); white-space: nowrap; flex: 0 0 auto; text-transform: uppercase; }
-      .transport-pill.mqtt { border-color: color-mix(in srgb, var(--sbp-accent) 40%, var(--sbp-line)); color: var(--sbp-accent); }
       .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--sbp-line); border-radius: 10px; color: var(--sbp-muted); cursor: pointer; flex: 0 0 auto; margin-left: 4px; }
       .device-delete-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--sbp-accent) 55%, var(--sbp-line)); }
       .device-delete-btn:disabled { opacity: 0.42; cursor: default; }
@@ -30029,13 +30285,6 @@ SbPanelWifiDevices.styles = [
       .wifi-notice .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
       .wifi-notices { display: grid; gap: 8px; }
       .wifi-notices:empty { display: none; }
-      /* -- the delivery test (the card's delivery panel) ----------------------------------------- */
-      .wifi-delivery { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--sbp-line); border-radius: 12px; background: var(--sbp-panel); }
-      .wifi-delivery-head { display: flex; align-items: center; gap: 10px; }
-      .wifi-delivery-title { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: var(--sbp-text); }
-      .wifi-delivery-head .btn { flex: 0 0 auto; padding: 5px 10px; font-size: 12px; }
-      .wifi-delivery-ok { font-size: 12px; color: color-mix(in srgb, var(--sbp-ok) 70%, var(--sbp-text)); }
-
       /* -- the press glow (the card's .wifi-ir-flash, same 720 ms as the dock's sweep) ---------- */
       .wifi-ir-flash { position: absolute; inset: 0; pointer-events: none; border-radius: inherit; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sbp-accent) 75%, transparent), inset 0 0 14px color-mix(in srgb, var(--sbp-accent) 22%, transparent), 0 0 14px color-mix(in srgb, var(--sbp-accent) 30%, transparent); opacity: 0; animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards; }
       @keyframes wifiIrGlow { 0% { opacity: 0; } 18% { opacity: 1; } 80% { opacity: 0.7; } 100% { opacity: 0; } }

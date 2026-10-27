@@ -3,6 +3,7 @@
 import type {
   BackupBundlePayload,
   BlobFetchDecodedBlock,
+  HassLike,
   IrEmissionRecord,
   IrEmitterConsumersResponse,
   IrLearnEvent,
@@ -66,6 +67,22 @@ export interface IrLearnHost {
   learnFromHub(onEvent: (event: IrLearnEvent) => void, timeoutS: number): Promise<() => void>;
   subscribeEmissions(onEvent: (emissions: IrEmissionRecord[]) => void): Promise<() => void>;
   consumers(): Promise<IrEmitterConsumersResponse>;
+}
+
+/**
+ * What the delivery pill of a managed Wifi device needs from the live host:
+ * Home Assistant (for the delivery record, Test and the broker link), the
+ * hub, whether it is an X2 (the method choice) and the shared hub lock.
+ * Absent in the offline Backup editor, which shows no pill.
+ */
+export interface DeliveryHost {
+  hass(): HassLike | null;
+  hubEntryId(): string;
+  /** An X2: the dropdown offers the method choice. */
+  canSwitch(): boolean;
+  /** Another hub operation runs. */
+  locked(): boolean;
+  setBusy(busy: boolean, label: string | null): void;
 }
 
 // "copy" brings another activity's macro over verbatim; it is not a "new" item (nothing to fill in).

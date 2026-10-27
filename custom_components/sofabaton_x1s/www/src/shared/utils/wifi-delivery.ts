@@ -62,6 +62,31 @@ export function deliveryDocUrl(transport: unknown): string {
   return deployedTransport(transport) === "mqtt" ? DOC_URLS.networkingMqtt : DOC_URLS.networkingWifi;
 }
 
+/** When a delivery check ran, as "5 minutes ago" in the selected locale;
+ *  "" when the time is missing or unreadable. */
+export function formatCheckedAgo(
+  checkedAt: string | null | undefined,
+  now = Date.now(),
+  locale = toolsCardLanguage(),
+): string {
+  const time = Date.parse(String(checkedAt ?? ""));
+  if (!Number.isFinite(time)) return "";
+  const seconds = Math.round((time - now) / 1000);
+  const size = Math.abs(seconds);
+  const [value, unit]: [number, Intl.RelativeTimeFormatUnit] = size < 60
+    ? [seconds, "second"]
+    : size < 3600
+      ? [Math.round(seconds / 60), "minute"]
+      : size < 86400
+        ? [Math.round(seconds / 3600), "hour"]
+        : [Math.round(seconds / 86400), "day"];
+  try {
+    return new Intl.RelativeTimeFormat(locale, { numeric: "auto" }).format(value, unit);
+  } catch {
+    return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(value, unit);
+  }
+}
+
 /** Seconds as the panel shows them: one decimal. */
 export function formatLatency(seconds: number | null | undefined, locale = toolsCardLanguage()): string {
   if (seconds == null) return "?";

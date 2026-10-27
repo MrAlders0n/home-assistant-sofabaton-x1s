@@ -3548,7 +3548,10 @@ test.describe("control panel, wifi commands", () => {
     await expect(card.locator(".device-card-name")).toHaveText("Lights");
     await expect(card.locator(".device-card-count")).toHaveText("2 slots");
     await expect(card.locator(".status-pill")).toHaveClass(/sync-ok/);
-    await expect(card.locator(".transport-pill")).toHaveCount(0);
+    // Every device names its delivery method, even with one on offer; the row's pill opens nothing.
+    await expect(card.locator(".transport-pill")).toHaveText("HTTP");
+    await expect(card.locator(".transport-pill")).not.toHaveClass(/attention/);
+    await expect(card.locator("button.transport-pill")).toHaveCount(0);
     await card.click();
     await expect(page).toHaveURL(/wifi\/devices\/a1b2c3d4$/);
 
@@ -3792,7 +3795,7 @@ test.describe("control panel, wifi commands", () => {
     expect(calls.filter((c) => c.key === "delete").map((c) => c.force)).toEqual([false, true]);
   });
 
-  test("the delivery test: a failed one names the flow to allow, Test again passes it, a sync runs in place and another job reads Busy", async ({ page }, testInfo) => {
+  test("the delivery pill: a failed test turns it amber and its dropdown names the flow to allow, Test again passes it, a sync runs in place and another job reads Busy", async ({ page }, testInfo) => {
     const failed = { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: null, latency_s: null, checked_at: "t", via: "test" };
     const { calls, world, sockets } = await wifiServer(page, [wifiDevice({ delivery: failed })]);
     await page.route(`${H}/wifi-devices/*/test-delivery`, (route) => {
@@ -3803,18 +3806,51 @@ test.describe("control panel, wifi commands", () => {
       world.results.test_wifi_delivery = { delivery };
       route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "test_wifi_delivery", kind: "test_wifi_delivery", status: "queued" })) });
     });
+    // The roster row warns too, read-only.
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices`);
+    await expect(view(page).locator('.device-card[data-key="a1b2c3d4"] .transport-pill')).toHaveClass(/attention/);
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/a1b2c3d4`);
     const detail = view(page).locator("#wifi-device-detail");
+    const pill = detail.locator("#wifi-delivery-pill");
     const delivery = detail.locator("#wifi-delivery");
-    await expect(delivery.locator(".wifi-delivery-title")).toHaveText("How button presses reach the server");
-    await expect(delivery.locator("#wifi-delivery-failed")).toContainText("The test command did not reach the server.");
-    await expect(delivery.locator("#wifi-delivery-failed")).toContainText("The hub (192.168.1.50) calls http://192.168.1.10:8060. Allow TCP from the hub to port 8060");
+    const status = delivery.locator("#wifi-delivery-status");
+    // No banner in the body: the pill is amber and its dropdown says why.
+    await expect(pill).toHaveText("HTTP");
+    await expect(pill).toHaveClass(/attention/);
+    await expect(pill).toHaveAttribute("aria-label", "Delivery method: HTTP. Button presses need attention.");
+    await expect(delivery).toHaveCount(0);
+    await pill.click();
+    await expect(pill).toHaveAttribute("aria-expanded", "true");
+    await expect(delivery.locator(".delivery-title")).toHaveText("How button presses reach the server");
+    await expect(delivery.locator("#wifi-delivery-path")).toHaveText("The hub calls this server's callback listener at http://192.168.1.10:8060.");
+    await expect(status).toHaveAttribute("data-status", "not_delivered");
+    await expect(status).toContainText("The test command did not reach the server.");
+    await expect(status).toContainText("Allow TCP from the hub (192.168.1.50) to port 8060 on this server's host");
+    await expect(delivery.locator("#wifi-test-delivery")).toHaveText("Test again");
+    // Fixed under the pill, at least 320 wide, and kept inside the view.
+    const box = await delivery.boundingBox();
+    const viewBox = await detail.locator(".detail-view").boundingBox();
+    const pillBox = await pill.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(320);
+    expect(box.y).toBeGreaterThanOrEqual(pillBox.y + pillBox.height);
+    expect(box.x).toBeGreaterThanOrEqual(viewBox.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewBox.x + viewBox.width + 1);
     await page.screenshot({ path: shot(testInfo, "wifi-delivery-failed") });
 
     await delivery.locator("#wifi-test-delivery").click();
-    await expect(delivery.locator("#wifi-delivery-ok")).toHaveText("Test command received (0.1 s).");
-    await expect(delivery.locator("#wifi-delivery-failed")).toHaveCount(0);
+    await expect(status).toHaveAttribute("data-status", "delivered");
+    await expect(status).toContainText("Test command received (0.1 s).");
+    await expect(pill).not.toHaveClass(/attention/);
     expect(calls.filter((c) => c.key === "test")).toEqual([{ key: "test", device: "a1b2c3d4" }]);
+    // Escape closes it and hands focus back to the pill; the backdrop closes it too.
+    await page.keyboard.press("Escape");
+    await expect(delivery).toHaveCount(0);
+    await expect(pill).toBeFocused();
+    await pill.click();
+    await expect(delivery).toBeVisible();
+    const reopened = await delivery.boundingBox();
+    await page.mouse.click(viewBox.x + 12, reopened.y + reopened.height + 24);
+    await expect(delivery).toHaveCount(0);
 
     // A sync: the card's deploy animation stands in the detail's place while the job runs.
     let release;
@@ -3840,6 +3876,8 @@ test.describe("control panel, wifi commands", () => {
     sockets[0].send(JSON.stringify({ type: "job_event", hub_id: LIVING.hub_id, job: job({ job_id: "other", kind: "refresh" }) }));
     await expect(detail.locator("#wifi-sync")).toHaveText("Busy");
     await expect(detail.locator("#wifi-sync")).toBeDisabled();
+    // The dropdown still opens to read; Test waits for the hub.
+    await pill.click();
     await expect(delivery.locator("#wifi-test-delivery")).toBeDisabled();
   });
 
@@ -3855,7 +3893,7 @@ test.describe("control panel, wifi commands", () => {
     await detail.locator("#wifi-sync").click();
     await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
     await expect(detail.locator("#wifi-sync")).toHaveText("Up to date");
-    await expect(detail.locator("#wifi-delivery-failed")).toBeVisible();
+    await expect(detail.locator("#wifi-delivery-pill")).toHaveClass(/attention/);
     // The job's end reaches the dock over the event stream.
     await expect.poll(() => sockets.length).toBe(1);
     const finished = (kind, status) => job({ job_id: kind, kind, status: "done", finished_at: new Date().toISOString(), result: { delivery: { ...failed, status } } });
@@ -3905,18 +3943,40 @@ test.describe("control panel, wifi commands", () => {
     expect(calls.find((c) => c.key === "create").body.transport).toBe("mqtt");
 
     const detail = view(page).locator("#wifi-device-detail");
-    await expect(detail.locator(".transport-pill")).toHaveText("mqtt");
-    await expect(detail.locator(".transport-pill")).toHaveClass(/mqtt/);
+    const pill = detail.locator("#wifi-delivery-pill");
+    const delivery = detail.locator("#wifi-delivery");
+    await expect(pill).toHaveText("MQTT");
+    await expect(pill).toHaveClass(/mqtt/);
+    await expect(pill).not.toHaveClass(/attention/);
     await expect(detail.locator("#wifi-callback-line")).toContainText("MQTT topic E26A44861B45/up");
-    await expect(detail.locator("#wifi-mqtt-notice")).toHaveCount(0);
     await expect(detail.locator("#wifi-moved")).toHaveCount(0);
-    // The broker goes away: the device's view says so, with the server's own words for why.
+    // Never tested: the dropdown names the broker and says what Test does.
+    await pill.click();
+    await expect(delivery.locator("#wifi-delivery-path")).toHaveText("The hub publishes to its MQTT broker; this server listens on broker.lan:1883.");
+    await expect(delivery.locator("#wifi-delivery-broker")).toHaveCount(0);
+    await expect(delivery.locator("#wifi-delivery-status")).toHaveAttribute("data-status", "untested");
+    await expect(delivery.locator("#wifi-delivery-status")).toContainText("Not tested yet.");
+    await expect(delivery.locator("#wifi-test-delivery")).toHaveText("Test");
+    await page.keyboard.press("Escape");
+    await expect(delivery).toHaveCount(0);
+    // The broker goes away: the pill turns amber and its dropdown says why, in the server's own words.
     world.mqtt = { ...broker, connected: false, last_error: "the broker closed the connection" };
+    world.devices = world.devices.map((d) => ({ ...d, delivery: { status: "not_delivered", transport: "mqtt", target: "broker.lan:1883", hub_ip: "192.168.1.50", source: "", latency_s: null, checked_at: "t", via: "test" } }));
     await page.reload();
-    await expect(detail.locator("#wifi-mqtt-notice")).toContainText("broker.lan:1883 (the broker closed the connection)");
+    await expect(pill).toHaveClass(/attention/);
     await expect(detail.locator("#wifi-listener-notice")).toHaveCount(0);           // the HTTP listener is not this device's business
+    await pill.click();
+    await expect(delivery.locator("#wifi-delivery-broker")).toContainText("broker.lan:1883 (the broker closed the connection)");
+    // The failed test shrinks to one line under it.
+    await expect(delivery.locator("#wifi-delivery-status")).toHaveClass(/brief/);
+    await expect(delivery.locator("#wifi-delivery-status")).toHaveText("The test command did not reach the server.");
     await page.screenshot({ path: shot(testInfo, "wifi-mqtt-broker-down") });
+    // Its button opens the server's broker page.
+    await expect(delivery.locator("#wifi-delivery-broker-settings")).toHaveText("Broker settings");
+    await delivery.locator("#wifi-delivery-broker-settings").click();
+    await expect(page).toHaveURL(/#\/server\/mqtt$/);
     // Choosing HTTP instead is one click.
+    await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/0badf00d`);
     await detail.locator("#wifi-back").click();
     await view(page).locator("#wifi-add").click();
     await dialog.locator(".transport-option").nth(1).click();
@@ -3933,8 +3993,8 @@ test.describe("control panel, wifi commands", () => {
     await expect(view(page).locator("#wifi-add")).toBeDisabled();
     await expect(view(page).locator("#wifi-listener-notice")).toContainText("port 8060");
     await expect(view(page).locator("#wifi-listener-notice")).toContainText("address already in use");
-    // With a choice of transports every device says which one it uses.
-    await expect(view(page).locator(".device-card .transport-pill")).toHaveText("http");
+    // Every device says which delivery method it uses.
+    await expect(view(page).locator(".device-card .transport-pill")).toHaveText("HTTP");
     // An unknown key (deleted elsewhere, an old bookmark) lands on the roster.
     await page.goto(`${PAGE}#/e26a44861b45/wifi/devices/ffffffff`);
     await expect(page).toHaveURL(/wifi\/devices$/);

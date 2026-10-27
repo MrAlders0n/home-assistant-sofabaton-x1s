@@ -1002,6 +1002,9 @@ export function isManagedWifiBrand(brand: string): boolean {
   return false;
 }
 
+/** The store key of the reserved Wifi Events device. */
+export const WIFI_EVENTS_DEVICE_KEY = "haevents";
+
 /** The store key of a managed Wifi Commands device from its brand
  *  (`m3-<key>-<hash>`), or null for an unmanaged device. */
 export function managedWifiDeviceKey(brand: string): string | null {

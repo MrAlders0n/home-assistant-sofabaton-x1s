@@ -4,7 +4,7 @@ import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } 
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import { addButtonStyles } from "../shared/styles/add-button-styles";
 import { phraseNameStyles, phraseWithName } from "../components/phrase-name";
-import { renderWifiDeliveryPanel, wifiDeliveryStyles, type WifiDeliveryBusy } from "../components/wifi-delivery-panel";
+import { DeliveryPillController, deliveryPillStyles, renderReadOnlyDeliveryPill } from "../components/delivery-pill";
 import { HubBrokerFormController, hubBrokerFormStyles } from "../components/hub-broker-form";
 import type {
   BackupBundlePayload,
@@ -14,7 +14,6 @@ import type {
   HubEventFireEvent,
   WifiCommandSyncState,
   WifiDelivery,
-  WifiDeliveryInfo,
   WifiDeviceSummary,
   WifiEvent,
   WifiEventsListResponse,
@@ -41,8 +40,6 @@ import { bundleEntityAppearance, renameBundleDevice, setBundleEntityAppearance }
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
-// The reserved Wifi Events record's key (command_config.WIFI_EVENTS_DEVICE_KEY).
-const WIFI_EVENTS_DEVICE_KEY = "haevents";
 
 const ID = {
   UP: 174,
@@ -288,11 +285,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     _maxWifiDevices: { state: true },
     _mqttAvailable: { state: true },
     _newDeviceTransport: { state: true },
-    _deliveryInfo: { state: true },
-    _eventsDeliveryInfo: { state: true },
-    _deliveryBusy: { state: true },
-    _deliveryError: { state: true },
-    _deliveryLastTest: { state: true },
     _hubEventActions: { state: true },
     _activityEventActions: { state: true },
     _wifiEventsRows: { state: true },
@@ -321,7 +313,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     lastHubEvent: { attribute: false },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, wifiDeliveryStyles, hubBrokerFormStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, deliveryPillStyles, hubBrokerFormStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -412,9 +404,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
-    .transport-pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 9px; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; border: 1px solid var(--divider-color); color: var(--secondary-text-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
-    .transport-pill.mqtt { border-color: color-mix(in srgb, var(--primary-color) 40%, var(--divider-color)); color: var(--primary-color); }
-    .transport-pill.pending { border-style: dashed; }
     .transport-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
     .transport-choice-label { font-size: 12px; font-weight: 700; color: var(--secondary-text-color); }
     .transport-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); cursor: pointer; }
@@ -903,13 +892,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _mqttAvailable = false;
   // New devices default to MQTT where it is offered (the faster path).
   private _newDeviceTransport: "mqtt" | "http" = "mqtt";
-  // How presses of the selected device (and of the Wifi Events device)
-  // reach Home Assistant, and the Test again / Move work on them.
-  private _deliveryInfo: WifiDeliveryInfo | null = null;
-  private _eventsDeliveryInfo: WifiDeliveryInfo | null = null;
-  private _deliveryBusy: { key: string; kind: Exclude<WifiDeliveryBusy, null> } | null = null;
-  private _deliveryError: { key: string; message: string } | null = null;
-  private _deliveryLastTest: { key: string; delivery: WifiDelivery } | null = null;
+  // The selected device's delivery pill: how its presses reach Home
+  // Assistant, Test, and on an X2 the method choice.
+  private readonly _delivery = new DeliveryPillController(this);
   // The Edit device dialog (deployed devices only) and the device sync it starts.
   private _editDeviceDialog: WifiDeviceEditDialog | null = null;
   private _deviceEditRunning = false;
@@ -1137,7 +1122,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                 </button>
                 ${this._renderDeviceTile(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
                 <div class="detail-title">${selectedDevice.device_name}</div>
-                ${this._renderTransportPill(selectedDevice)}
+                ${this._renderDeliveryPill(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
               </div>
               <div class="detail-title-actions">
                 ${this._renderEditDeviceButton(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
@@ -1169,10 +1154,6 @@ class SofabatonWifiCommandsTab extends LitElement {
                     ${this._commandsSaveError
                       ? html`<div class="section-subtitle wifi-events-stale" role="alert"><span class="wifi-events-stale-error">${this._commandsSaveError}</span></div>`
                       : nothing}
-                    ${this._renderDeliveryPanel(
-                      selectedDevice.device_key,
-                      this._deliveryInfo?.device_key === selectedDevice.device_key ? this._deliveryInfo : null,
-                    )}
                     ${this._renderDevicePowerRows()}
                     <div class="command-grid">
                       ${(() => {
@@ -1189,6 +1170,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
         ${this._renderEditDeviceDialog()}
+        ${this._delivery.renderDialogs()}
       </div>
     `;
   }
@@ -1459,19 +1441,16 @@ class SofabatonWifiCommandsTab extends LitElement {
     });
   }
 
-  /** The read-only pill of a device row and of the selected device's
-   *  header. X2-with-MQTT entries only — everywhere else every Wifi Device
-   *  is HTTP and the pill is noise. A device already deployed over MQTT
-   *  keeps its pill even if the MQTT integration goes away. */
+  /** The read-only pill of a device row, on every hub: the method on the
+   *  hub (or a pending switch, dashed), amber when its presses don't arrive. */
   private _renderTransportPill(device: WifiDeviceSummary) {
     const deployed = normalizeTransport(device.deployed_transport);
     const requested = normalizeTransport(device.requested_transport);
     const pending = Boolean(device.transport_switch_pending);
-    return this._renderTransportPillFor({
+    return renderReadOnlyDeliveryPill({
       transport: this._pillTransport(deployed, requested, pending),
-      deployed: deployed !== null,
       pending,
-      mqttAvailable: this._mqttAvailable,
+      attention: this._deployedHubDeviceId(device) != null && deliveryFailed(device.delivery),
     });
   }
 
@@ -1759,83 +1738,54 @@ class SofabatonWifiCommandsTab extends LitElement {
   ): void {
     this._wifiEventsRows = state?.events ?? [];
     const deviceId = state?.device_id;
-    const previousDeviceId = this._wifiEventsDeviceId;
     this._wifiEventsDeviceId = typeof deviceId === "number" ? deviceId : null;
     this._wifiEventsRecordNeedsSync = Boolean(state?.record_needs_sync);
-    if (this._wifiEventsDeviceId == null) {
-      this._eventsDeliveryInfo = null;
-    } else if (!this._eventsDeliveryInfo || previousDeviceId !== this._wifiEventsDeviceId) {
-      void this._loadDeliveryInfo(WIFI_EVENTS_DEVICE_KEY);
-    }
   }
 
-  // ── How presses reach Home Assistant ────────────────────────────────────
+  // ── The delivery pill ───────────────────────────────────────────────────
   //
-  // One panel per deployed device (and the Wifi Events device): the path
-  // the hub uses, Test again, and when it applies the failed test's
-  // guidance.
+  // The selected device's header pill: how its presses reach Home
+  // Assistant, Test, the failed test's guidance and, on an X2, the method
+  // choice. A pick is stored on the device and applied by this view's Sync
+  // (a switch replaces the device on the hub); before the first Sync it is
+  // the method the first Sync uses.
 
-  private _renderDeliveryPanel(deviceKey: string, info: WifiDeliveryInfo | null) {
-    return renderWifiDeliveryPanel({
-      info,
-      busy: this._deliveryBusy?.key === deviceKey ? this._deliveryBusy.kind : null,
-      locked: this._hubCommandLocked() || this._remoteUnavailable() || this._deliveryBusy !== null,
-      lastTest: this._deliveryLastTest?.key === deviceKey ? this._deliveryLastTest.delivery : null,
-      error: this._deliveryError?.key === deviceKey ? this._deliveryError.message : "",
-      onTest: () => { void this._testDelivery(deviceKey); },
+  private _renderDeliveryPill(device: WifiDeviceSummary, locked: boolean) {
+    const hubEntryId = String(this.hub?.entry_id || "").trim();
+    const onHub = this._deployedHubDeviceId(device) != null;
+    const deployed = normalizeTransport(device.deployed_transport);
+    const requested = normalizeTransport(device.requested_transport);
+    const transport = onHub ? deployed ?? "http" : requested ?? "http";
+    const pending = onHub && device.transport_switch_pending && requested && requested !== transport ? requested : null;
+    return this._delivery.renderPill({
+      hass: this.hass,
+      hubEntryId,
+      deviceKey: device.device_key,
+      onHub,
+      transport,
+      pending,
+      canSwitch: this.hub?.broker_setup_available === true,
+      mqttAvailable: this._mqttAvailable,
+      locked: locked || this._hubCommandLocked() || this._remoteUnavailable(),
+      onPick: (next) => this._setDeviceTransport(device.device_key, next),
+      onBusy: (busy, label) => this._setSharedHubCommandBusy(busy, label, hubEntryId),
+      onTested: () => { void this._loadWifiDevices(true); },
     });
   }
 
-  /** Read how a deployed device's presses travel; a device the hub does not
-   *  hold yet has no panel. */
-  private async _loadDeliveryInfo(deviceKey: string) {
+  /** Store the device's delivery method: on a deployed device a method other
+   *  than the hub's makes the next Sync a switch, the hub's own cancels it. */
+  private async _setDeviceTransport(deviceKey: string, transport: "mqtt" | "http") {
     const hubEntryId = String(this.hub?.entry_id || "").trim();
-    if (!hubEntryId || !this.hass || !deviceKey) return;
-    const events = deviceKey === WIFI_EVENTS_DEVICE_KEY;
-    if (!events) {
-      const device = this._wifiDevices.find((item) => item.device_key === deviceKey);
-      if (typeof device?.deployed_device_id !== "number") {
-        if (this._deliveryInfo?.device_key === deviceKey) this._deliveryInfo = null;
-        return;
-      }
-    }
+    if (!hubEntryId || !this.hass) return;
     try {
-      const info = await this.api().getWifiDelivery(hubEntryId, deviceKey);
-      if (hubEntryId !== String(this.hub?.entry_id || "").trim()) return;
-      if (events) this._eventsDeliveryInfo = info;
-      else if (deviceKey === this._selectedDeviceKey) this._deliveryInfo = info;
-    } catch (_error) {
-      if (events) this._eventsDeliveryInfo = null;
-      else if (deviceKey === this._selectedDeviceKey) this._deliveryInfo = null;
-    }
-  }
-
-  /** Test again: the deploy's test press on its own (no Action runs). */
-  private async _testDelivery(deviceKey: string) {
-    const hubEntryId = String(this.hub?.entry_id || "").trim();
-    if (!hubEntryId || !this.hass || this._deliveryBusy || this._hubCommandLocked()) return;
-    const D = TOOLS_CARD_STRINGS.wifiDelivery;
-    this._deliveryBusy = { key: deviceKey, kind: "test" };
-    this._deliveryError = null;
-    this._deliveryLastTest = null;
-    this._setSharedHubCommandBusy(true, D.testing, hubEntryId);
-    try {
-      const delivery = await this.api().testWifiDelivery(hubEntryId, deviceKey);
-      this._deliveryLastTest = { key: deviceKey, delivery };
+      await this.api().setWifiTransport(hubEntryId, deviceKey, transport);
     } catch (error) {
-      const code = String((error as { code?: unknown } | null)?.code ?? "");
-      this._deliveryError = {
-        key: deviceKey,
-        message: code === "busy" || code === "sync_in_progress" || code === "not_found"
-          ? localizeWifiSyncFailure(error)
-          : D.testFailed,
-      };
-    } finally {
-      this._deliveryBusy = null;
-      this._setSharedHubCommandBusy(false, null, hubEntryId);
+      this.showCompletion?.({ tone: "error", label: localizeWifiSyncFailure(error) }, hubEntryId);
+      return;
     }
-    await this._loadDeliveryInfo(deviceKey);
-    if (deviceKey !== WIFI_EVENTS_DEVICE_KEY) await this._loadWifiDevices(true);
+    await this._loadWifiDevices(true);
+    if (deviceKey === this._selectedDeviceKey) await this._loadCommandSyncProgress(true);
   }
 
   /** The dock line after a deploy: as before when presses arrive; when the
@@ -1850,13 +1800,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     this.showCompletion?.({ tone: "success", label: successLabel }, hubEntryId);
   }
 
-  // ── Delivery method pill (read-only) ───────────────────────────────────
-  //
-  // The switch itself lives in the device editor (Hub → Devices → Edit);
-  // this tab only shows what is deployed, and previews a pending wish.
-
-  /** The transport a pill shows: the pending wish wins over the deployed
-   *  one, as an undeployed device shows its selection. */
+  /** The transport a row's pill shows: the pending wish wins over the
+   *  deployed one, as an undeployed device shows its selection. */
   private _pillTransport(
     deployed: "mqtt" | "http" | null,
     requested: "mqtt" | "http" | null,
@@ -1864,18 +1809,6 @@ class SofabatonWifiCommandsTab extends LitElement {
   ): "mqtt" | "http" {
     if (pending && requested) return requested;
     return deployed ?? requested ?? "http";
-  }
-
-  private _renderTransportPillFor(opts: {
-    transport: "mqtt" | "http";
-    deployed: boolean;
-    pending: boolean;
-    mqttAvailable: boolean;
-  }) {
-    if (!opts.mqttAvailable && opts.transport !== "mqtt") return nothing;
-    const S = TOOLS_CARD_STRINGS.wifiCommands;
-    const title = opts.deployed && !opts.pending ? S.transportPillDeployedTitle : S.transportPillPreviewTitle;
-    return html`<span class="transport-pill ${opts.transport}${opts.pending ? " pending" : ""}" title=${title}>${opts.transport === "mqtt" ? "MQTT" : "HTTP"}</span>`;
   }
 
   private async _loadWifiEventsRows(): Promise<void> {
@@ -2107,9 +2040,6 @@ class SofabatonWifiCommandsTab extends LitElement {
           ${this._renderConfiguredPill(configuredCount, events.length)}
         </div>
         <div class="section-subtitle">${W.wifiEventsSubtitle}</div>
-        ${orphaned || this._wifiEventsDeviceId == null
-          ? nothing
-          : this._renderDeliveryPanel(WIFI_EVENTS_DEVICE_KEY, this._eventsDeliveryInfo)}
         ${orphaned ? this._renderWifiEventsStaleNotice() : nothing}
         ${recordNeedsSync ? html`<div class="section-subtitle wifi-events-stale">${W.wifiEventsRecordNeedsSyncNotice}</div>` : nothing}
         ${events.length ? html`
@@ -2898,10 +2828,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._wifiEventsRecordNeedsSync = false;
       this._wifiEventsStaleConfirm = false;
       this._wifiEventsStaleError = "";
-      this._deliveryInfo = null;
-      this._eventsDeliveryInfo = null;
-      this._deliveryError = null;
-      this._deliveryLastTest = null;
+      this._delivery.reset();
       this._brokerForm.reset();
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
@@ -3955,12 +3882,8 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _selectWifiDevice(deviceKey: string) {
     this._selectedDeviceKey = String(deviceKey || "").trim();
-    this._deliveryInfo = null;
-    this._deliveryError = null;
-    this._deliveryLastTest = null;
     void this._loadCommandConfigFromBackend(true);
     void this._loadCommandSyncProgress(true);
-    void this._loadDeliveryInfo(this._selectedDeviceKey);
   }
 
   private _goBackToDeviceList = () => {
@@ -4084,8 +4007,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!hubEntryId || !this.hass) return;
     if (this._commandSyncRunning || this._hubCommandLocked()) return;
-    this._deliveryError = null;
-    this._deliveryLastTest = null;
     this._syncState = {
       ...this._syncState,
       status: "running",
@@ -4137,10 +4058,10 @@ class SofabatonWifiCommandsTab extends LitElement {
     } finally {
       this._commandSyncRunning = false;
       this._commandSyncDeviceKey = null;
-      if (this._deliveryBusy?.key === deviceKey) this._deliveryBusy = null;
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
-      await this._loadDeliveryInfo(deviceKey);
+      // The deploy ended with its own test press: the pill shows that one.
+      if (deviceKey === this._selectedDeviceKey) await this._delivery.reload();
       await this._refreshControlPanelState();
       this._setSharedHubCommandBusy(false, null, busyEntryId);
     }

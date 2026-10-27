@@ -783,7 +783,7 @@ export class SofabatonServerPanel extends LitElement {
 
   private _onNavigate(event: CustomEvent<{ tab?: HubTab; sub?: string; page?: ToolPage; entity?: number; item?: string }>): void {
     const d = event.detail;
-    if (d.page) this._go(toolRoute(d.page));
+    if (d.page) this._go(toolRoute(d.page, d.sub));
     else if (d.tab) this._go(hubRoute(null, d.tab, d.sub, d.entity, d.item));
   }
 

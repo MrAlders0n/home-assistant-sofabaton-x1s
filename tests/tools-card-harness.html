@@ -1942,7 +1942,15 @@
                 const pending = Boolean(device.deployed_transport) && (device.deployed_transport || "http") !== transport;
                 return { ...device, requested_transport: transport, transport_switch_pending: pending, sync_needed: pending || Boolean(device.sync_needed) };
               });
-              return respond(type, mock.wifiDevices.find((device) => device.device_key === key) ?? {});
+              const picked = mock.wifiDevices.find((device) => device.device_key === key);
+              if (picked) {
+                mock.wifiSyncByKey[key] = {
+                  ...(mock.wifiSyncByKey[key] ?? scenario.wifiSyncState ?? WIFI_SYNC_IDLE),
+                  sync_needed: Boolean(picked.sync_needed),
+                  transport_switch_pending: Boolean(picked.transport_switch_pending),
+                };
+              }
+              return respond(type, picked ?? {});
             }
             case "sofabaton_x1s/wifi_event/sync":
               mock.wifiEventsTransport = { ...mock.wifiEventsTransport, deployed: mock.wifiEventsTransport.requested };
@@ -2563,8 +2571,19 @@
       },
       {
         id: "device-editor-wifi-transport", group: "Activity Editor",
-        label: "Device editor — Wifi Device with the HTTP/MQTT delivery select (X2 + MQTT)",
+        label: "Device editor — Wifi Device with the delivery pill and its method choice (X2 + MQTT)",
         states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        wifiDelivery: {
+          abc123: {
+            transport: "http",
+            target: "http://192.168.1.10:8060",
+            delivery: { status: "delivered", transport: "http", latency_s: 0.6, via: "test", checked_at: new Date(Date.now() - 5 * 60 * 1000).toISOString() },
+          },
+        },
         contents: {
           ...BASE_CONTENTS,
           hubs: [{
@@ -2606,6 +2625,42 @@
             await new Promise(r => setTimeout(r, 2500));
             window.__sbWifiTransportSwitched?.();
             return { status: "success", wifi_device_id: 5 };
+          },
+        },
+        async postLoad(card) {
+          await openLiveEditor(card, "Devices", "Home Assistant");
+        },
+      },
+      {
+        id: "device-editor-wifi-x1s", group: "Activity Editor",
+        label: "Device editor — Wifi Device on an X1S: the delivery pill without the method choice",
+        states: STATES_CONNECTED,
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            devices_list: [
+              ...BASE_CONTENTS.hubs[0].devices_list,
+              { id: 4, name: "Home Assistant", command_count: 2, device_class: "wifi_ip" },
+            ],
+          }],
+        },
+        wifiDelivery: {
+          abc123: {
+            transport: "http",
+            target: "http://192.168.1.10:8060",
+            delivery: { status: "not_delivered", transport: "http", via: "test" },
+          },
+        },
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => {
+            const bundle = clone(EDIT_BACKUP_BUNDLE);
+            bundle.devices.push({
+              device: { device_id: 4, name: "Home Assistant", sort: 4, brand: "m3-abc123-deadbeef", device_class: "wifi_ip" },
+              commands: [{ command_id: 1, name: "Lights" }, { command_id: 2, name: "Curtains" }],
+              button_bindings: [], macros: [],
+            });
+            return { bundle, generation: 1 };
           },
         },
         async postLoad(card) {
@@ -3101,6 +3156,41 @@
             deployed_transport: "http",
             requested_transport: "http",
             delivery: { status: "not_delivered", transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.110", via: "test" },
+          },
+          WIFI_DEVICE_BR,
+        ],
+        wifiCommandsByKey: { "dev-lr": WIFI_COMMANDS_CONFIGURED },
+        async postLoad(card) {
+          await clickTab(card, "Automation");
+          await clickWifiDevice(card, "Living Room Remote");
+        },
+      },
+      {
+        id: "wifi-delivery-mqtt-no-broker", group: "WiFi Commands",
+        label: "Wifi Device over MQTT: the hub has no broker, so presses don't arrive",
+        states: STATES_CONNECTED,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, mqtt_available: true, broker_setup_available: true }],
+        },
+        mqttAvailable: true,
+        hubMqtt: {
+          available: true,
+          ha_connected: true,
+          ha_broker: { host: "core-mosquitto", port: 1883, tls: false },
+          hub_connected: false,
+          suggested_host: "192.168.1.10",
+          suggested_port: 1883,
+          ha_username: "homeassistant",
+          ha_login_available: true,
+        },
+        wifiTestResult: { status: "not_delivered", transport: "mqtt", via: "test" },
+        wifiDevices: [
+          {
+            ...WIFI_DEVICE_LR,
+            deployed_transport: "mqtt",
+            requested_transport: "mqtt",
+            delivery: { status: "not_delivered", transport: "mqtt", target: "192.168.1.10:1883", hub_ip: "192.168.1.110", via: "test" },
           },
           WIFI_DEVICE_BR,
         ],

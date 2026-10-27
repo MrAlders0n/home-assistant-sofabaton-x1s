@@ -162,6 +162,12 @@ test.describe("tools-card browser harness", () => {
             card.shadowRoot.querySelector(".setting-broker").click();
             await card.updateComplete;
           }
+          if (scenarioId === "wifi-delivery-failed") {
+            // The delivery dropdown, open: its title, status and method choice.
+            const tab = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab");
+            tab.shadowRoot.querySelector(".delivery-pill").click();
+            await tab.updateComplete;
+          }
 
           const card = window.__toolsCardHarness.getCard();
           const roots = [];
@@ -175,7 +181,7 @@ test.describe("tools-card browser harness", () => {
 
           const failures = [];
           for (const root of roots) {
-            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-panel, .delivery-head, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions")) {
+            for (const element of root.querySelectorAll("button, select, [role='tab'], .chip, .pill, .delivery-pop, .delivery-head, .delivery-choice, .broker-dialog, .broker-fields, .broker-login-option, .broker-dialog .dialog-footer-actions")) {
               const text = element.textContent?.replace(/\s+/g, " ").trim();
               if (!text || !element.getClientRects().length) continue;
               if (element.scrollWidth > element.clientWidth + 1) {
@@ -582,28 +588,98 @@ test.describe("tools-card browser harness", () => {
   // How Wifi Command presses reach Home Assistant
   // (docs/internal/wifi-webhook-transport-plan.md, wave 3).
 
-  test("a failed delivery test names the flow to allow, and Test again clears it", async ({ page }) => {
+  // The banner lives in the HTTP / MQTT pill's dropdown now.
+  const wifiPill = (page) => page.locator("sofabaton-wifi-commands-tab .detail-title-row .delivery-pill");
+  const wifiPop = (page) => page.locator("sofabaton-wifi-commands-tab .delivery-pop");
+  const editorPill = (page) => page.locator("sofabaton-activities-tab sofabaton-edit-detail-view .delivery-pill");
+  const editorPop = (page) => page.locator("sofabaton-activities-tab sofabaton-edit-detail-view .delivery-pop");
+  const wsTypes = (page) => page.evaluate(() => window.__toolsCardHarness.getCalls().map((call) => call.message?.type));
+
+  test("a failed delivery test turns the pill amber; its dropdown names the flow to allow, and Test clears it", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-delivery-failed"));
-    const panelText = () => page.evaluate(() => {
-      const root = window.__toolsCardHarness.getCard().shadowRoot?.querySelector("sofabaton-wifi-commands-tab")?.shadowRoot;
-      return root?.querySelector(".delivery-panel")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    });
-    await expect.poll(panelText).toContain("The test command did not reach Home Assistant.");
-    expect(await panelText()).toContain("The hub calls this integration's HTTP listener at http://192.168.1.10:8060.");
-    expect(await panelText()).toContain("Allow TCP from the hub (192.168.1.110) to port 8060 on the Home Assistant host");
-    expect(await page.evaluate(() => {
-      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
-      return root.querySelector(".delivery-panel a").getAttribute("href");
-    })).toContain("networking.md#optional--wifi-commands-and-wifi-events");
-    await page.evaluate(() => {
-      const root = window.__toolsCardHarness.getCard().shadowRoot.querySelector("sofabaton-wifi-commands-tab").shadowRoot;
-      root.querySelector(".delivery-test-btn").click();
-    });
-    await expect.poll(panelText).toContain("Test command received (0.8 s).");
-    expect(await panelText()).not.toContain("did not reach");
-    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
-    expect(calls.some((call) => call.message?.type === "sofabaton_x1s/command_config/test_delivery")).toBe(true);
+    // At rest: no banner, the pill warns.
+    await expect(wifiPill(page)).toHaveClass(/attention/);
+    await expect(page.locator("sofabaton-wifi-commands-tab .delivery-panel")).toHaveCount(0);
+    await expect(wifiPop(page)).toHaveCount(0);
+    await wifiPill(page).click();
+    await expect(wifiPop(page)).toContainText("The test command did not reach Home Assistant.");
+    await expect(wifiPop(page)).toContainText("The hub calls this integration's HTTP listener at http://192.168.1.10:8060.");
+    await expect(wifiPop(page)).toContainText("Allow TCP from the hub (192.168.1.110) to port 8060 on the Home Assistant host");
+    await expect(wifiPop(page).locator("a")).toHaveAttribute("href", /networking\.md#optional--wifi-commands-and-wifi-events/);
+    // An X2 with MQTT: the method choice sits under the status.
+    await expect(wifiPop(page)).toContainText("Delivery method");
+    await wifiPop(page).locator(".delivery-test-btn").click();
+    await expect(wifiPop(page)).toContainText("Test command received (0.8 s).");
+    await expect(wifiPop(page)).not.toContainText("did not reach");
+    await expect(wifiPill(page)).not.toHaveClass(/attention/);
+    const types = await wsTypes(page);
+    expect(types).toContain("sofabaton_x1s/command_config/test_delivery");
+    // An HTTP device never asks the hub for its broker link.
+    expect(types).not.toContain("sofabaton_x1s/hub_mqtt/status");
+    // Escape closes the dropdown.
+    await page.keyboard.press("Escape");
+    await expect(wifiPop(page)).toHaveCount(0);
+  });
+
+  test("an MQTT device whose hub has no broker says so in the dropdown and sets it up from there", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-delivery-mqtt-no-broker"));
+    await expect(wifiPill(page)).toHaveClass(/attention/);
+    // At rest only the stored record is read: no hub exchange.
+    expect(await wsTypes(page)).not.toContain("sofabaton_x1s/hub_mqtt/status");
+    await wifiPill(page).click();
+    await expect(wifiPop(page)).toContainText("The hub is not connected to an MQTT broker.");
+    await expect(wifiPop(page)).toContainText("Home Assistant's broker: core-mosquitto:1883.");
+    // The broker problem leads; the failed test shrinks to one line.
+    await expect(wifiPop(page)).not.toContainText("same broker Home Assistant uses");
+    expect(await wsTypes(page)).toContain("sofabaton_x1s/hub_mqtt/status");
+    await wifiPop(page).locator(".delivery-broker-setup").click();
+    await expect(page.locator("sofabaton-wifi-commands-tab .broker-dialog")).toBeVisible();
+    await page.locator("sofabaton-wifi-commands-tab .broker-connect").click();
+    await expect(page.locator("sofabaton-wifi-commands-tab .broker-done")).toBeVisible();
+    await page.locator("sofabaton-wifi-commands-tab .broker-done").click();
+    await wifiPill(page).click();
+    await expect(wifiPop(page)).not.toContainText("The hub is not connected to an MQTT broker.");
+    await expect(wifiPop(page)).toContainText("The test command did not reach Home Assistant.");
+  });
+
+  test("a method picked in the Wifi Commands header waits for Sync, and Undo takes it back", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("wifi-delivery-failed"));
+    await wifiPill(page).click();
+    await wifiPop(page).locator(".delivery-option[data-transport='mqtt']").click();
+    await expect(wifiPill(page)).toHaveClass(/mqtt pending/);
+    await expect(wifiPop(page)).toContainText("Switches to MQTT on the next Sync. Until then, button presses keep using HTTP.");
+    await expect(page.locator("sofabaton-wifi-commands-tab .detail-sync-btn")).toHaveClass(/sync-btn-primary/);
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls().map((call) => call.message));
+    expect(calls.some((m) => m?.type === "sofabaton_x1s/command_config/set_transport" && m.transport === "mqtt")).toBe(true);
+    await wifiPop(page).locator(".delivery-undo").click();
+    await expect(wifiPill(page)).not.toHaveClass(/pending/);
+  });
+
+  test("the Hub editor's pill on an X1S shows the path and Test without a method choice", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-wifi-x1s"));
+    await expect(editorPill(page)).toHaveClass(/attention/);
+    await editorPill(page).click();
+    await expect(editorPop(page)).toContainText("Allow TCP from the hub (192.168.1.110) to port 8060");
+    await expect(editorPop(page).locator(".delivery-method")).toHaveCount(0);
+    await editorPop(page).locator(".delivery-test-btn").click();
+    await expect(editorPop(page)).toContainText("Test command received (0.8 s).");
+  });
+
+  test("the Hub editor's pill on an X2 picks MQTT as a pending edit for the next Sync", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-wifi-transport"));
+    await expect(editorPill(page)).not.toHaveClass(/attention/);
+    await editorPill(page).click();
+    await expect(editorPop(page)).toContainText("Test command received (0.6 s).");
+    await expect(editorPop(page)).toContainText("5 minutes ago");
+    await editorPop(page).locator(".delivery-option[data-transport='mqtt']").click();
+    await expect(editorPill(page)).toHaveClass(/mqtt pending/);
+    // The broker link was checked before the pick counted.
+    expect(await wsTypes(page)).toContain("sofabaton_x1s/hub_mqtt/status");
   });
 
   test("MQTT waits for the hub's broker, and Set it up connects it with Home Assistant's login", async ({ page }) => {

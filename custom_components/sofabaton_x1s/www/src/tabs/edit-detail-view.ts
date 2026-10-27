@@ -67,6 +67,8 @@ import {
   bundleDeviceClass,
   isManagedWifiBrand,
   isWifiEventsBrand,
+  managedWifiDeviceKey,
+  WIFI_EVENTS_DEVICE_KEY,
   bundleDeviceOptions,
   commandDecodedBlock,
   commandRawPayloadHex,
@@ -99,11 +101,14 @@ import type {
   BackupEditTargetKind,
   BackupQuickAccessKind,
   BackupRenameDialogTarget,
+  DeliveryHost,
   FetchedCommandPayload,
   IrLearnHost,
   MacroTargetMode,
   WifiEventsHost,
 } from "./edit-detail/host-types";
+import { DeliveryPillController, deliveryPillStyles } from "../components/delivery-pill";
+import { hubBrokerFormStyles } from "../components/hub-broker-form";
 import { renderKindSegments } from "./edit-detail/kind-segments";
 import { anchoredListPosition, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
 import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
@@ -119,7 +124,7 @@ import { BindingDialogController } from "./edit-detail/binding-dialog-controller
 import { MacroStepEditorController } from "./edit-detail/macro-step-editor";
 
 // The element's public names, kept here for its importers (R6, CR-F2-14).
-export type { BackupEditTargetKind, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
+export type { BackupEditTargetKind, DeliveryHost, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
 export { bundleIsX2, bundleSupportsUnicodeNames, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 
 export class SofabatonEditDetailView extends LitElement {
@@ -131,6 +136,7 @@ export class SofabatonEditDetailView extends LitElement {
     mode: { type: String },
     mqttAvailable: { type: Boolean },
     pendingTransport: { attribute: false },
+    delivery: { attribute: false },
     wifiEvents: { attribute: false },
     _editDetailActiveSection: { state: true },
     _editRenameDialogOpen: { state: true },
@@ -165,7 +171,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, editDetailViewStyles];
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, deliveryPillStyles, hubBrokerFormStyles, editDetailViewStyles];
 
   // ── Host-owned props ───────────────────────────────────────────────
   bundle: BackupBundlePayload | null = null;
@@ -201,6 +207,9 @@ export class SofabatonEditDetailView extends LitElement {
   mqttAvailable = false;
   /** The delivery method picked but not yet synced (host-owned). */
   pendingTransport: "mqtt" | "http" | null = null;
+  /** The live host's side of the delivery pill; null in the Backup editor. */
+  delivery: DeliveryHost | null = null;
+  readonly _delivery = new DeliveryPillController(this);
   _editRenameDialogOpen = false;
   _editRenameDialogDraft = "";
   _editRenameDialogError = "";
@@ -431,7 +440,7 @@ export class SofabatonEditDetailView extends LitElement {
                   ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
-                ${this._renderTransportControl(params.kind)}
+                ${this._renderDeliveryPill(params.kind)}
                 ${this._renderDirtyChip()}
                 <div class="detail-title-actions">
                   ${this._renderDetailRenameDeleteButtons(params.kind)}
@@ -459,6 +468,7 @@ export class SofabatonEditDetailView extends LitElement {
           </div>
         </div>
         ${this._renderEditRenameDialog()}
+        ${this._delivery.renderDialogs()}
         ${this._payload.render()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
@@ -477,40 +487,36 @@ export class SofabatonEditDetailView extends LitElement {
    * the device name (renaming is coordinated with the Wifi Commands store).
    * The offline Backup editor is unaffected (mode !== "live").
    */
-  /** The delivery control of a managed Wifi device (a user Wifi Device or
-   *  the Wifi Events device) in the LIVE editor: a two-option select on the
-   *  class pill, the only place a delivery switch starts
-   *  (docs/internal/wifi-events-transport-plan.md). The pick is a pending
-   *  edit the host owns (`pendingTransport`) and the next Sync applies, so
-   *  other edits (events, bindings) can go in first. Read-only when MQTT
-   *  cannot be offered for this hub. */
-  private _renderTransportControl(kind: BackupEditTargetKind) {
-    if (kind !== "device" || this.entityId == null || this.mode !== "live") return nothing;
+  /** The delivery pill of a managed Wifi device (a user Wifi Device or the
+   *  Wifi Events device) in the LIVE editor, on every hub model: how presses
+   *  reach Home Assistant, Test, and on an X2 the method choice
+   *  (docs/internal/wifi-events-transport-plan.md). A pick is a pending edit
+   *  the host owns (`pendingTransport`) and the next Sync applies, so other
+   *  edits (events, bindings) can go in first. */
+  private _renderDeliveryPill(kind: BackupEditTargetKind) {
+    if (kind !== "device" || this.entityId == null || this.mode !== "live" || !this.delivery) return nothing;
     const brand = bundleDeviceBrand(this.bundle, Number(this.entityId));
     if (!isManagedWifiBrand(brand)) return nothing;
+    const deviceKey = isWifiEventsBrand(brand) ? WIFI_EVENTS_DEVICE_KEY : managedWifiDeviceKey(brand);
+    if (!deviceKey) return nothing;
+    const host = this.delivery;
     const current = bundleDeviceClass(this.bundle, Number(this.entityId)) === "wifi_mqtt" ? "mqtt" : "http";
-    if (!this.mqttAvailable && current !== "mqtt") return nothing;
-    const S = TOOLS_CARD_STRINGS.wifiCommands;
-    if (!this.mqttAvailable) {
-      return html`<span class="transport-pill ${current}" title=${S.transportPillDeployedTitle}>${current === "mqtt" ? "MQTT" : "HTTP"}</span>`;
-    }
-    const shown = this.pendingTransport ?? current;
-    const pending = shown !== current;
-    return html`
-      <select
-        class="transport-pill transport-select ${shown}${pending ? " pending" : ""}"
-        aria-label=${S.transportLabel}
-        title=${pending ? S.transportPillPreviewTitle : S.transportPillDeployedTitle}
-        .value=${shown}
-        @change=${(event: Event) => {
-          const next = String((event.target as HTMLSelectElement).value) === "mqtt" ? "mqtt" : "http";
-          this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport: next }, bubbles: true, composed: true }));
-        }}
-      >
-        <option value="http" ?selected=${shown === "http"}>HTTP</option>
-        <option value="mqtt" ?selected=${shown === "mqtt"}>MQTT</option>
-      </select>
-    `;
+    const pending = this.pendingTransport && this.pendingTransport !== current ? this.pendingTransport : null;
+    return this._delivery.renderPill({
+      hass: host.hass(),
+      hubEntryId: host.hubEntryId(),
+      deviceKey,
+      onHub: true,
+      transport: current,
+      pending,
+      canSwitch: host.canSwitch(),
+      mqttAvailable: this.mqttAvailable,
+      locked: host.locked(),
+      onPick: (transport) => {
+        this.dispatchEvent(new CustomEvent("transport-change", { detail: { transport }, bubbles: true, composed: true }));
+      },
+      onBusy: (busy, label) => host.setBusy(busy, label),
+    });
   }
 
   private _isManagedWifiLiveDevice(): boolean {

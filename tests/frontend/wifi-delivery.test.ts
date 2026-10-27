@@ -1,8 +1,9 @@
 /**
  * How Wifi Command presses reach Home Assistant, in the control panel
  * (docs/internal/wifi-webhook-transport-plan.md, wave 3): the path line and
- * the TCP flow to allow, the delivery panel, Test again in the Wifi tab, the
- * create dialog's MQTT check, and the hub's broker form.
+ * the TCP flow to allow, the delivery pill and its dropdown (Test, the
+ * failed test's guidance, the broker link, the method choice), the create
+ * dialog's MQTT check, and the hub's broker form.
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,11 +16,16 @@ import {
   deliveryFailed,
   deliveryPathText,
   deployedTransport,
+  formatCheckedAgo,
   formatLatency,
   targetHostPort,
   targetPort,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery";
-import { renderWifiDeliveryPanel } from "../../custom_components/sofabaton_x1s/www/src/components/wifi-delivery-panel";
+import {
+  DeliveryPillController,
+  renderReadOnlyDeliveryPill,
+  type DeliveryPillDevice,
+} from "../../custom_components/sofabaton_x1s/www/src/components/delivery-pill";
 import { HubBrokerFormController } from "../../custom_components/sofabaton_x1s/www/src/components/hub-broker-form";
 import type {
   HubMqttLinkState,
@@ -92,27 +98,211 @@ test("the path line and the flow to allow name the actual addresses", () => {
   assert.equal(formatLatency(1.234), "1.2");
 });
 
-test("the delivery panel stays quiet on success and guides on failure", () => {
+// ── The delivery pill ────────────────────────────────────────────────────
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function makePill(callWS: (msg: Record<string, unknown>) => Promise<unknown>) {
+  const host = {
+    addController() {},
+    removeController() {},
+    requestUpdate() {},
+    updateComplete: Promise.resolve(true),
+    shadowRoot: null,
+  };
+  const pill = new DeliveryPillController(host as any);
+  const picks: string[] = [];
+  const busy: Array<boolean> = [];
+  const device = (overrides: Partial<DeliveryPillDevice> = {}): DeliveryPillDevice => ({
+    hass: { callWS, states: {} } as any,
+    hubEntryId: "entry-1",
+    deviceKey: "lights",
+    onHub: true,
+    transport: "http",
+    pending: null,
+    canSwitch: true,
+    mqttAvailable: true,
+    locked: false,
+    onPick: (transport) => { picks.push(transport); },
+    onBusy: (value) => { busy.push(value); },
+    ...overrides,
+  });
+  return { pill, picks, busy, device };
+}
+
+test("the pill reads the stored delivery record (no hub exchange) and warns at rest", async () => {
+  setToolsCardLanguage("en");
+  const types: string[] = [];
+  const failedInfo = { ...LISTENER_INFO, delivery: { status: "not_delivered", transport: "http" } };
+  const { pill, device } = makePill(async (msg) => {
+    types.push(String(msg.type));
+    return failedInfo;
+  });
+  pill.renderPill(device());
+  await settle();
+  assert.deepEqual(types, ["sofabaton_x1s/command_config/delivery"]);
+  assert.equal(pill.attention(), true);
+  const closed = templateText(pill.renderPill(device()));
+  assert.match(closed, /transport-pill delivery-pill http attention/);
+  assert.match(closed, /aria-expanded="?false/);
+  assert.doesNotMatch(closed, /delivery-pop/);
+
+  // A device not on the hub yet has nothing stored to read, and never warns.
+  const fresh = makePill(async (msg) => { types.push(String(msg.type)); return failedInfo; });
+  types.length = 0;
+  fresh.pill.renderPill(fresh.device({ onHub: false }));
+  await settle();
+  assert.deepEqual(types, []);
+  assert.equal(fresh.pill.attention(), false);
+});
+
+test("the dropdown guides on failure and stays quiet on success", async () => {
   setToolsCardLanguage("en");
   const S = TOOLS_CARD_STRINGS.wifiDelivery;
-  const base = { busy: null, locked: false, lastTest: null, error: "", onTest() {} };
-  // Not deployed: no panel.
-  assert.equal(templateText(renderWifiDeliveryPanel({ ...base, info: { ...LISTENER_INFO, transport: null } })), "");
-  const ok = templateText(renderWifiDeliveryPanel({ ...base, info: LISTENER_INFO }));
-  assert.match(ok, new RegExp(S.title));
-  assert.match(ok, /Test again/);
-  assert.doesNotMatch(ok, new RegExp(S.notDelivered));
-
-  const failed = templateText(renderWifiDeliveryPanel({
-    ...base,
-    info: { ...LISTENER_INFO, delivery: { status: "not_delivered", transport: "http" } },
-  }));
+  let info: WifiDeliveryInfo = { ...LISTENER_INFO, delivery: { status: "not_delivered", transport: "http" } };
+  const { pill, device } = makePill(async () => info);
+  pill.renderPill(device());
+  await settle();
+  pill.open = true;
+  const failed = templateText(pill.renderPill(device()));
+  assert.match(failed, new RegExp(S.title));
+  assert.match(failed, /listener at http:\/\/192\.168\.2\.50:8060/);
   assert.match(failed, new RegExp(S.notDelivered));
   assert.match(failed, /Allow TCP from the hub \(192\.168\.2\.123\) to port 8060/);
   assert.match(failed, /Networking guide/);
+  assert.match(failed, /Test again/);
 
-  const passed = templateText(renderWifiDeliveryPanel({ ...base, info: LISTENER_INFO, lastTest: { status: "delivered", latency_s: 0.42 } }));
-  assert.match(passed, /Test command received \(0\.4 s\)/);
+  info = { ...LISTENER_INFO, delivery: { status: "delivered", latency_s: 0.42, checked_at: new Date().toISOString() } };
+  await pill.reload();
+  const ok = templateText(pill.renderPill(device()));
+  assert.match(ok, /Test command received \(0\.4 s\)/);
+  assert.doesNotMatch(ok, new RegExp(S.notDelivered));
+
+  info = { ...LISTENER_INFO, delivery: { status: "delivered", latency_s: 0.3, via: "press" } };
+  await pill.reload();
+  // A real press measures nothing: the line names it without seconds.
+  const press = templateText(pill.renderPill(device()));
+  assert.match(press, /A button press arrived\./);
+  assert.doesNotMatch(press, /0\.3 s/);
+
+  info = { ...LISTENER_INFO, delivery: null };
+  await pill.reload();
+  const untested = templateText(pill.renderPill(device()));
+  assert.match(untested, new RegExp(S.notTested));
+  assert.match(untested, />Test</);
+
+  // Before the first Sync: nothing to test.
+  const fresh = makePill(async () => info);
+  fresh.pill.renderPill(fresh.device({ onHub: false }));
+  fresh.pill.open = true;
+  const notOnHub = templateText(fresh.pill.renderPill(fresh.device({ onHub: false })));
+  assert.match(notOnHub, new RegExp(S.notOnHub));
+  assert.match(notOnHub, new RegExp(S.firstSyncMethod));
+  assert.match(notOnHub, /delivery-test-btn"[^>]*disabled/);
+});
+
+test("Test presses through the backend; a failed MQTT test reads the broker link", async () => {
+  setToolsCardLanguage("en");
+  const S = TOOLS_CARD_STRINGS.wifiDelivery;
+  const types: string[] = [];
+  const http = makePill(async (msg) => {
+    types.push(String(msg.type));
+    if (msg.type === "sofabaton_x1s/command_config/test_delivery") return { status: "delivered", latency_s: 1.5 };
+    return LISTENER_INFO;
+  });
+  http.pill.renderPill(http.device());
+  await settle();
+  types.length = 0;
+  await http.pill.test();
+  assert.deepEqual(types, ["sofabaton_x1s/command_config/test_delivery", "sofabaton_x1s/command_config/delivery"]);
+  assert.equal(http.pill.lastTest?.status, "delivered");
+  assert.equal(http.pill.busy, false);
+  assert.deepEqual(http.busy, [true, false]);
+
+  types.length = 0;
+  const mqttInfo = { device_key: "lights", transport: "mqtt", target: "core-mosquitto:1883", hub_ip: "192.168.2.123", delivery: null };
+  const mqtt = makePill(async (msg) => {
+    types.push(String(msg.type));
+    if (msg.type === "sofabaton_x1s/command_config/test_delivery") return { status: "not_delivered", transport: "mqtt" };
+    if (msg.type === "sofabaton_x1s/hub_mqtt/status") return LINK;
+    return mqttInfo;
+  });
+  const device = mqtt.device({ transport: "mqtt" });
+  mqtt.pill.renderPill(device);
+  await settle();
+  await mqtt.pill.test();
+  assert.ok(types.includes("sofabaton_x1s/hub_mqtt/status"));
+  assert.equal(mqtt.pill.attention(), true);
+  mqtt.pill.open = true;
+  const text = templateText(mqtt.pill.renderPill(device));
+  // The broken end of the link leads; the failed test shrinks to one line.
+  assert.match(text, new RegExp(S.brokerNotConnected));
+  assert.match(text, /delivery-broker-setup/);
+  assert.match(text, /Home Assistant's broker: core-mosquitto:1883/);
+  assert.doesNotMatch(text, /same broker Home Assistant uses/);
+});
+
+test("picking MQTT checks the broker link first; HTTP and Undo go straight to the host", async () => {
+  setToolsCardLanguage("en");
+  const S = TOOLS_CARD_STRINGS.wifiDelivery;
+  let link: HubMqttLinkState = { ...LINK, hub_connected: false };
+  const { pill, picks, device } = makePill(async (msg) => (msg.type === "sofabaton_x1s/hub_mqtt/status" ? link : LISTENER_INFO));
+  pill.renderPill(device());
+  await settle();
+  pill.open = true;
+  await pill.pick("mqtt");
+  assert.deepEqual(picks, []);
+  assert.equal(pill.picking, "blocked");
+  const blocked = templateText(pill.renderPill(device()));
+  assert.match(blocked, new RegExp(S.mqttHubNotConnected.replace("?", "\\?")));
+  assert.match(blocked, /delivery-pick-setup/);
+  assert.match(blocked, /delivery-use-http/);
+
+  link = { ...LINK, ha_connected: false, hub_connected: true };
+  await pill.pick("mqtt");
+  assert.deepEqual(picks, []);
+  assert.match(templateText(pill.renderPill(device())), new RegExp(S.mqttHaNotConnected));
+
+  link = { ...LINK, hub_connected: true };
+  await pill.pick("mqtt");
+  assert.deepEqual(picks, ["mqtt"]);
+  assert.equal(pill.picking, null);
+
+  // A pending switch: the dashed pill, the note, and Undo picks the hub's method.
+  const pending = device({ pending: "mqtt" });
+  const text = templateText(pill.renderPill(pending));
+  assert.match(text, /transport-pill delivery-pill mqtt pending/);
+  assert.match(text, /Switches to MQTT on the next Sync\. Until then, button presses keep using HTTP\./);
+  await pill.pick("http");
+  assert.deepEqual(picks, ["mqtt", "http"]);
+});
+
+test("the method choice is an X2's; MQTT is greyed out without the integration", () => {
+  setToolsCardLanguage("en");
+  const S = TOOLS_CARD_STRINGS.wifiDelivery;
+  const { pill, device } = makePill(async () => LISTENER_INFO);
+  pill.renderPill(device({ canSwitch: false }));
+  pill.open = true;
+  assert.doesNotMatch(templateText(pill.renderPill(device({ canSwitch: false }))), /delivery-method/);
+  const noMqtt = templateText(pill.renderPill(device({ mqttAvailable: false })));
+  assert.match(noMqtt, /delivery-method/);
+  assert.match(noMqtt, new RegExp(S.mqttNeedsIntegration));
+  assert.match(noMqtt, /data-transport="?mqtt"?[^>]*disabled/);
+});
+
+test("a device row's pill is read-only and still warns", () => {
+  const quiet = templateText(renderReadOnlyDeliveryPill({ transport: "http", pending: false, attention: false }));
+  assert.match(quiet, /transport-pill http/);
+  assert.doesNotMatch(quiet, /<button|attention|chevron/);
+  assert.match(templateText(renderReadOnlyDeliveryPill({ transport: "mqtt", pending: true, attention: true })), /transport-pill mqtt pending attention/);
+});
+
+test("a check's time reads as relative time in the selected locale", () => {
+  const now = Date.parse("2026-10-27T12:00:00Z");
+  assert.equal(formatCheckedAgo("2026-10-27T11:55:00Z", now, "en"), "5 minutes ago");
+  assert.equal(formatCheckedAgo("2026-10-27T12:00:00Z", now, "en"), "now");
+  assert.equal(formatCheckedAgo("", now, "en"), "");
+  assert.equal(formatCheckedAgo("garbage", now, "en"), "");
 });
 
 function makeTab(callWS: (msg: Record<string, unknown>) => Promise<unknown>) {
@@ -125,41 +315,28 @@ function makeTab(callWS: (msg: Record<string, unknown>) => Promise<unknown>) {
   return element;
 }
 
-test("delivery info is read for deployed devices only", async () => {
-  const calls: Array<Record<string, unknown>> = [];
-  const tab = makeTab(async (msg) => {
-    calls.push(msg);
-    return LISTENER_INFO;
-  });
-  tab._wifiDevices = [
-    { device_key: "lights", device_name: "Lights", deployed_device_id: 9 },
-    { device_key: "fresh", device_name: "Fresh", deployed_device_id: null },
-  ];
-  tab._selectedDeviceKey = "fresh";
-  await tab._loadDeliveryInfo("fresh");
-  assert.equal(calls.length, 0);
-  assert.equal(tab._deliveryInfo, null);
-
-  tab._selectedDeviceKey = "lights";
-  await tab._loadDeliveryInfo("lights");
-  assert.deepEqual(calls.map((msg) => msg.type), ["sofabaton_x1s/command_config/delivery"]);
-  assert.equal(tab._deliveryInfo.target, "http://192.168.2.50:8060");
-});
-
-test("Test again presses through the backend and shows the verdict", async () => {
+test("the Wifi Commands header pill offers the switch on an X2 and stores a pick for its Sync", async () => {
   const types: string[] = [];
   const tab = makeTab(async (msg) => {
     types.push(String(msg.type));
-    if (msg.type === "sofabaton_x1s/command_config/test_delivery") return { status: "delivered", latency_s: 1.5 };
     if (msg.type === "sofabaton_x1s/command_devices/list") return { devices: tab._wifiDevices };
     return LISTENER_INFO;
   });
-  tab._wifiDevices = [{ device_key: "lights", device_name: "Lights", deployed_device_id: 9 }];
+  tab.hub = { entry_id: "entry-1", version: "X2", broker_setup_available: true };
+  tab._wifiDevices = [{ device_key: "lights", device_name: "Lights", deployed_device_id: 9, deployed_transport: "http", requested_transport: "http" }];
   tab._selectedDeviceKey = "lights";
-  await tab._testDelivery("lights");
-  assert.equal(types[0], "sofabaton_x1s/command_config/test_delivery");
-  assert.equal(tab._deliveryLastTest.delivery.status, "delivered");
-  assert.equal(tab._deliveryBusy, null);
+  tab._renderDeliveryPill(tab._wifiDevices[0], false);
+  tab._delivery.open = true;
+  assert.match(templateText(tab._renderDeliveryPill(tab._wifiDevices[0], false)), /delivery-method/);
+  // An X1 / X1S: the same pill, without the method choice.
+  tab.hub = { entry_id: "entry-1", version: "X1S" };
+  assert.doesNotMatch(templateText(tab._renderDeliveryPill(tab._wifiDevices[0], false)), /delivery-method/);
+
+  types.length = 0;
+  await tab._setDeviceTransport("lights", "mqtt");
+  assert.equal(types[0], "sofabaton_x1s/command_config/set_transport");
+  assert.ok(types.includes("sofabaton_x1s/command_devices/list"));
+  assert.ok(types.includes("sofabaton_x1s/command_sync/progress"));
 });
 
 test("a deploy whose test press did not arrive says so in the dock", async () => {
@@ -262,19 +439,20 @@ test("latency uses the selected locale and never turns missing data into zero", 
   setToolsCardLanguage("en");
 });
 
-test("an unsent test does not claim a delivery failure or prescribe firewall changes", () => {
+test("an unsent test does not claim a delivery failure or prescribe firewall changes", async () => {
   setToolsCardLanguage("en");
   const notices: any[] = [];
   const tab = makeTab(async () => ({}));
   tab.showCompletion = (notice: unknown) => notices.push(notice);
   tab._announceDeployResult({ status: "not_sent" }, "Synced", "entry-1");
   assert.equal(notices[0].label, "Synced, but delivery could not be tested.");
-  const text = templateText(renderWifiDeliveryPanel({
-    info: { ...LISTENER_INFO, delivery: { status: "not_sent" } },
-    busy: null, locked: false, lastTest: null, error: "", onTest() {},
-  }));
+  const { pill, device } = makePill(async () => ({ ...LISTENER_INFO, delivery: { status: "not_sent" } }));
+  pill.renderPill(device());
+  await settle();
+  pill.open = true;
+  const text = templateText(pill.renderPill(device()));
   assert.match(text, /Could not send the test command/);
-  assert.doesNotMatch(text, /did not reach|allow TCP/);
+  assert.doesNotMatch(text, /did not reach|allow TCP/i);
 });
 
 test("broker validation rejects invalid IPv4 octets and ports without sending", async () => {

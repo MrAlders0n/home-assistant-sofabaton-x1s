@@ -601,20 +601,23 @@ function findHandler(template: unknown, binding: string): (event: unknown) => vo
 
 // ── Delivery method pill on the selected Wifi Device (read-only) ────────
 
-test("the device pill previews a pending delivery wish and hides without MQTT", () => {
+test("a device row's pill is read-only, shows on every hub and warns when presses don't arrive", () => {
   const element = new WifiCommandsTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1" };
-  const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 1, deployed_transport: "http", requested_transport: "http" };
-  element._mqttAvailable = true;
+  const device = { device_key: "dev-1", device_name: "TV", configured_slot_count: 1, deployed_device_id: 3, deployed_transport: "http", requested_transport: "http" };
+  // No MQTT for this hub (an X1 / X1S): the pill shows anyway.
+  element._mqttAvailable = false;
   const deployed = JSON.stringify(element._renderTransportPill(device));
+  assert.match(deployed, /"transport-pill http"/);
   assert.match(deployed, /HTTP/);
   assert.doesNotMatch(deployed, /<button|<select/);
   const pending = JSON.stringify(element._renderTransportPill({ ...device, requested_transport: "mqtt", transport_switch_pending: true }));
-  assert.match(pending, /MQTT/);
-  assert.match(pending, /pending/);
-  element._mqttAvailable = false;
-  assert.equal(JSON.stringify(element._renderTransportPill(device)), JSON.stringify(nothing));
-  assert.match(JSON.stringify(element._renderTransportPill({ ...device, deployed_transport: "mqtt", requested_transport: "mqtt" })), /MQTT/);
+  assert.match(pending, /transport-pill mqtt pending/);
+  const failed = JSON.stringify(element._renderTransportPill({ ...device, delivery: { status: "not_delivered" } }));
+  assert.match(failed, /transport-pill http attention/);
+  // Not on the hub yet: a stale result never warns.
+  const fresh = JSON.stringify(element._renderTransportPill({ ...device, deployed_device_id: null, delivery: { status: "not_delivered" } }));
+  assert.doesNotMatch(fresh, /attention"/);
 });
 
 // ── Edit device (name, icon, X2 color) on a deployed Wifi Device ────────

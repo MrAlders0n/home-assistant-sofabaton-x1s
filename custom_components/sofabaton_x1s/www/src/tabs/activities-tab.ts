@@ -37,7 +37,7 @@ import {
   retireWifiEventLongRecords,
   rewriteWifiEventPlaceholderRefs,
 } from "./backup-state";
-import type { IrLearnHost, WifiEventsHost } from "./edit-detail-view";
+import type { DeliveryHost, IrLearnHost, WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 import { rebaseBundle } from "./bundle-rebase";
@@ -68,6 +68,8 @@ class SofabatonActivitiesTab extends LitElement {
     blockedMessage: { type: String },
     selectedHubProxyConnected: { type: Boolean },
     mqttAvailable: { type: Boolean },
+    hubCommandBusy: { type: Boolean },
+    setHubCommandBusy: { attribute: false },
     cacheVersion: { type: String },
     _stage: { state: true },
     _changedElsewhere: { state: true },
@@ -226,6 +228,10 @@ class SofabatonActivitiesTab extends LitElement {
   selectedHubProxyConnected = false;
   /** MQTT delivery can be offered for this hub (control-panel state). */
   mqttAvailable = false;
+  /** Another hub operation runs (the card's shared lock). */
+  hubCommandBusy = false;
+  /** Hold the shared lock and its dock line (the delivery Test). */
+  setHubCommandBusy: ((busy: boolean, label?: string | null, entryId?: string) => void) | null = null;
   /** The version of the hub's cache rows the card holds
    *  (loadedCacheVersionKey): when it moves, an open editor follows. */
   cacheVersion = "";
@@ -468,6 +474,16 @@ class SofabatonActivitiesTab extends LitElement {
     const dataHex = String(command?.command_blob ?? "").trim();
     if (!command || !dataHex) return null;
     return { dataHex, decoded: command.decoded ?? null };
+  };
+
+  // The delivery pill of a managed Wifi device: it reads and tests through
+  // Home Assistant itself; the editor stays hass-free.
+  private _deliveryHost: DeliveryHost = {
+    hass: () => this.hass ?? null,
+    hubEntryId: () => String(this.hub?.entry_id ?? ""),
+    canSwitch: () => this.hub?.broker_setup_available === true,
+    locked: () => Boolean(this.hubCommandBusy),
+    setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || undefined),
   };
 
   private _testCommandPayload = async (hex: string) => {
@@ -1344,6 +1360,7 @@ class SofabatonActivitiesTab extends LitElement {
           .wifiEvents=${this._wifiEventsFacade}
           .mqttAvailable=${Boolean(this.mqttAvailable)}
           .pendingTransport=${this._pendingTransport}
+          .delivery=${this._deliveryHost}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
           @transport-change=${this._handleTransportChange}

@@ -1,7 +1,7 @@
 // The Wifi Commands tab (docs/internal/server-panel-wifi-commands-plan.md):
 // the view's pure helpers (the draft, the card's slot dialog rules, the hard
 // buttons, the tile's meta line, the cross-device button cleanup, the roster
-// status, the press matching behind the glow),
+// status, the delivery pill's verdict, the press matching behind the glow),
 // the route's fourth segment, the API client's wifi-devices calls and the
 // dock's unsynced line. No DOM.
 
@@ -21,6 +21,10 @@ import {
   buttonCleanups,
   configuredCount,
   defaultSlotLabel,
+  deliveryAttention,
+  deliveryOnHub,
+  deliveryTarget,
+  deliveryVerdict,
   deviceStatus,
   draftFromSpec,
   draftsEqual,
@@ -247,6 +251,48 @@ test("an mqtt device calls no address; the panel says when the broker side canno
   assert.match(mqttProblem(mqtt, { ...up, configured: false, connected: false })!, /--mqtt-host/);
   assert.equal(mqttProblem(device(), { ...up, connected: false }), null);              // an http device does not care
   assert.equal(mqttProblem(mqtt, null), null);                                        // not known yet: say nothing
+});
+
+test("the delivery pill: amber when presses do not arrive or the broker is down, a verdict for every state", () => {
+  const check = (status: "delivered" | "not_delivered" | "not_sent", extra: Record<string, unknown> = {}) =>
+    ({ status, transport: "http", target: "http://192.168.1.10:8060", hub_ip: "192.168.1.50", source: "", latency_s: 0.12, checked_at: "2026-10-27T10:00:00Z", via: "test", ...extra }) as WifiDeviceView["delivery"];
+  const up = { configured: true, connected: true, host: "broker.lan", port: 1883, last_error: null };
+  const down = { ...up, connected: false };
+  const mqtt = device({ transport: "mqtt", target: null, mqtt_topic: "E26A44861B45/up", effective_destination: null });
+
+  // On the hub: deployed and not missing.
+  assert.equal(deliveryOnHub(device()), true);
+  assert.equal(deliveryOnHub(device({ stale: true })), false);
+  assert.equal(deliveryOnHub(device({ device_id: null, pending: { op: "create", started_at: "t" } })), false);
+
+  // The pill warns on a failed check (either way) and on a broken broker under an mqtt device; never off the hub.
+  assert.equal(deliveryAttention(device(), up), false);                                 // never tested: quiet
+  assert.equal(deliveryAttention(device({ delivery: check("delivered") }), down), false);  // an http device does not care about the broker
+  assert.equal(deliveryAttention(device({ delivery: check("not_delivered") }), null), true);
+  assert.equal(deliveryAttention(device({ delivery: check("not_sent") }), null), true);
+  assert.equal(deliveryAttention(mqtt, up), false);
+  assert.equal(deliveryAttention(mqtt, down), true);
+  assert.equal(deliveryAttention({ ...mqtt, delivery: check("delivered", { transport: "mqtt" }) }, { ...up, configured: false }), true);
+  assert.equal(deliveryAttention(device({ stale: true, delivery: check("not_delivered") }), null), false);
+  assert.equal(deliveryAttention({ ...mqtt, device_id: null }, down), false);
+
+  // The result block: a test running here first, then the hub's record, then the stored check.
+  assert.equal(deliveryVerdict(device(), true), "testing");
+  assert.equal(deliveryVerdict(device({ stale: true, delivery: check("delivered") })), "stale");
+  assert.equal(deliveryVerdict(device({ device_id: null })), "not_on_hub");
+  assert.equal(deliveryVerdict(device()), "untested");
+  assert.equal(deliveryVerdict(device({ delivery: null })), "untested");
+  assert.equal(deliveryVerdict(device({ delivery: check("delivered") })), "delivered");
+  assert.equal(deliveryVerdict(device({ delivery: check("not_delivered") })), "not_delivered");
+  assert.equal(deliveryVerdict(device({ delivery: check("not_sent") })), "not_sent");
+
+  // What the hub calls: the listener's origin, or the broker this server uses.
+  assert.equal(deliveryTarget(device(), up), "http://192.168.1.10:8060");
+  assert.equal(deliveryTarget(device({ target: null, delivery: check("not_delivered") }), null), "http://192.168.1.10:8060");
+  assert.equal(deliveryTarget(device({ target: null }), null), "");
+  assert.equal(deliveryTarget(mqtt, up), "broker.lan:1883");
+  assert.equal(deliveryTarget({ ...mqtt, delivery: check("delivered", { transport: "mqtt", target: "10.0.0.2:1883" }) }, { ...up, configured: false, host: null }), "10.0.0.2:1883");
+  assert.equal(deliveryTarget(mqtt, null), "");
 });
 
 test("the glow: fresh for 720 ms, matched by key (or by device id), a long press lights its slot's tile", () => {

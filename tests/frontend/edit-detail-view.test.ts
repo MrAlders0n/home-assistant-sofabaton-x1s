@@ -1875,9 +1875,9 @@ test("two new items on one assignment never save", () => {
   assert.match(templateText(element._binding.render()), /dialog-btn-primary[^>]*disabled/);
 });
 
-// ── Delivery badge / switch (docs/internal/wifi-events-transport-plan.md) ──
+// ── Delivery pill (docs/internal/wifi-events-transport-plan.md) ──
 
-function managedWifiEditor(deviceClass = "wifi_ip"): EditorElement {
+function managedWifiEditor(deviceClass = "wifi_ip", canSwitch = true): EditorElement {
   const element = new EditDetailViewElement() as EditorElement;
   const bundle = editorBundle("X2");
   bundle.devices.push({
@@ -1889,52 +1889,78 @@ function managedWifiEditor(deviceClass = "wifi_ip"): EditorElement {
   element.entityId = 4;
   element.mode = "live";
   element.mqttAvailable = true;
+  const calls: Array<Record<string, unknown>> = [];
+  const hass = {
+    states: {},
+    callWS: async (msg: Record<string, unknown>) => {
+      calls.push(msg);
+      if (msg.type === "sofabaton_x1s/hub_mqtt/status") {
+        return { available: true, ha_connected: true, ha_broker: null, hub_connected: true, suggested_host: "", suggested_port: 1883, ha_username: "", ha_login_available: false };
+      }
+      return { device_key: msg.device_key, transport: deviceClass === "wifi_mqtt" ? "mqtt" : "http", target: "", hub_ip: "", delivery: null };
+    },
+  };
+  element.delivery = {
+    hass: () => hass as any,
+    hubEntryId: () => "entry-1",
+    canSwitch: () => canSwitch,
+    locked: () => false,
+    setBusy() {},
+  };
+  (element as any).__calls = calls;
   return element;
 }
 
-test("a managed Wifi device's delivery badge is a two-option select in the live editor", () => {
+test("a managed Wifi device carries the delivery pill in the live editor, on every hub", async () => {
   const element = managedWifiEditor();
-  const text = templateText(element._renderTransportControl("device"));
-  assert.match(text, /transport-select/);
+  const text = templateText(element._renderDeliveryPill("device"));
+  assert.match(text, /transport-pill delivery-pill/);
   assert.match(text, /HTTP/);
-  assert.match(text, /MQTT/);
   assert.doesNotMatch(text, /pending/);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // The stored record of the device the brand names: no hub exchange.
+  assert.deepEqual((element as any).__calls.map((msg: any) => [msg.type, msg.device_key]), [["sofabaton_x1s/command_config/delivery", "abc123"]]);
 
-  // A pending pick shows dashed, and stays a select while other edits go in.
+  // A pending pick shows dashed while other edits go in.
   element.pendingTransport = "mqtt";
   element.dirty = true;
-  const pending = templateText(element._renderTransportControl("device"));
-  assert.match(pending, /<select/);
-  assert.match(pending, /mqtt pending/);
+  assert.match(templateText(element._renderDeliveryPill("device")), /mqtt pending/);
   element.pendingTransport = null;
   element.dirty = false;
 
-  // No MQTT on this hub: an HTTP device shows nothing...
+  // No MQTT for this hub (an X1 / X1S, or an X2 without the integration):
+  // the pill stays, for the path and Test.
   element.mqttAvailable = false;
-  assert.equal(element._renderTransportControl("device"), nothing);
-  // ...an MQTT device keeps its read-only badge.
-  element.bundle.devices[3].device.device_class = "wifi_mqtt";
-  const mqttPill = templateText(element._renderTransportControl("device"));
-  assert.doesNotMatch(mqttPill, /<select/);
-  assert.match(mqttPill, /MQTT/);
+  assert.match(templateText(element._renderDeliveryPill("device")), /delivery-pill/);
+  const x1s = managedWifiEditor("wifi_ip", false);
+  x1s._renderDeliveryPill("device");
+  x1s._delivery.open = true;
+  assert.doesNotMatch(templateText(x1s._renderDeliveryPill("device")), /delivery-method/);
 
-  // The backup editor and unmanaged devices never carry it.
+  // The backup editor, a host without the delivery side and unmanaged
+  // devices never carry it.
   element.mqttAvailable = true;
   element.mode = "backup";
-  assert.equal(element._renderTransportControl("device"), nothing);
+  assert.equal(element._renderDeliveryPill("device"), nothing);
   element.mode = "live";
+  const host = element.delivery;
+  element.delivery = null;
+  assert.equal(element._renderDeliveryPill("device"), nothing);
+  element.delivery = host;
   element.entityId = 2;
-  assert.equal(element._renderTransportControl("device"), nothing);
+  assert.equal(element._renderDeliveryPill("device"), nothing);
 });
 
-test("changing the delivery select hands the pick to the host", () => {
+test("a pick in the delivery dropdown hands the method to the host", async () => {
   const element = managedWifiEditor();
   const picks: unknown[] = [];
   element.addEventListener("transport-change", (event) => picks.push((event as CustomEvent).detail));
-  const template = element._renderTransportControl("device") as { values: unknown[] };
-  const onChange = template.values.find((value) => typeof value === "function") as (event: unknown) => void;
-  onChange({ target: { value: "mqtt" } });
-  onChange({ target: { value: "http" } });
+  element._renderDeliveryPill("device");
+  await element._delivery.pick("mqtt");
+  assert.deepEqual(picks, [{ transport: "mqtt" }]);
+  element.pendingTransport = "mqtt";
+  element._renderDeliveryPill("device");
+  await element._delivery.pick("http");
   assert.deepEqual(picks, [{ transport: "mqtt" }, { transport: "http" }]);
 });
 

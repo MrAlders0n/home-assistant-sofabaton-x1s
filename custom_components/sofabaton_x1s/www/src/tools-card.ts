@@ -1282,6 +1282,8 @@ class SofabatonControlPanelCard extends LitElement {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .mqttAvailable=${Boolean(hub?.mqtt_available)}
+            .hubCommandBusy=${sharedHubCommandBusy}
+            .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
             .cacheVersion=${loadedCacheVersionKey(this._snapshot, hub?.entry_id)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             .startRefreshAll=${() => this._store.refreshAllForHub()}
