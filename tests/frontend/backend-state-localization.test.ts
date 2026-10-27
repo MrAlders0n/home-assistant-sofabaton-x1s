@@ -115,7 +115,7 @@ test("structured backend progress is localized without relaying its English mess
         step_kind: "activity_rename",
         message: "Renaming the activity…",
       },
-      expected: "Aktivität wird umbenannt…",
+      expected: "Aktivität wird aktualisiert…",
     },
     {
       locale: "fr",
@@ -267,7 +267,7 @@ test("entity-sync write steps are localized from their step kind, with a counter
 
   // Structured step kind → translated copy; the counter is 1-based (the
   // engine emits completed_steps BEFORE the write).
-  assert.equal(writing({ step_kind: "activity_rename" }), "Renaming the activity… (3/5)");
+  assert.equal(writing({ step_kind: "activity_rename" }), "Updating the activity… (3/5)");
   assert.equal(writing({ step_kind: "macro_write_power_on" }), "Updating the start sequence… (3/5)");
   assert.equal(
     writing({ step_kind: "command_rename", step_device_id: 7 }),

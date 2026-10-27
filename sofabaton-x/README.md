@@ -224,8 +224,8 @@ dataclasses (each with a `to_dict()`), cached if available, else fetched:
 
 | read                     | returns                                                                                  |
 | ------------------------ | ---------------------------------------------------------------------------------------- |
-| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`, `sort`               |
-| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior`, `sort` |
+| `activities()`           | `list[Activity]`: `activity_id`, `name`, `active`, `needs_confirm`, `sort`, `icon`, `color_id` |
+| `devices()`              | `list[Device]`: `device_id`, `name`, `brand`, `device_class`, `device_class_code`, `power_state`, `idle_behavior`, `sort`, `icon`, `color_id` |
 | `commands(device_id)`    | `list[Command]`: `command_id`, `label`                                                   |
 | `macros(activity_id)`    | `list[Macro]`: `command_id`, `label`                                                     |
 | `favorites(activity_id)` | `list[Favorite]`: `device_id`, `command_id`, `label`                                     |
@@ -578,7 +578,8 @@ The server adds persistent apply records but has further
 The common row edits are pure functions in `sofabaton.edits`: each takes
 a snapshot bundle and returns an edited copy for the sync, so a script
 does not have to know the row shapes. `rename_activity`, `rename_device`,
-`bind_button` (with an optional long press), `clear_button`,
+`set_activity_appearance` / `set_device_appearance` (icon, and color on an
+X2), `bind_button` (with an optional long press), `clear_button`,
 `add_favorite`, `remove_favorite`, `reorder_favorites`, `rename_command`,
 `set_idle_behavior`, `set_command_payload`, and `add_command` (which returns
 the edited bundle and an available command id):

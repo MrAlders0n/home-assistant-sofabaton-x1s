@@ -51,8 +51,26 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   `firmware_outdated` is true for an X2 below it. The supported floor
   (`firmware_unsupported`) is unchanged.
 
+### Added
+
+- `Activity.icon` / `Device.icon` (the hub's icon id) and
+  `Activity.color_id` / `Device.color_id` (the X2 palette id, `0` when none
+  was picked, `None` on other hubs). Both are `None` when the record is not
+  cached.
+- `edits.set_activity_appearance()` / `edits.set_device_appearance()`.
+  `sync_activity()` / `sync_device()` write an icon or color change in the
+  same record write as a rename, after checking it against the hub line:
+  icons 1-25 on the X1, 1-16 on the X1S, 1-45 on the X2; colors 1-12, X2
+  only. A document's icon and color reach the hub through `sync_hub()`,
+  created entities included. Until a bench shows the remotes pick an icon
+  change up on their own, it ends with a per-item remote sync.
+
 ### Fixed
 
+- A Wifi Device's in-place deploy rewrote its head record with the TV icon;
+  it keeps the device's icon now, as it already kept the color.
+- An X1 activity rename rewrote the activity with the TV icon; it keeps the
+  activity's icon now.
 - X2 `find_remote()` addresses the remotes actually paired with the hub,
   read from its paired-device list (once, when none is cached), instead of
   a fixed target that only reached the first remote slot.

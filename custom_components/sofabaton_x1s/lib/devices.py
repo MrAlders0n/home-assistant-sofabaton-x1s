@@ -523,6 +523,97 @@ def parse_device_record(
     )
 
 
+#: Icon ids the app offers on each hub line; ids run 1..count. The app
+#: shows icon 1 (a TV) for an id outside its line's set.
+ENTITY_ICON_COUNT: Final[Mapping[str, int]] = {
+    HUB_VERSION_X1: 25,
+    HUB_VERSION_X1S: 16,
+    HUB_VERSION_X2: 45,
+}
+
+#: Palette ids the X2 app offers (1..12). Only the X2 shows colors.
+ENTITY_COLOR_COUNT: Final[int] = 12
+
+
+def _color_offset(hub_version: str) -> int | None:
+    """Body offset of the color byte (tail[22]), None on the X1 record."""
+
+    try:
+        slot_width, _body_len, _encoding = _slot_widths_for(hub_version)
+    except ValueError:
+        return None
+    if slot_width < _WIDE_TAIL_WIDTH:
+        return None
+    # Same layout as parse_device_record: name and brand slots from 29,
+    # then the tail.
+    return 29 + 2 * slot_width + 22
+
+
+def record_appearance(body: bytes, *, hub_version: str) -> tuple[int | None, int | None]:
+    """Return ``(icon, color_id)`` of a device or activity record body.
+
+    Reads the two bytes :func:`parse_device_record` decodes as ``icon``
+    (body[5]) and ``color_id`` (tail[22]) without the full parse, so a
+    cached body of an unexpected length still yields what it holds.
+    ``color_id`` is None on the X1, whose record has no such byte. Either
+    is None when the body is too short to hold it.
+    """
+
+    icon = int(body[5]) if len(body) > 5 else None
+    color_offset = _color_offset(hub_version)
+    if color_offset is None or len(body) <= color_offset:
+        return icon, None
+    return icon, int(body[color_offset])
+
+
+def patch_record_appearance(
+    body: bytes,
+    *,
+    hub_version: str,
+    icon: int | None = None,
+    color_id: int | None = None,
+) -> bytes:
+    """Return ``body`` with the bytes :func:`record_appearance` reads
+    replaced where a value is given, every other byte kept.
+
+    For bodies written as they are (an activity row) and for cached
+    copies; a checksummed record write goes through
+    :func:`build_device_create_payload` instead. A color is ignored on
+    the X1 record, which has no color byte.
+    """
+
+    out = bytearray(body)
+    if icon is not None and len(out) > 5:
+        out[5] = icon & 0xFF
+    color_offset = _color_offset(hub_version)
+    if color_id is not None and color_offset is not None and len(out) > color_offset:
+        out[color_offset] = color_id & 0xFF
+    return bytes(out)
+
+
+def validate_appearance(
+    hub_version: str,
+    *,
+    icon: int | None = None,
+    color_id: int | None = None,
+) -> None:
+    """Raise ``ValueError`` (a user-readable reason) unless ``icon`` is one
+    of the icons the hub line's app offers and ``color_id`` one of the
+    X2 palette ids (``0`` = no color). ``None`` skips a value."""
+
+    if icon is not None:
+        count = ENTITY_ICON_COUNT.get(hub_version)
+        if count is None:
+            raise ValueError(f"icons cannot be set on a {hub_version!r} hub")
+        if isinstance(icon, bool) or not isinstance(icon, int) or not 1 <= icon <= count:
+            raise ValueError(f"icon {icon!r} is not one of the {count} icons this hub offers")
+    if color_id is not None:
+        if hub_version != HUB_VERSION_X2:
+            raise ValueError("only an X2 hub stores activity and device colors")
+        if isinstance(color_id, bool) or not isinstance(color_id, int) or not 0 <= color_id <= ENTITY_COLOR_COUNT:
+            raise ValueError(f"color {color_id!r} is not one of the {ENTITY_COLOR_COUNT} colors")
+
+
 def device_config_from_backup(
     device: Mapping[str, object],
     *,
@@ -606,8 +697,13 @@ __all__ = [
     "DEVICE_BODY_LEN_X1",
     "DEVICE_BODY_LEN_X1S_X2",
     "DEVICE_CODE_ID_LEN",
+    "ENTITY_COLOR_COUNT",
+    "ENTITY_ICON_COUNT",
     "DeviceConfig",
     "build_device_create_payload",
     "device_config_from_backup",
     "parse_device_record",
+    "patch_record_appearance",
+    "record_appearance",
+    "validate_appearance",
 ]

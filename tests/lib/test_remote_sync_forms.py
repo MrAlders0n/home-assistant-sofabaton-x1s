@@ -359,3 +359,15 @@ def test_x2_find_remote_falls_back_to_remote_one_without_a_list(monkeypatch) -> 
     # Not controllable here: no list request, the validated remote 1 target.
     assert engine.find_remote() is True
     assert sent == [(0x0323, bytes.fromhex("00 00 08"))]
+
+
+def test_a_rename_carrying_an_icon_or_color_counts_as_touched() -> None:
+    # Renames reach the remotes on their own; an icon or color change rides
+    # the same write but is not bench-proven to, so it gets a per-item sync.
+    plain = _PlanStep("activity_rename", 101)
+    themed = _PlanStep("activity_rename", 101)
+    themed.payload["icon"] = 34
+    device = _PlanStep("device_rename")
+    device.payload["color_id"] = 3
+    assert frames.entities_touched_by([plain], 0x10C) == ()
+    assert frames.entities_touched_by([themed, device], 0x0C) == (101, 0x0C)

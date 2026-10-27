@@ -256,7 +256,12 @@ class _OpsHost(Protocol):
         input_command_ids: list[int] | None,
     ) -> bool: ...
     def _build_activity_confirm_payload(
-        self, activity_id: int, *, name: str | None = ...
+        self,
+        activity_id: int,
+        *,
+        name: str | None = ...,
+        icon: int | None = ...,
+        color_id: int | None = ...,
     ) -> bytes | None: ...
     def _build_device_power_binding_payload(
         self, *, device_id: int, button_id: int, command_id: int | None
@@ -285,6 +290,7 @@ class _OpsHost(Protocol):
         ip_device: bool = ...,
         brand_name: str = ...,
         wifi_power_state: tuple[int, int, int] | None = ...,
+        icon: int = ...,
         color_id: int = ...,
     ) -> bytes: ...
     @staticmethod

@@ -74,6 +74,8 @@ import {
   upsertActivityButtonBinding,
   upsertDeviceButtonBinding,
   validateBackupBundle,
+  bundleEntityAppearance,
+  setBundleEntityAppearance,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import type { BackupBundlePayload } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
@@ -1946,4 +1948,24 @@ test("replayDeviceEntryEdits carries the user's edits onto the replacement devic
   ]);
   assert.deepEqual(fresh.button_bindings, [{ button_id: 0xB0, device_id: 12, command_id: 1 }], "fresh entry is not mutated");
   assert.equal(replayDeviceEntryEdits(fresh, baseline, null, 9, 12), fresh);
+});
+
+test("an entity's icon and color are read from and written to its block, untouched values left alone", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    hub: { name: "Den", version: "X2" },
+    devices: [{ device: { device_id: 3, name: "Amp", icon: 11, color_id: 0 } }],
+    activities: [{ device: { device_id: 101, name: "Watch TV" } }],
+  } as unknown as BackupBundlePayload;
+
+  assert.deepEqual(bundleEntityAppearance(bundle, "device", 3), { icon: 11, colorId: 0 });
+  assert.deepEqual(bundleEntityAppearance(bundle, "activity", 101), { icon: null, colorId: null });
+
+  const recolored = setBundleEntityAppearance(bundle, "device", 3, { icon: null, colorId: 8 });
+  assert.deepEqual(bundleEntityAppearance(recolored, "device", 3), { icon: 11, colorId: 8 });
+  assert.equal(bundle.devices?.[0].device?.color_id, 0); // the input is not mutated
+
+  const iconed = setBundleEntityAppearance(bundle, "activity", 101, { icon: 34 });
+  assert.equal(iconed.activities?.[0].device?.icon, 34);
+  assert.equal("color_id" in (iconed.activities?.[0].device ?? {}), false);
 });

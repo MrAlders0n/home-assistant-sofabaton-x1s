@@ -99,10 +99,59 @@ export const X2_ICON_PATHS: Readonly<Record<number, string>> = {
   45: "M2 9h.9l.6 1.85.6-1.85h.9l-1 2.75v3.2h-1v-3.2zm4.26 1.4a1.2 1.2 0 0 1 1.24 1.2v2.2a1.2 1.2 0 0 1-1.24 1.2h0a1.2 1.2 0 0 1-1.26-1.2v-2.2a1.2 1.2 0 0 1 1.26-1.2zm0 .75a.4.4 0 0 0-.36.35v2.4a.4.4 0 0 0 .36.35h0a.4.4 0 0 0 .34-.35v-2.4a.4.4 0 0 0-.34-.35zM9 10.5v2.8c0 .6.2.85.4.85h0c.2 0 .35-.25.35-.85h.85c0 .8-.55 1.7-1.2 1.7h0c-.7 0-1.25-.9-1.25-1.7h0v-2.8zm.75 0h.85v4.45h-.85zm1-1.5h3v.75h-3zm1 0h1v5.95h-1zm3 1.5v2.8c0 .6.15.85.35.85h0c.2 0 .4-.25.4-.85h.85c0 .8-.55 1.7-1.25 1.7h0c-.65 0-1.2-.9-1.2-1.7h0v-2.8zm.75 0h.85v4.45h-.85zM17.15 9h.85v5.95h-.85zm0 1.4h1.25a1.2 1.2 0 0 1 1.2 1.2v2.2a1.2 1.2 0 0 1-1.2 1.2h-1.25zm1.25.75a.4.4 0 0 0-.4.35v2.4a.4.4 0 0 0 .4.35h0a.4.4 0 0 0 .35-.35v-2.4a.4.4 0 0 0-.35-.35zm4.3 1.8h-1.6v.85h1.6a1.2 1.2 0 0 1-2.4 0v-2.2a1.2 1.2 0 0 1 2.4 0zm-1.2-1.8a.4.4 0 0 0-.4.35v.4a.4.4 0 0 0 .4.4h0a.4.4 0 0 0 .4-.4v-.4a.4.4 0 0 0-.4-.35z",
 };
 
+/** English names of the X2 icons, for labels and tooltips. */
+export const X2_ICON_NAMES: Readonly<Record<number, string>> = {
+  1: "Monitor",
+  2: "Picture",
+  3: "Music",
+  4: "Film reel",
+  5: "TV",
+  6: "Gamepad",
+  7: "Game controller",
+  8: "Router",
+  9: "Wifi router",
+  10: "Projector",
+  11: "Receiver",
+  12: "Pendant lamp",
+  13: "Apple TV",
+  14: "Roku",
+  15: "Fire TV",
+  16: "Netflix",
+  17: "Media player",
+  18: "Curved TV",
+  19: "Download",
+  20: "Satellite dish",
+  21: "Disc",
+  22: "Set-top box",
+  23: "Cassette deck",
+  24: "Projector, front",
+  25: "Smart speaker",
+  26: "Air conditioner",
+  27: "Desk fan",
+  28: "Ceiling fan",
+  29: "Table lamp",
+  30: "Power outlet",
+  31: "Wall switch",
+  32: "Presentation screen",
+  33: "Party",
+  34: "Sleep",
+  35: "DAZN",
+  36: "DIRECTV",
+  37: "Disney",
+  38: "Hulu",
+  39: "NVIDIA",
+  40: "Prime Video",
+  41: "PS",
+  42: "R",
+  43: "SAM",
+  44: "Xbox",
+  45: "YouTube",
+};
+
 // The X1 icons the X2 set has no counterpart for, keyed by the X1 icon id
 // (the X1 numbers its own 25 icons). Same path contract; the wordmarks (14,
-// 25) belong to the services they name. hub-icons.ts resolves an icon id
-// for any hub line.
+// 25) belong to the services they name. entity-icons.ts resolves an icon
+// id for any hub line.
 
 export const X1_ICON_PATHS: Readonly<Record<number, string>> = {
   // 3D glasses

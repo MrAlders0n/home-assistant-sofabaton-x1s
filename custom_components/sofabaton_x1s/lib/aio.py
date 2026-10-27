@@ -74,7 +74,7 @@ from .wifi_device import (
     labels_from_spec,
     snapshot_from_spec,
 )
-from .devices import parse_device_record
+from .devices import parse_device_record, record_appearance
 from .device_class_profiles import supported_create_classes
 from .models import (
     Activity,
@@ -172,13 +172,33 @@ def _catalog_order_key(sort: int, entity_id: int) -> tuple[int, int, int]:
     return (0, sort, entity_id) if sort else (1, 0, entity_id)
 
 
-def _activity_from_row(act_id: int, row: dict, *, sort: int = 0) -> Activity:
+def _appearance(row: Optional[dict], hub_version: Optional[str]) -> tuple[Optional[int], Optional[int]]:
+    """``(icon, color_id)`` of a state row's stored record; the color only
+    on an X2, the one hub that shows it."""
+
+    raw_body = row.get("raw_body") if isinstance(row, dict) else None
+    if not isinstance(raw_body, (bytes, bytearray)):
+        return None, None
+    icon, color_id = record_appearance(bytes(raw_body), hub_version=str(hub_version or ""))
+    return icon, (color_id if hub_version == HUB_VERSION_X2 else None)
+
+
+def _activity_from_row(
+    act_id: int,
+    row: dict,
+    *,
+    sort: int = 0,
+    icon: Optional[int] = None,
+    color_id: Optional[int] = None,
+) -> Activity:
     return Activity(
         activity_id=int(act_id),
         name=str(row.get("name") or ""),
         active=bool(row.get("active", False)),
         needs_confirm=bool(row.get("needs_confirm", False)),
         sort=int(sort),
+        icon=icon,
+        color_id=color_id,
     )
 
 
@@ -192,6 +212,7 @@ def _device_from_row(dev_id: int, row: dict, hub_version: Optional[str]) -> Devi
             power_state = None
     idle = row.get("idle_behavior")
     code = row.get("device_class_code")
+    icon, color_id = _appearance(row, hub_version)
     return Device(
         device_id=int(dev_id),
         name=str(row.get("name") or ""),
@@ -201,6 +222,8 @@ def _device_from_row(dev_id: int, row: dict, hub_version: Optional[str]) -> Devi
         power_state=power_state,
         idle_behavior=int(idle) if isinstance(idle, int) else None,
         sort=_sort_byte(row),
+        icon=icon,
+        color_id=color_id,
     )
 
 
@@ -882,10 +905,14 @@ class AsyncXProxy:
         # record body; the sort byte lives in that body, so read it from
         # the engine's own state rows (keyed by the low id byte).
         state_rows = await self.run(lambda: dict(self._proxy.state.entities("activity")))
+        hub_version = self._proxy.hub_version
         items = []
         for act_id, row in dict(rows).items():
             state_row = state_rows.get(act_id, state_rows.get(int(act_id) & 0xFF))
-            items.append(_activity_from_row(act_id, row, sort=_sort_byte(state_row)))
+            icon, color_id = _appearance(state_row, hub_version)
+            items.append(
+                _activity_from_row(act_id, row, sort=_sort_byte(state_row), icon=icon, color_id=color_id)
+            )
         return sorted(items, key=lambda a: _catalog_order_key(a.sort, a.activity_id))
 
     async def devices(

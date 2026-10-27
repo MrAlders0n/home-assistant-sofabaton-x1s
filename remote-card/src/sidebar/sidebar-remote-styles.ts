@@ -466,6 +466,10 @@ export const sidebarRemoteStyles = css`
   .row.current .ic { color: var(--sb-accent-text); }
   .row.current .ic { background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
   .row.current .ic ha-icon { opacity: 1; }
+  /* the hub's own icon on its tile (X2: in its color; X1/X1S: neutral, tinted when current) */
+  .row .entity-tile { --entity-tile-size: 36px; --entity-tile-ring: var(--sb-pill); }
+  .row.current .entity-tile { --entity-tile-ring: color-mix(in srgb, var(--primary-color) 12%, var(--sb-pill)); }
+  .row.current .entity-tile--neutral { background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--sb-accent-text); }
   .row.current .st { background: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 25%, transparent); }
   .row span.name { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 

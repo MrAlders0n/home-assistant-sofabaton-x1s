@@ -1320,7 +1320,31 @@ def test_activities_carry_flags_and_fall_back_to_id_order() -> None:
         assert acts[1] == models.Activity(activity_id=102, name="Music", active=True, needs_confirm=True)
         assert acts[0].to_dict() == {
             "activity_id": 101, "name": "TV", "active": False, "needs_confirm": False, "sort": 0,
+            "icon": None, "color_id": None,
         }
+
+    asyncio.run(main())
+
+
+def test_catalog_lists_carry_icon_and_x2_color() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.hub_version = "X2"
+        record = lambda icon, color: devices_mod.build_device_create_payload(
+            devices_mod.DeviceConfig(name="Row", icon=icon, color_id=color), hub_version="X2"
+        )[3:]
+        fake.make_activities_ready({101: {"name": "TV", "raw_body": record(5, 7)}, 102: {"name": "New"}})
+        fake._ready["devices"] = {5: {"name": "TV", "raw_body": record(18, 0)}}
+        proxy = _wrap(fake)
+        acts = {a.activity_id: a for a in await proxy.activities()}
+        assert (acts[101].icon, acts[101].color_id) == (5, 7)
+        assert (acts[102].icon, acts[102].color_id) == (None, None)
+        [dev] = await proxy.devices()
+        assert (dev.icon, dev.color_id) == (18, 0)
+
+        fake.hub_version = "X1S"  # the byte exists there, unused: no color
+        [dev] = await proxy.devices()
+        assert (dev.icon, dev.color_id) == (18, None)
 
     asyncio.run(main())
 

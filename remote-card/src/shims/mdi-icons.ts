@@ -3,7 +3,7 @@
 // mdi path data for the web remote's icon shim: every "mdi:" name the card
 // references (a test fails when one is missing) plus a curated set a user
 // may pick for custom favourites and device shortcuts. Named imports keep
-// the bundle to just these 329 paths.
+// the bundle to just these 330 paths.
 
 import {
   mdiAccount,
@@ -158,6 +158,7 @@ import {
   mdiKodi,
   mdiLamp,
   mdiLaptop,
+  mdiLedOutline,
   mdiLedStrip,
   mdiLedStripVariant,
   mdiLightbulb,
@@ -491,6 +492,7 @@ export const MDI_ICON_PATHS: Record<string, string> = {
   "kodi": mdiKodi,
   "lamp": mdiLamp,
   "laptop": mdiLaptop,
+  "led-outline": mdiLedOutline,
   "led-strip": mdiLedStrip,
   "led-strip-variant": mdiLedStripVariant,
   "lightbulb": mdiLightbulb,
@@ -700,6 +702,7 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "home-outline",
   "information-outline",
   "kodi",
+  "led-outline",
   "lightbulb-outline",
   "magnify",
   "menu",
@@ -722,6 +725,7 @@ export const CARD_ICON_NAMES: readonly string[] = [
   "plex",
   "plus",
   "power",
+  "radio-tower",
   "remote",
   "remote-tv",
   "rewind",

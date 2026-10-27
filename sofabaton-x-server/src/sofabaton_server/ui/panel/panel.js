@@ -3236,11 +3236,18 @@ function currentActivityIdFromRemote(remoteState) {
   if (activityId != null) return Number(activityId);
   return null;
 }
+function appearanceOf(source) {
+  return {
+    ...Number.isInteger(source?.icon) ? { icon: Number(source.icon) } : {},
+    ...Number.isInteger(source?.color_id) ? { color_id: Number(source.color_id) } : {}
+  };
+}
 function normalizeActivities(source) {
   return (Array.isArray(source) ? source : []).map((activity) => ({
     id: Number(activity?.id),
     name: String(activity?.name ?? ""),
-    state: String(activity?.state ?? "")
+    state: String(activity?.state ?? ""),
+    ...appearanceOf(activity)
   })).filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
 function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache) {
@@ -3256,7 +3263,8 @@ function devicesFromRemote(remoteState) {
   return (Array.isArray(list) ? list : []).map((device) => ({
     id: Number(device?.id),
     name: String(device?.name ?? ""),
-    device_class: device?.device_class != null ? String(device.device_class) : void 0
+    device_class: device?.device_class != null ? String(device.device_class) : void 0,
+    ...appearanceOf(device)
   })).filter((device) => Number.isFinite(device.id) && device.name);
 }
 function deviceNameForId(devices, deviceId) {
@@ -8086,6 +8094,7 @@ var mdiKodi = "M12.03,1C11.82,1 11.6,1.11 11.41,1.31C10.56,2.16 9.72,3 8.88,3.84
 var mdiLamp = "M8,2H16L20,14H4L8,2M11,15H13V20H18V22H6V20H11V15Z";
 var mdiLanConnect = "M4,1C2.89,1 2,1.89 2,3V7C2,8.11 2.89,9 4,9H1V11H13V9H10C11.11,9 12,8.11 12,7V3C12,1.89 11.11,1 10,1H4M4,3H10V7H4V3M3,13V18L3,20H10V18H5V13H3M14,13C12.89,13 12,13.89 12,15V19C12,20.11 12.89,21 14,21H11V23H23V21H20C21.11,21 22,20.11 22,19V15C22,13.89 21.11,13 20,13H14M14,15H20V19H14V15Z";
 var mdiLaptop = "M4,6H20V16H4M20,18A2,2 0 0,0 22,16V6C22,4.89 21.1,4 20,4H4C2.89,4 2,4.89 2,6V16A2,2 0 0,0 4,18H0V20H24V18H20Z";
+var mdiLedOutline = "M12,6A4,4 0 0,0 8,10V16H6V18H9V23H11V18H13V23H15V18H18V16H16V10A4,4 0 0,0 12,6M12,8A2,2 0 0,1 14,10V15H10V10A2,2 0 0,1 12,8Z";
 var mdiLedStrip = "M2.81,8.46L14.83,20.5L15.54,19.78L16.95,21.19L18.36,19.78L16.95,18.36L18.36,16.95L19.78,18.36L21.19,16.95L19.78,15.54L20.5,14.83L8.46,2.81L2.81,8.46M5.64,8.46L8.46,5.64L17.66,14.83L14.83,17.66L5.64,8.46M7.05,8.46L8.46,9.88L9.88,8.46L8.46,7.05L7.05,8.46M9.17,10.59L10.59,12L12,10.59L10.59,9.17L9.17,10.59M11.29,12.71L12.71,14.12L14.12,12.71L12.71,11.29L11.29,12.71M13.41,14.83L14.83,16.24L16.24,14.83L14.83,13.41L13.41,14.83Z";
 var mdiLedStripVariant = "M2.95 3L2 6.91L19.34 11.25L20.29 7.34L2.95 3M6.09 6.89L4.16 6.41L4.64 4.46L6.57 4.94L6.09 6.89M9.94 7.86L8 7.38L8.5 5.42L10.42 5.91L9.94 7.86M13.8 8.82L11.87 8.34L12.35 6.39L14.27 6.87L13.8 8.82M17.65 9.79L15.72 9.31L16.2 7.35L18.13 7.84L17.65 9.79M4.66 12.75L3.71 16.66L21.05 21L22 17.1L4.66 12.75M7.8 16.65L5.88 16.16L6.35 14.21L8.28 14.69L7.8 16.65M11.65 17.61L9.73 17.13L10.2 15.18L12.13 15.66L11.65 17.61M15.5 18.58L13.58 18.09L14.06 16.14L16 16.62L15.5 18.58M19.36 19.54L17.43 19.06L17.91 17.11L19.84 17.59L19.36 19.54M6.25 12.11L11 10.2L17.75 11.89L13 13.8L6.25 12.11Z";
 var mdiLightbulb = "M12,2A7,7 0 0,0 5,9C5,11.38 6.19,13.47 8,14.74V17A1,1 0 0,0 9,18H15A1,1 0 0,0 16,17V14.74C17.81,13.47 19,11.38 19,9A7,7 0 0,0 12,2M9,21A1,1 0 0,0 10,22H14A1,1 0 0,0 15,21V20H9V21Z";
@@ -8437,6 +8446,7 @@ var MDI_ICON_PATHS = {
   "kodi": mdiKodi,
   "lamp": mdiLamp,
   "laptop": mdiLaptop,
+  "led-outline": mdiLedOutline,
   "led-strip": mdiLedStrip,
   "led-strip-variant": mdiLedStripVariant,
   "lightbulb": mdiLightbulb,
@@ -12890,7 +12900,7 @@ var TOOLS_CARD_STRINGS_EN = {
     // Live-sync engine write steps, keyed by the `step_kind` the engine
     // reports (proxy_activity_sync). Kinds that target a specific device
     // take its id; null when the engine did not name one.
-    entityStepActivityRename: "Renaming the activity\u2026",
+    entityStepActivityRename: "Updating the activity\u2026",
     entityStepBindingDelete: "Clearing a button assignment\u2026",
     entityStepBindingWrite: "Writing button assignments\u2026",
     entityStepCommandAdd: (id) => id == null ? "Adding a command\u2026" : `Adding a command on device ${id}\u2026`,
@@ -12899,7 +12909,7 @@ var TOOLS_CARD_STRINGS_EN = {
     entityStepCommandPayload: (id) => id == null ? "Updating a command\u2026" : `Updating a command on device ${id}\u2026`,
     entityStepCommandRename: (id) => id == null ? "Renaming a command\u2026" : `Renaming a command on device ${id}\u2026`,
     entityStepDeviceIp: "Updating the IP address\u2026",
-    entityStepDeviceRename: "Renaming the device\u2026",
+    entityStepDeviceRename: "Updating the device\u2026",
     entityStepFavoriteAdd: "Adding a shortcut\u2026",
     entityStepFavoriteDelete: "Removing a shortcut\u2026",
     entityStepFavoriteOrder: "Reordering shortcuts\u2026",
@@ -13332,6 +13342,14 @@ var TOOLS_CARD_STRINGS_EN = {
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",
+    // The name, icon and color dialog (the hub's own icons; colors on an X2).
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeIconAndColor: "Change icon and color",
+    changeIcon: "Change icon",
+    appearanceIcon: "Icon",
+    appearanceServices: "Services",
+    entityColorName: (colorId) => ["Gray", "Red", "Navy", "Purple", "Green", "Salmon", "Cyan", "Slate", "Teal", "Sand", "Sky", "Lavender"][colorId - 1] ?? "Gray",
     renameMacro: "Rename macro",
     renameFavorite: "Rename favorite",
     renameCommand: "Rename command",

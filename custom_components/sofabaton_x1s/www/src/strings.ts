@@ -365,7 +365,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     // Live-sync engine write steps, keyed by the `step_kind` the engine
     // reports (proxy_activity_sync). Kinds that target a specific device
     // take its id; null when the engine did not name one.
-    entityStepActivityRename: "Renaming the activity…",
+    entityStepActivityRename: "Updating the activity…",
     entityStepBindingDelete: "Clearing a button assignment…",
     entityStepBindingWrite: "Writing button assignments…",
     entityStepCommandAdd: (id: number | null) => (id == null ? "Adding a command…" : `Adding a command on device ${id}…`),
@@ -374,7 +374,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     entityStepCommandPayload: (id: number | null) => (id == null ? "Updating a command…" : `Updating a command on device ${id}…`),
     entityStepCommandRename: (id: number | null) => (id == null ? "Renaming a command…" : `Renaming a command on device ${id}…`),
     entityStepDeviceIp: "Updating the IP address…",
-    entityStepDeviceRename: "Renaming the device…",
+    entityStepDeviceRename: "Updating the device…",
     entityStepFavoriteAdd: "Adding a shortcut…",
     entityStepFavoriteDelete: "Removing a shortcut…",
     entityStepFavoriteOrder: "Reordering shortcuts…",
@@ -852,6 +852,15 @@ export const TOOLS_CARD_STRINGS_EN = {
     rename: "Rename",
     renameActivity: "Rename activity",
     renameDevice: "Rename device",
+    // The name, icon and color dialog (the hub's own icons; colors on an X2).
+    editActivity: "Edit activity",
+    editDevice: "Edit device",
+    changeIconAndColor: "Change icon and color",
+    changeIcon: "Change icon",
+    appearanceIcon: "Icon",
+    appearanceServices: "Services",
+    entityColorName: (colorId: number) =>
+      ["Gray", "Red", "Navy", "Purple", "Green", "Salmon", "Cyan", "Slate", "Teal", "Sand", "Sky", "Lavender"][colorId - 1] ?? "Gray",
     renameMacro: "Rename macro",
     renameFavorite: "Rename favorite",
     renameCommand: "Rename command",

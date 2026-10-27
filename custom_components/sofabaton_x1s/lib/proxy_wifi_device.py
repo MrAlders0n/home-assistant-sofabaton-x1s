@@ -152,6 +152,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
         ip_device: bool = False,
         brand_name: str = "m3tac0de",
         wifi_power_state: tuple[int, int, int] | None = None,
+        icon: int = 1,
         color_id: int = 0,
     ) -> bytes:
         """Serialise a wifi-callback device record into the family-0x07 body.
@@ -180,9 +181,10 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
           ``(power_mode, power_style, tail_marker)`` triple, used when
           the caller is committing a fully-configured device record.
 
-        ``color_id`` carries the tile color of an existing head through
-        a rewrite (the X2 app lets the user pick one); creates leave it
-        at ``0``.
+        ``icon`` and ``color_id`` carry the icon and tile color of an
+        existing head through a rewrite (the app lets the user pick an
+        icon, and on the X2 a color); creates leave them at ``1`` (the TV)
+        and ``0``.
 
         ``device_class_byte`` is accepted for caller-shape parity but
         no longer affects the wire body; the body's sub-marker is
@@ -214,7 +216,7 @@ class WifiDeviceMixin(_ProxyHost if TYPE_CHECKING else object):
             brand=brand_name,
             device_id=device_id & 0xFF,
             record_kind=0,
-            icon=1,
+            icon=icon & 0xFF,
             sort=0,
             code_type=(0x1C if ip_device else 0x0A),
             device_type=0x10,

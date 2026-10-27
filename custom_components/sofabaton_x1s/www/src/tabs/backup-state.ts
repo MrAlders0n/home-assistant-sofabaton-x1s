@@ -627,6 +627,58 @@ export function renameBundleDevice(
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
 }
 
+export interface EntityAppearance {
+  /** The record's icon id; null when the bundle does not carry it. */
+  icon: number | null;
+  /** The X2 palette id (0 = none picked); null when not carried. */
+  colorId: number | null;
+}
+
+function appearanceInList<T extends { device?: BackupBundleDeviceBlock | null }>(
+  list: T[] | undefined,
+  id: number,
+  appearance: Partial<EntityAppearance>,
+): T[] {
+  return (list ?? []).map((entry) => {
+    const block = entry?.device;
+    if (!block || Number(block.device_id || 0) !== id) return entry;
+    const next = { ...block };
+    if (appearance.icon != null) next.icon = appearance.icon;
+    if (appearance.colorId != null) next.color_id = appearance.colorId;
+    return { ...entry, device: next };
+  });
+}
+
+/** Set an activity's or device's icon and/or X2 color; the sync writes them
+ *  in the same record write as a rename. A null value is left as it is. */
+export function setBundleEntityAppearance(
+  bundle: BackupBundlePayload,
+  kind: "activity" | "device",
+  entityId: number,
+  appearance: Partial<EntityAppearance>,
+): BackupBundlePayload {
+  const id = Number(entityId);
+  return kind === "activity"
+    ? { ...bundle, activities: appearanceInList(bundle.activities, id, appearance) }
+    : { ...bundle, devices: appearanceInList(bundle.devices, id, appearance) };
+}
+
+/** The icon and color an activity's or device's block carries. */
+export function bundleEntityAppearance(
+  bundle: BackupBundlePayload | null,
+  kind: "activity" | "device",
+  entityId: number,
+): EntityAppearance {
+  const list = kind === "activity" ? bundle?.activities : bundle?.devices;
+  const block = (list ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(entityId))?.device;
+  const icon = Number(block?.icon);
+  const colorId = Number(block?.color_id);
+  return {
+    icon: block?.icon != null && Number.isInteger(icon) ? icon : null,
+    colorId: block?.color_id != null && Number.isInteger(colorId) ? colorId : null,
+  };
+}
+
 function updateActivity(
   bundle: BackupBundlePayload,
   activityId: number,

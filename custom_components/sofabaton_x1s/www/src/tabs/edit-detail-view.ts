@@ -87,6 +87,8 @@ import {
   renameBundleActivityMacro,
   renameBundleDevice,
   renameBundleDeviceCommand,
+  bundleEntityAppearance,
+  setBundleEntityAppearance,
   unboundButtonsForActivity,
   unboundButtonsForDevice,
   updateBundleDeviceIp,
@@ -106,6 +108,10 @@ import { renderKindSegments } from "./edit-detail/kind-segments";
 import { anchoredListPosition, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
 import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
+import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
+import { appearanceEditorStyles, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../components/appearance-editor";
+import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
 import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
 import { WifiEventTargets } from "./edit-detail/wifi-event-targets";
@@ -131,6 +137,9 @@ export class SofabatonEditDetailView extends LitElement {
     _editRenameDialogDraft: { state: true },
     _editRenameDialogError: { state: true },
     _editRenameDialogTarget: { state: true },
+    _editAppearance: { state: true },
+    _editAppearanceOpen: { state: true },
+    _editAppearanceTab: { state: true },
     fetchCommandPayload: { attribute: false },
     testCommandPayload: { attribute: false },
     irLearn: { attribute: false },
@@ -156,7 +165,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, editDetailViewStyles];
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, editDetailViewStyles];
 
   // ── Host-owned props ───────────────────────────────────────────────
   bundle: BackupBundlePayload | null = null;
@@ -196,6 +205,11 @@ export class SofabatonEditDetailView extends LitElement {
   _editRenameDialogDraft = "";
   _editRenameDialogError = "";
   _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
+  // The entity's icon / color draft in that dialog (null = untouched), and
+  // whether its picker is open, on which tab.
+  _editAppearance: AppearanceDraft = { icon: null, colorId: null };
+  _editAppearanceOpen = false;
+  _editAppearanceTab: AppearanceTab = "icon";
   // ── Live payload editing (host-provided I/O) ───────────────────────
   // The detail view is hass-free; the live Activities host injects these
   // to fetch a command's blob on demand and to Test it on the hub. Absent
@@ -347,6 +361,18 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
+  // The entity's hub icon beside the title; it opens the edit dialog with
+  // the picker showing. Nothing when the bundle carries no icon or no hub
+  // line (an old backup): the header stays as it was.
+  private _renderDetailTile(kind: BackupEditTargetKind) {
+    if (this.entityId == null) return nothing;
+    const appearance = bundleEntityAppearance(this.bundle, kind, this.entityId);
+    const tile = entityTile(this.bundle?.hub?.version, appearance.icon, appearance.colorId);
+    if (!tile) return nothing;
+    const label = kind === "activity" ? TOOLS_CARD_STRINGS.backup.editActivity : TOOLS_CARD_STRINGS.backup.editDevice;
+    return renderDetailEntityTile(tile, { label, onClick: this._openDetailAppearanceDialog });
+  }
+
   private _renderManagedWifiLockNotice() {
     return html`
       <div class="managed-wifi-lock">
@@ -398,6 +424,7 @@ export class SofabatonEditDetailView extends LitElement {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._requestClose}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
+                ${this._renderDetailTile(params.kind)}
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
                     { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose },
@@ -1157,7 +1184,10 @@ export class SofabatonEditDetailView extends LitElement {
 
   _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return nothing;
-    const label = this._editRenameDialogLabel();
+    const appearance = this._editRenameDialogTarget.kind === "detail" && iconHubLine(this.bundle?.hub?.version) != null;
+    const label = appearance && this._editRenameDialogTarget.kind === "detail"
+      ? (this._editRenameDialogTarget.entityKind === "activity" ? TOOLS_CARD_STRINGS.backup.editActivity : TOOLS_CARD_STRINGS.backup.editDevice)
+      : this._editRenameDialogLabel();
     return html`
       <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
@@ -1166,6 +1196,36 @@ export class SofabatonEditDetailView extends LitElement {
             <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
+            ${appearance ? this._renderAppearanceEditor() : this._renderEditRenameField()}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Name first, the tile beside it; the picker opens on demand.
+  private _renderAppearanceEditor() {
+    return renderAppearanceEditor({
+      hubVersion: this.bundle?.hub?.version,
+      draft: this._editAppearance,
+      open: this._editAppearanceOpen,
+      tab: this._editAppearanceTab,
+      nameField: this._renderEditRenameField(),
+      onToggle: () => { this._editAppearanceOpen = !this._editAppearanceOpen; },
+      onTab: (tab) => { this._editAppearanceTab = tab; },
+      onPick: (draft) => { this._editAppearance = draft; },
+    });
+  }
+
+  private _renderEditRenameField() {
+    return html`
             ${useLegacyTextField()
               ? html`
                   <ha-textfield
@@ -1190,16 +1250,6 @@ export class SofabatonEditDetailView extends LitElement {
                     @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyEditRenameDialog(); } }}
                   ></ha-input>
                 `}
-          </div>
-          <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
-            </div>
-          </div>
-        </div>
-      </div>
     `;
   }
 
@@ -1254,7 +1304,16 @@ export class SofabatonEditDetailView extends LitElement {
     };
     this._editRenameDialogDraft = this._selectedEditTitle();
     this._editRenameDialogError = "";
+    this._editAppearance = bundleEntityAppearance(this.bundle, this.kind, this.entityId);
+    this._editAppearanceOpen = false;
+    this._editAppearanceTab = "icon";
     this._editRenameDialogOpen = true;
+  };
+
+  /** The header tile: the same dialog, with the picker already open. */
+  private _openDetailAppearanceDialog = () => {
+    this._openDetailRenameDialog();
+    this._editAppearanceOpen = true;
   };
 
   private _openDeviceIpRenameDialog(deviceId: number) {
@@ -1345,6 +1404,8 @@ export class SofabatonEditDetailView extends LitElement {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
+    this._editAppearance = { icon: null, colorId: null };
+    this._editAppearanceOpen = false;
   };
 
   // ── Delete (with cascade-aware confirm) ─────────────────────────────
@@ -1949,16 +2010,6 @@ export class SofabatonEditDetailView extends LitElement {
     `;
   }
 
-  private _applyActivityRename(activityId: number, name: string) {
-    if (!this.bundle) return;
-    this._commitEditBundleEdit(renameBundleActivity(this.bundle, activityId, name));
-  }
-
-  private _applyDeviceRename(deviceId: number, name: string) {
-    if (!this.bundle) return;
-    this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
-  }
-
   _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
     return kind === "activity"
       ? TOOLS_CARD_STRINGS.backup.crumbActivities
@@ -2003,8 +2054,17 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     if (target.kind === "detail") {
-      if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
-      else this._applyDeviceRename(target.entityId, next);
+      const renamed = target.entityKind === "activity"
+        ? renameBundleActivity(this.bundle, target.entityId, next)
+        : renameBundleDevice(this.bundle, target.entityId, next);
+      // Only what the user picked; an untouched draft (null) leaves the
+      // record's own bytes, a never-picked color 0 included.
+      const base = bundleEntityAppearance(this.bundle, target.entityKind, target.entityId);
+      const draft = this._editAppearance;
+      this._commitEditBundleEdit(setBundleEntityAppearance(renamed, target.entityKind, target.entityId, {
+        icon: draft.icon != null && draft.icon !== base.icon ? draft.icon : null,
+        colorId: draft.colorId != null && draft.colorId !== base.colorId ? draft.colorId : null,
+      }));
       this._closeEditRenameDialog();
       return;
     }

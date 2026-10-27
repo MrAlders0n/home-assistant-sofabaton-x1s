@@ -41,7 +41,7 @@ from .device_create import (
     sort_pairs_from_hex,
 )
 from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
-from .devices import build_device_create_payload, parse_device_record
+from .devices import build_device_create_payload, parse_device_record, patch_record_appearance
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import (
@@ -485,7 +485,9 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
 
         # Build the plan first so a scope/plan error fails before any write.
         try:
-            plan = build_activity_sync_plan(baseline, edited, activity_id)
+            plan = build_activity_sync_plan(
+                baseline, edited, activity_id, hub_version=self.hub_version
+            )
         except ValueError as err:
             return {"status": "failed", "failed_at": "plan", "message": str(err)}
 
@@ -684,6 +686,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             plan = build_device_sync_plan(
                 baseline, edited, device_id,
                 allow_command_removal=allow_command_removal,
+                hub_version=self.hub_version,
             )
         except ValueError as err:
             return {"status": "failed", "failed_at": "plan", "message": str(err)}
@@ -1648,17 +1651,25 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         name field sits at a fixed offset (ASCII on X1, UTF-16BE on X1S/X2)
         and every other byte of the row is preserved, so only the label
         changes. Mirrors the confirm send the device-delete flow already uses.
+        An ``icon`` / ``color_id`` in the payload rides the same row write.
         """
         activity_id = int(payload.get("activity_id") or 0)
         act_lo = activity_id & 0xFF
         new_name = str(payload.get("name") or "")
+        icon = payload.get("icon")
+        color_id = payload.get("color_id")
         if not act_lo:
             return False
 
         # Both builders take the new name directly (the X1 one re-encodes
         # the row, the X1S/X2 one patches the raw row); the cache follows
         # only once the hub has taken it.
-        confirm_payload = self._build_activity_confirm_payload(act_lo, name=new_name)
+        confirm_payload = self._build_activity_confirm_payload(
+            act_lo,
+            name=new_name,
+            icon=int(icon) if icon is not None else None,
+            color_id=int(color_id) if color_id is not None else None,
+        )
         if confirm_payload is None:
             self._log.warning("[ACTIVITY_SYNC] activity_rename: no row for act=0x%02X", act_lo)
             return False
@@ -1679,13 +1690,27 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         activity = self.state.entities("activity").get(act_lo)
         if isinstance(activity, dict):
             activity["name"] = new_name
+            raw_body = activity.get("raw_body")
+            if (icon is not None or color_id is not None) and isinstance(raw_body, (bytes, bytearray)):
+                activity["raw_body"] = patch_record_appearance(
+                    bytes(raw_body),
+                    hub_version=self.hub_version,
+                    icon=int(icon) if icon is not None else None,
+                    color_id=int(color_id) if color_id is not None else None,
+                )
+        rows = getattr(self, "_activity_row_payloads", None)
+        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2) and isinstance(rows, dict) and act_lo in rows:
+            # The next write of this row (a later rename, a confirm after a
+            # device delete) patches the cached copy; keep it what the hub
+            # now holds, or that write would put the old name and icon back.
+            rows[act_lo] = confirm_payload
         return True
 
     def _sync_step_device_rename(self, payload: Mapping[str, Any]) -> bool:
         """Rename a device in place via a device-record update write.
 
         The device's cached record body is decoded to a full DeviceConfig,
-        the name is swapped, and the canonical write body is rebuilt and
+        the name (and any brand, icon or color in the payload) is swapped, and the canonical write body is rebuilt and
         committed with FAMILY_DEVICE_UPDATE for the device's own id — the same
         record write the create flow ends with. Rebuilding through the
         parser/builder pair (rather than patching bytes) keeps every other
@@ -1711,6 +1736,10 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                 # Managed Wifi Devices carry their command-config identity in
                 # the brand slot; a rename refreshes it in the same rewrite.
                 renamed = replace(renamed, brand=str(new_brand))
+            if payload.get("icon") is not None:
+                renamed = replace(renamed, icon=int(payload["icon"]) & 0xFF)
+            if payload.get("color_id") is not None:
+                renamed = replace(renamed, color_id=int(payload["color_id"]) & 0xFF)
             body = build_device_create_payload(renamed, hub_version=self.hub_version)
         except (ValueError, TypeError):
             self._log.exception("[DEVICE_SYNC] device_rename: could not rebuild record dev=0x%02X", dev_lo)
@@ -2112,6 +2141,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             ip_device=ip_device,
             brand_name=str(new_brand) if new_brand is not None else "m3tac0de",
             wifi_power_state=wifi_power_state,
+            icon=config.icon if config is not None else 1,
             color_id=config.color_id if config is not None else 0,
         )
         self.reset_ack_queues()

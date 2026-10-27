@@ -1799,3 +1799,52 @@ test("changing the delivery select hands the pick to the host", () => {
   onChange({ target: { value: "http" } });
   assert.deepEqual(picks, [{ transport: "mqtt" }, { transport: "http" }]);
 });
+
+test("the edit dialog saves a picked icon and color with the name, and only what was picked", () => {
+  const element = createEditor("X2");
+  const block = element.bundle.activities[0].device;
+  block.icon = 5;
+  block.color_id = 0;
+  const changes = collectBundleChanges(element);
+
+  element._openDetailRenameDialog();
+  assert.deepEqual(element._editAppearance, { icon: 5, colorId: 0 });
+  const closed = templateText(element._renderEditRenameDialog());
+  assert.match(closed, /Edit activity/);
+  assert.match(closed, /Change icon and color/);
+
+  element._editAppearanceOpen = true;
+  element._editAppearance = { ...element._editAppearance, icon: 34 };
+  element._applyEditRenameDialog();
+  assert.equal(changes.length, 1);
+  const saved = changes[0].activities[0].device;
+  assert.equal(saved?.icon, 34);
+  // The color was never picked: the record keeps its own 0.
+  assert.equal(saved?.color_id, 0);
+  assert.equal(element._editRenameDialogOpen, false);
+  assert.deepEqual(element._editAppearance, { icon: null, colorId: null });
+});
+
+test("on an X1S the dialog offers icons only, and the header tile opens it with the picker showing", () => {
+  const element = createEditor("X1S");
+  element.bundle.activities[0].device.icon = 9;
+
+  element._openDetailAppearanceDialog();
+  assert.equal(element._editAppearanceOpen, true);
+  const open = templateText(element._renderEditRenameDialog());
+  assert.match(open, /Change icon/);
+  assert.doesNotMatch(open, /Change icon and color/);
+  assert.doesNotMatch(open, /appearance-tabs/);
+  // The X1S's own AV receiver for id 9, not the X2's wifi router.
+  assert.match(open, /AV receiver/);
+});
+
+test("an old bundle without an icon or hub line keeps the plain rename dialog", () => {
+  const element = createEditor("X1S");
+  element.bundle = { ...element.bundle, hub: { name: "Living Room" } };
+  element._openDetailRenameDialog();
+  const text = templateText(element._renderEditRenameDialog());
+  assert.match(text, /Rename activity/);
+  assert.doesNotMatch(text, /appearance-ident/);
+  assert.equal(templateText(element._renderDetailTile("activity")), "");
+});

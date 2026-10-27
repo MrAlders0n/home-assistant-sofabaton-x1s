@@ -41,6 +41,7 @@ from custom_components.sofabaton_x1s.lib.devices import (
     DeviceConfig,
     build_device_create_payload,
     parse_device_record,
+    record_appearance,
 )
 
 
@@ -458,3 +459,27 @@ def test_backup_block_without_color_fields_restores_with_zero() -> None:
 
     restored = device_config_from_backup({"device_id": 4, "name": "Shield", "code_type": 3}, for_create=True)
     assert (restored.color_id, restored.bt_mode) == (0, 0)
+
+
+# ---------------------------------------------------------------------------
+# record_appearance: the icon and color bytes without a full parse
+# ---------------------------------------------------------------------------
+
+
+def test_record_appearance_reads_icon_and_color_on_wide_records() -> None:
+    config = DeviceConfig(name="Shield", device_id=4, icon=13, color_id=7)
+    for hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+        body = build_device_create_payload(config, hub_version=hub_version)[3:]
+        assert record_appearance(body, hub_version=hub_version) == (13, 7)
+
+
+def test_record_appearance_has_no_color_on_the_x1() -> None:
+    body = build_device_create_payload(DeviceConfig(name="TV", device_id=3, icon=22), hub_version=HUB_VERSION_X1)[3:]
+    assert record_appearance(body, hub_version=HUB_VERSION_X1) == (22, None)
+
+
+def test_record_appearance_tolerates_short_bodies_and_unknown_hubs() -> None:
+    # A cached body of an odd length still yields what it holds.
+    assert record_appearance(bytes([0, 0, 0, 0, 0, 9, 1]), hub_version=HUB_VERSION_X2) == (9, None)
+    assert record_appearance(b"\x00\x00", hub_version=HUB_VERSION_X2) == (None, None)
+    assert record_appearance(bytes([0, 0, 0, 0, 0, 9]), hub_version="") == (9, None)
