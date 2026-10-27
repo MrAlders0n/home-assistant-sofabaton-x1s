@@ -1172,6 +1172,40 @@ def test_device_rename_step_keeps_color_and_bluetooth_mode(monkeypatch):
     assert (written.color_id, written.bt_mode) == (5, 2)
 
 
+def test_wifi_head_commit_keeps_icon_and_color(monkeypatch):
+    """The Wifi Commands head rewrite rebuilds the callback head from
+    scratch; the icon and the X2 color must come through it, or every
+    deploy resets a managed Wifi Device to the grey TV."""
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X2"
+    )
+    head = DeviceConfig(
+        name="Lights", brand="m3-a1b2c3d4-ffee00", device_id=5, code_type=0x1C,
+        device_type=0x10, input_mode=2, icon=29, color_id=10,
+    )
+    proxy.state.devices[5] = {
+        "name": "Lights",
+        "device_class": "wifi",
+        "raw_body": build_device_create_payload(head, hub_version="X2")[3:],
+    }
+    sent: list = []
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.1.10")
+    monkeypatch.setattr(proxy, "_send_step", lambda **kw: sent.append(kw) or SimpleNamespace(ok=True))
+
+    assert proxy._sync_step_wifi_head_commit(
+        {"device_id": 5, "name": "Lights", "brand": "m3-a1b2c3d4-00ff11"}
+    ) is True
+    written = parse_device_record(bytes(sent[0]["payload"][3:]), hub_version="X2")
+    assert (written.icon, written.color_id) == (29, 10)
+
+
 def test_command_rename_refuses_when_payload_unreadable():
     base = device_base_bundle()
     edited = copy.deepcopy(base)

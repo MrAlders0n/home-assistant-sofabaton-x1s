@@ -2112,6 +2112,7 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             ip_device=ip_device,
             brand_name=str(new_brand) if new_brand is not None else "m3tac0de",
             wifi_power_state=wifi_power_state,
+            icon=config.icon if config is not None else 1,
             color_id=config.color_id if config is not None else 0,
         )
         self.reset_ack_queues()

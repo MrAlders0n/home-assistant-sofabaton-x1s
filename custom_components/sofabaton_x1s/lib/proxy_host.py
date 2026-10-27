@@ -285,6 +285,7 @@ class _OpsHost(Protocol):
         ip_device: bool = ...,
         brand_name: str = ...,
         wifi_power_state: tuple[int, int, int] | None = ...,
+        icon: int = ...,
         color_id: int = ...,
     ) -> bytes: ...
     @staticmethod

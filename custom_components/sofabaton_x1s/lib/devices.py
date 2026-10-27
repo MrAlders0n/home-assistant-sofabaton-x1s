@@ -523,6 +523,30 @@ def parse_device_record(
     )
 
 
+def record_appearance(body: bytes, *, hub_version: str) -> tuple[int | None, int | None]:
+    """Return ``(icon, color_id)`` of a device or activity record body.
+
+    Reads the two bytes :func:`parse_device_record` decodes as ``icon``
+    (body[5]) and ``color_id`` (tail[22]) without the full parse, so a
+    cached body of an unexpected length still yields what it holds.
+    ``color_id`` is None on the X1, whose record has no such byte. Either
+    is None when the body is too short to hold it.
+    """
+
+    icon = int(body[5]) if len(body) > 5 else None
+    try:
+        slot_width, _body_len, _encoding = _slot_widths_for(hub_version)
+    except ValueError:
+        return icon, None
+    if slot_width < _WIDE_TAIL_WIDTH:
+        return icon, None
+    # Same layout as parse_device_record: name and brand slots from 29,
+    # then the tail.
+    color_offset = 29 + 2 * slot_width + 22
+    color_id = int(body[color_offset]) if len(body) > color_offset else None
+    return icon, color_id
+
+
 def device_config_from_backup(
     device: Mapping[str, object],
     *,
@@ -610,4 +634,5 @@ __all__ = [
     "build_device_create_payload",
     "device_config_from_backup",
     "parse_device_record",
+    "record_appearance",
 ]

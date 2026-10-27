@@ -163,6 +163,14 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
             :_ACTIVITY_ROW_NAME_ASCII_LEN
         ].ljust(_ACTIVITY_ROW_NAME_ASCII_LEN, b"\x00")
         active_flag = 0x01 if bool(activity.get("active", False)) else 0x02
+        # Byte 8 is the record's icon (body[5]); keep the one the hub has,
+        # or a rename resets the activity to the TV icon.
+        raw_body = activity.get("raw_body")
+        icon = (
+            raw_body[5]
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 5
+            else 0x01
+        )
 
         return (
             bytes([
@@ -174,7 +182,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 0x01,
                 0x00,
                 act_lo,
-                0x01,
+                icon,
                 active_flag,
             ])
             + (b"\x00" * 22)
