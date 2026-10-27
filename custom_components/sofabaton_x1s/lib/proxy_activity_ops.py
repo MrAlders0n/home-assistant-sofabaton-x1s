@@ -1564,6 +1564,7 @@ class ActivityOpsMixin(_ProxyHost if TYPE_CHECKING else object):
                 map_step,
                 map_ack_payload[0],
             )
+            self._note_step_refusal(map_ack_payload[0])
             return None
         new_fav_id: int | None = None
         if map_ack_opcode == 0x013E and map_ack_payload:

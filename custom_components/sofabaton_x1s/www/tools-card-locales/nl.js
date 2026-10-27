@@ -904,6 +904,7 @@ var TOOLS_CARD_STRINGS_NL = {
     syncFailedHubMqttNotConnected: "De hub is niet verbonden met een MQTT-broker.",
     syncFailedGeneric: "De synchronisatie is gestopt. Synchroniseer opnieuw.",
     syncFailedNotFound: "Dit Wifi-apparaat bestaat niet meer. Laad de kaart opnieuw.",
+    syncFailedRemoteSyncing: "De hub werkt zijn afstandsbediening bij. Wacht tot de afstandsbediening klaar is en synchroniseer dan opnieuw.",
     deviceDeleting: "Verwijderen\u2026",
     deviceSynced: "Gesynchroniseerd",
     actionButtonUnavailable: "Niet beschikbaar",

@@ -1074,6 +1074,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
     syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
+    syncFailedRemoteSyncing: "The hub is updating its remote. Wait until the remote is done, then sync again.",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",

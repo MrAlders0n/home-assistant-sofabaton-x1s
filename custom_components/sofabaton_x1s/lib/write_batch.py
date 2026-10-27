@@ -35,6 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import threading
+import time
 from typing import Any, Iterable, TYPE_CHECKING
 
 from .hub_logging import LogTag
@@ -47,6 +48,13 @@ if TYPE_CHECKING:
 
 #: The family / opcode byte of the physical remote-sync trigger.
 REMOTE_SYNC_FAMILY = 0x64
+#: How long after this engine's last remote-sync trigger a STATUS_ACK 0x04
+#: refusal is read as "the hub is updating its remote": an X2 full sync
+#: takes about 4.5 minutes, an X1S one about one.
+REMOTE_SYNC_REFUSAL_WINDOW_S = 300.0
+#: The STATUS_ACK byte the hub refuses a write with while it updates its
+#: remote (bench_336); it also answers a request that landed mid-page with it.
+ACK_STATUS_REFUSED = 0x04
 
 #: ``entity_sync_form`` values: the frame a write sends after a favorites,
 #: keymap or favorites-order change to the one entity it touched.
@@ -129,6 +137,33 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         # last _begin_item_sync_tracking: an editor run skips its closing
         # sync for an entity a step already synced (favorite, keymap).
         self._entity_sync_marks: set[int] = set()
+        # When this engine last sent a remote-sync trigger (any form) and
+        # the last step the hub refused: (status byte, when).
+        self._last_remote_sync_at: float | None = None
+        self._last_step_refusal: tuple[int, float] | None = None
+
+    def _note_remote_sync_sent(self) -> None:
+        self._last_remote_sync_at = time.monotonic()
+
+    def _note_step_refusal(self, status: int) -> None:
+        self._last_step_refusal = (int(status) & 0xFF, time.monotonic())
+
+    def refused_during_remote_sync(self, since: float) -> bool:
+        """True when a step sent at or after ``since`` (``time.monotonic()``)
+        was refused with STATUS_ACK 0x04 within
+        :data:`REMOTE_SYNC_REFUSAL_WINDOW_S` of this engine's last remote-sync
+        trigger: the hub was most likely still updating its remote. The
+        engine cannot see a sync another controller started."""
+
+        refusal, sync_at = self._last_step_refusal, self._last_remote_sync_at
+        if refusal is None or sync_at is None:
+            return False
+        status, refused_at = refusal
+        return (
+            status == ACK_STATUS_REFUSED
+            and refused_at >= since
+            and 0.0 <= refused_at - sync_at <= REMOTE_SYNC_REFUSAL_WINDOW_S
+        )
 
     def _remote_sync_frame(self, hub_version: str | None = None) -> tuple[int, bytes] | None:
         """``(opcode, payload)`` of the physical remote-sync trigger for
@@ -169,7 +204,10 @@ class WriteBatchMixin(_ProxyHost if TYPE_CHECKING else object):
         frame = self._remote_sync_frame(hub_version)
         if frame is None:
             return False
-        return self.enqueue_cmd(*frame)
+        sent = self.enqueue_cmd(*frame)
+        if sent:
+            self._note_remote_sync_sent()
+        return sent
 
     def _send_remote_sync_step(
         self, step_name: str, *, ack_first_byte: int | None = None, purpose: str = "full"

@@ -6,6 +6,38 @@ Protocol-library changes are recorded in the
 
 ## Unreleased
 
+Requires the next sofabaton-x release (`validate_appearance()`, the
+`icon` and `color_id` arguments of `add_device()` / `add_activity()`).
+
+### Added
+
+- Activities and devices carry `icon` (the hub's icon id) and `color_id`
+  (the X2 palette id, `0` when none was picked) in the catalog and the
+  snapshot, when the record is cached.
+- `POST /activities` and `POST /devices` take `icon` and `color_id`.
+  `PUT /activities/{id}` and `PUT /devices/{id}` write an element's changed
+  `icon` / `color_id` with the rest of the edit. An icon or color the hub
+  line lacks (icons 1-25 on the X1, 1-16 on the X1S, 1-45 on the X2;
+  colors 1-12, X2 only) is a 422 `invalid_appearance` before any job.
+- The control panel shows the hub's own icons: on a tile in the Hub tab's
+  activity and device rows (colored on an X2), with a corner badge for a
+  device's IR, Bluetooth, Wifi or RF link, and beside the editor's title.
+  The editors' rename dialog becomes Edit activity / Edit device, with the
+  icon (and X2 color) picker on demand; the change goes to the hub with the
+  editor's Sync. Add activity and Add device take an icon and color.
+- Wifi Devices (`POST /wifi-devices`, `PUT /wifi-devices/{key}` and the
+  callback device) take `icon` and `color_id` in their spec; null keeps
+  the hub's. The control panel's Wifi Device view shows the device's icon
+  beside its name, and its Edit device dialog edits the icon and color in
+  the device's draft; the Sync writes them with the rest.
+
+### Changed
+
+- A write the hub refuses while it is updating its remote (soon after an
+  earlier write sent the remote its update) answers 409 `remote_syncing`
+  instead of 502 `hub_rejected`: wait until the remote is done, then send
+  it again.
+
 ## 0.2.6 (2026-10-17)
 
 Changes since `sofabaton-x-server-v0.2.5`. Requires

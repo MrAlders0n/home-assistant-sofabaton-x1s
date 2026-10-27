@@ -430,6 +430,10 @@ class SyncResult:
     # The strict preflight's verdict when it stopped the write
     # ("changed" | "unreadable" | "incomplete"), else None.
     preflight: Optional[str] = None
+    # "remote_syncing" when the hub refused a step while it was still
+    # updating its remote (wait until the remote is done, then sync again;
+    # the writes that raise say it with RemoteSyncInProgressError), else None.
+    reason: Optional[str] = None
 
     @property
     def ok(self) -> bool:

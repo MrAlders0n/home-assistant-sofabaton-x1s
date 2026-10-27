@@ -52,6 +52,13 @@ export interface WifiDraft {
   powerOn: number | null;
   powerOff: number | null;
   inputs: number[];
+  /** The record's icon and X2 color the Sync writes; null keeps what the hub has. */
+  icon: number | null;
+  colorId: number | null;
+}
+
+function appearanceNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
 function entityNumber(value: unknown): number | null {
@@ -93,6 +100,8 @@ export function draftFromSpec(spec: WifiDeviceSpec | null | undefined): WifiDraf
     powerOn: slotNumber(spec?.power_on_slot),
     powerOff: slotNumber(spec?.power_off_slot),
     inputs: [...new Set(inputs)].sort((a, b) => a - b),
+    icon: appearanceNumber(spec?.icon),
+    colorId: appearanceNumber(spec?.color_id),
   };
 }
 
@@ -116,6 +125,8 @@ export function specFromDraft(draft: WifiDraft): Omit<WifiDeviceSpec, "brand"> {
     power_on_slot: draft.powerOn,
     power_off_slot: draft.powerOff,
     input_slots: [...draft.inputs],
+    icon: draft.icon,
+    color_id: draft.colorId,
   };
 }
 

@@ -20,7 +20,7 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 
-from sofabaton import WIFI_SLOT_COUNT, AsyncXProxy
+from sofabaton import WIFI_SLOT_COUNT, AsyncXProxy, WifiDeviceSpec, validate_appearance
 
 from . import API_PREFIX
 from .callbacks import (
@@ -81,6 +81,8 @@ class CallbackDeviceRequest(BaseModel):
     current record's spec and change only the intended labels. Preserving
     device/command IDs and generic bindings does not preserve omitted fields.
     Hook slots are one-based (1..10); callback URL indexes are zero-based (0..9).
+    ``icon`` and ``color_id`` are the exception: left out (null), the device
+    keeps the icon and color the hub has.
     """
 
     name: str = Field("Server", min_length=1, max_length=30)
@@ -89,6 +91,13 @@ class CallbackDeviceRequest(BaseModel):
                                          description="slot the hub fires when an activity powers on (X1S/X2)")
     power_off_slot: Optional[int] = Field(None, ge=1, le=WIFI_SLOT_COUNT)
     input_slots: list[int] = Field(default_factory=list, description="slots offered as activity-start inputs (X1S/X2)")
+    icon: Optional[int] = Field(None, ge=1, le=45,
+                                description="the device record's icon, in the app's numbering for the hub line "
+                                            "(X1 1-25, X1S 1-16, X2 1-45); null keeps the hub's. An id the hub "
+                                            "line lacks is a 422")
+    color_id: Optional[int] = Field(None, ge=0, le=12,
+                                    description="X2 only: the device record's tile color, a palette id "
+                                                "(0 = none picked); null keeps the hub's")
 
 
 class CallbackTargetView(BaseModel):
@@ -332,6 +341,18 @@ async def _test_delivery_quietly(service: CallbackService, hub_id: str, proxy: A
 # -- the four operations, shared by /callback-device and /wifi-devices ---------------------
 
 
+def _check_appearance(spec: WifiDeviceSpec, hub_version: Optional[str], hub_id: str) -> None:
+    """An icon or color the hub line lacks is a 422 before any job."""
+
+    if spec.icon is None and spec.color_id is None:
+        return
+    try:
+        validate_appearance(str(hub_version or ""), icon=spec.icon, color_id=spec.color_id)
+    except ValueError as err:
+        raise ApiProblem(422, "invalid_appearance", "The hub has no such icon or color",
+                         detail=str(err), hub_id=hub_id) from err
+
+
 async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *, key: str, transport: str,
                   kind: str) -> JobView:
     service = _service(request)
@@ -345,6 +366,7 @@ async def _deploy(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
             service.check_limit(hub_id)
         spec = service.spec_from_body(body.model_dump(), key=key)
         hub_version = (await proxy.status()).hub_version
+        _check_appearance(spec, hub_version, hub_id)
         if transport == TRANSPORT_MQTT:
             reason = service.mqtt_unavailable_reason(hub_id, hub_version)
             if reason is not None:
@@ -396,6 +418,7 @@ async def _update(request: Request, hub_id: str, body: CallbackDeviceRequest, *,
         spec = service.spec_from_body(body.model_dump(), key=key)
     except ValueError as err:
         raise ApiProblem(422, "invalid_request", "Invalid callback device", detail=str(err), hub_id=hub_id) from err
+    _check_appearance(spec, (await proxy.status()).hub_version, hub_id)
     await _require_control(proxy, hub_id)
 
     async def run(progress) -> dict[str, Any]:

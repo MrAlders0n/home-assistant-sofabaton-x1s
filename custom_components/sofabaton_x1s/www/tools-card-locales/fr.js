@@ -901,6 +901,7 @@ var TOOLS_CARD_STRINGS_FR = {
     syncFailedHubMqttNotConnected: "Le hub n\u2019est connect\xE9 \xE0 aucun broker MQTT.",
     syncFailedGeneric: "La synchronisation s\u2019est arr\xEAt\xE9e. Synchronisez \xE0 nouveau.",
     syncFailedNotFound: "Cet appareil Wifi n\u2019existe plus. Rechargez la carte.",
+    syncFailedRemoteSyncing: "Le hub met \xE0 jour sa t\xE9l\xE9commande. Attendez qu\u2019elle ait termin\xE9, puis synchronisez \xE0 nouveau.",
     deviceDeleting: "Suppression\u2026",
     deviceSynced: "Synchronis\xE9",
     actionButtonUnavailable: "Indisponible",

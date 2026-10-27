@@ -123,6 +123,34 @@
       },
       "ActivityCreateRequest": {
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the record's tile color, a palette id (0 = none picked); left out, none.",
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); left out, the hub's default. An id the hub line lacks is a 422.",
+            "title": "Icon"
+          },
           "name": {
             "maxLength": 30,
             "minLength": 1,
@@ -831,8 +859,36 @@
         "type": "object"
       },
       "CallbackDeviceRequest": {
-        "description": "Complete desired spec for POST and PUT, not a partial update.\n\nEvery slot is written; omitted slots become ``Button n`` and omitted\npower/input hooks are cleared. For a rename, copy all fields from the\ncurrent record's spec and change only the intended labels. Preserving\ndevice/command IDs and generic bindings does not preserve omitted fields.\nHook slots are one-based (1..10); callback URL indexes are zero-based (0..9).",
+        "description": "Complete desired spec for POST and PUT, not a partial update.\n\nEvery slot is written; omitted slots become ``Button n`` and omitted\npower/input hooks are cleared. For a rename, copy all fields from the\ncurrent record's spec and change only the intended labels. Preserving\ndevice/command IDs and generic bindings does not preserve omitted fields.\nHook slots are one-based (1..10); callback URL indexes are zero-based (0..9).\n``icon`` and ``color_id`` are the exception: left out (null), the device\nkeeps the icon and color the hub has.",
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the device record's tile color, a palette id (0 = none picked); null keeps the hub's",
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the device record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); null keeps the hub's. An id the hub line lacks is a 422",
+            "title": "Icon"
+          },
           "input_slots": {
             "description": "slots offered as activity-start inputs (X1S/X2)",
             "items": {
@@ -1507,11 +1563,39 @@
       },
       "DeviceCreateRequest": {
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the record's tile color, a palette id (0 = none picked); left out, none.",
+            "title": "Color Id"
+          },
           "device_class": {
             "description": "Protocol class: X1 supports ir, wifi_roku, wifi_hue, wifi_sonos; X1S also supports wifi_ip; X2 also supports wifi_mqtt. This is not an appliance category such as TV or receiver.",
             "minLength": 1,
             "title": "Device Class",
             "type": "string"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); left out, the hub's default. An id the hub line lacks is a 422.",
+            "title": "Icon"
           },
           "name": {
             "maxLength": 30,
@@ -4647,6 +4731,34 @@
       "WifiDeviceRequest": {
         "description": "Body of ``POST /wifi-devices``: the callback device's spec plus the transport.\n\n``PUT /wifi-devices/{key}`` takes the same body; the transport of a\ndeployed device is fixed and the field is ignored there. ``mqtt``\nneeds an X2 and a server with a broker (set in the control panel, or ``--mqtt-host``): the\nhub then publishes the presses to the broker set in the Sofabaton\napp, no listener and no callback address involved.",
         "properties": {
+          "color_id": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "X2 only: the device record's tile color, a palette id (0 = none picked); null keeps the hub's",
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the device record's icon, in the app's numbering for the hub line (X1 1-25, X1S 1-16, X2 1-45); null keeps the hub's. An id the hub line lacks is a 422",
+            "title": "Icon"
+          },
           "input_slots": {
             "description": "slots offered as activity-start inputs (X1S/X2)",
             "items": {

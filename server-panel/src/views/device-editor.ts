@@ -83,6 +83,8 @@ import {
   isManagedWifiBrand,
   isWifiEventsBrand,
   renameBundleDevice,
+  bundleEntityAppearance,
+  setBundleEntityAppearance,
   renameBundleDeviceCommand,
   unboundButtonsForDevice,
   updateBundleDeviceIdleBehavior,
@@ -97,6 +99,10 @@ import { EDITOR_CSS } from "./editor-styles";
 import { SbPanelEntityEditor, icon, type EntityFrameStrings } from "./entity-editor-base";
 import { byteToSeconds, secondsToByte, type EntityElement } from "./entity-editor-state";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../remote-card/src/entity-icons/appearance-editor";
+import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
 import { PointerReorder } from "../pointer-reorder";
 import type { PayloadSaveDetail } from "./payload-dialog";
 import {
@@ -290,6 +296,9 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   static styles = [
     PANEL_BASE_CSS,
+    entityTileStyles,
+    entityPickerStyles,
+    appearanceEditorStyles,
     EDITOR_CSS,
     OPERATION_PROGRESS_CSS,
   ];
@@ -303,7 +312,15 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   private _activeSection: SectionId = "power";
   private _powerMenuOpen = false;
-  private _rename: { target: RenameTarget; draft: string; error: string } | null = null;
+  /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
+  private _rename: {
+    target: RenameTarget;
+    draft: string;
+    error: string;
+    appearance?: AppearanceDraft;
+    pickerOpen?: boolean;
+    tab?: AppearanceTab;
+  } | null = null;
   private _deleteConfirm: { target: BackupDeleteTarget; label: string } | null = null;
   private _binding: BindingDialogState | null = null;
   /** The open power sequence (the card's macro editor sub-view, device scope). */
@@ -726,14 +743,27 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
 
   // -- rename dialog --------------------------------------------------------------------------------------
 
-  private _openRename(target: RenameTarget): void {
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
+  private _openRename(target: RenameTarget, pickerOpen = false): void {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return;
     let draft = "";
     if (target.kind === "device") draft = this._title;
     else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
     else draft = deviceCommandItems(this._working, deviceId).find((c) => c.commandId === target.commandId)?.label ?? "";
-    this._rename = { target, draft, error: "" };
+    this._rename = target.kind === "device"
+      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen, tab: "icon" }
+      : { target, draft, error: "" };
+  }
+
+  /** The device's hub icon beside the title: the edit dialog with the picker showing. */
+  private _renderHeaderTile(): TemplateResult | typeof nothing {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return nothing;
+    const appearance = bundleEntityAppearance(this._working, "device", deviceId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    if (!tile) return nothing;
+    return renderDetailEntityTile(tile, { label: B.editDevice, onClick: () => this._openRename({ kind: "device" }, true) });
   }
 
   private _closeRename = (): void => {
@@ -771,7 +801,16 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
       this._rename = { ...dialog, error: S.enterName };
       return;
     }
-    if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
+    if (dialog.target.kind === "device") {
+      // Only what the user picked: an untouched draft keeps the record's own
+      // bytes, a never-picked color 0 included.
+      const base = bundleEntityAppearance(this._working, "device", deviceId);
+      const picked = dialog.appearance ?? base;
+      this._commit(setBundleEntityAppearance(renameBundleDevice(this._working, deviceId, next), "device", deviceId, {
+        icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+        colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null,
+      }));
+    }
     else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
     this._rename = null;
   };
@@ -1013,6 +1052,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S.back} @click=${this._requestClose}>${icon(mdiArrowLeft)}</button>
+                ${callback ? nothing : this._renderHeaderTile()}
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
                     <button class="detail-crumb" type="button" @click=${this._requestClose}>${S.crumbDevices}</button>
@@ -1205,16 +1245,30 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const dialog = this._rename;
     if (!dialog) return nothing;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S.renameDevice : isIp ? S.editIpAria : S.renameCommand;
+    const appearance = dialog.target.kind === "device" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B.editDevice : dialog.target.kind === "device" ? S.renameDevice : isIp ? S.editIpAria : S.renameCommand;
+    const nameField = html`<label class="decoded-field">
+              <span class="decoded-field-label">${isIp ? S.ipAddress : S.name}</span>
+              <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyRename(); } }} />
+            </label>`;
     return html`
       <div class="modal-backdrop" @click=${this._closeRename}>
         <div class="dialog small" id="rename-dialog" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S.cancel} @click=${this._closeRename}>${icon(mdiClose)}</button></div>
           <div class="dialog-body">
-            <label class="decoded-field">
-              <span class="decoded-field-label">${isIp ? S.ipAddress : S.name}</span>
-              <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyRename(); } }} />
-            </label>
+            ${appearance
+              ? renderAppearanceEditor({
+                  hubVersion: this._hubVersion,
+                  draft: appearance,
+                  open: dialog.pickerOpen ?? false,
+                  tab: dialog.tab ?? "icon",
+                  nameField,
+                  labels: appearanceLabelsFrom(B),
+                  onToggle: () => { if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen }; },
+                  onTab: (tab) => { if (this._rename) this._rename = { ...this._rename, tab }; },
+                  onPick: (draft) => { if (this._rename) this._rename = { ...this._rename, appearance: draft }; },
+                })
+              : nameField}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>

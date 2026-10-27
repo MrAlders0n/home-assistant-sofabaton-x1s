@@ -1539,19 +1539,6 @@ var cardStyles = [secondaryTabStyles, i`
   .cache-dialog-select { cursor: pointer; }
   .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
   .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  /* Add dialogs: the icon (and X2 color) picker, closed until asked for. */
-  .cache-dialog-appearance { display: flex; flex-direction: column; gap: 10px; }
-  .cache-dialog-appearance-toggle {
-    align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
-    border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13px; font-weight: 600;
-    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color)); cursor: pointer;
-    --entity-tile-size: 32px; --mdc-icon-size: 18px;
-  }
-  .cache-dialog-appearance-toggle:disabled { cursor: default; opacity: 0.6; }
-  .cache-dialog-appearance-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--primary-text-color) 7%, transparent); }
-  .cache-dialog-appearance-tabs button { height: 30px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
-  .cache-dialog-appearance-tabs button.active { background: var(--card-background-color, #fff); color: var(--primary-text-color); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-  .cache-dialog-appearance-pane { max-height: 200px; overflow-y: auto; padding: 5px; margin: -5px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
@@ -1979,6 +1966,87 @@ function entityColor(hubVersion, colorId) {
   return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
 }
 
+// node_modules/@mdi/js/mdi.js
+var mdiBluetooth = "M14.88,16.29L13,18.17V14.41M13,5.83L14.88,7.71L13,9.58M17.71,7.71L12,2H11V9.58L6.41,5L5,6.41L10.59,12L5,17.58L6.41,19L11,14.41V22H12L17.71,16.29L13.41,12L17.71,7.71Z";
+var mdiLedOutline = "M12,6A4,4 0 0,0 8,10V16H6V18H9V23H11V18H13V23H15V18H18V16H16V10A4,4 0 0,0 12,6M12,8A2,2 0 0,1 14,10V15H10V10A2,2 0 0,1 12,8Z";
+var mdiRadioTower = "M12,10A2,2 0 0,1 14,12C14,12.5 13.82,12.94 13.53,13.29L16.7,22H14.57L12,14.93L9.43,22H7.3L10.47,13.29C10.18,12.94 10,12.5 10,12A2,2 0 0,1 12,10M12,8A4,4 0 0,0 8,12C8,12.5 8.1,13 8.28,13.46L7.4,15.86C6.53,14.81 6,13.47 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12C18,13.47 17.47,14.81 16.6,15.86L15.72,13.46C15.9,13 16,12.5 16,12A4,4 0 0,0 12,8M12,4A8,8 0 0,0 4,12C4,14.36 5,16.5 6.64,17.94L5.92,19.94C3.54,18.11 2,15.23 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12C22,15.23 20.46,18.11 18.08,19.94L17.36,17.94C19,16.5 20,14.36 20,12A8,8 0 0,0 12,4Z";
+var mdiWifi = "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z";
+
+// remote-card/src/entity-icons/entity-tile.ts
+function entityTile(hubVersion, icon, colorId) {
+  if (typeof icon !== "number") return null;
+  const path = entityIconPath(hubVersion, icon);
+  if (!path) return null;
+  return { path, color: entityColor(hubVersion, colorId), name: entityIconName(hubVersion, icon) };
+}
+var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] };
+var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
+var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
+var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+function entityTileBadge(deviceClass) {
+  const cls = String(deviceClass ?? "").toLowerCase();
+  if (cls === "ir") return BADGE_IR;
+  if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
+  if (cls.includes("wifi")) return BADGE_WIFI;
+  if (cls.startsWith("rf")) return BADGE_RF;
+  return null;
+}
+function renderBadge(badge2) {
+  const [dx, dy] = badge2.nudge;
+  return b2`<span class="entity-tile__badge"
+    ><svg viewBox="0 0 24 24" focusable="false"><path transform=${`translate(${dx} ${dy})`} d=${badge2.path}></path></svg
+  ></span>`;
+}
+function renderEntityTile(tile, options = {}) {
+  const classes = ["entity-tile", tile.color ? "" : "entity-tile--neutral", options.className ?? ""].filter(Boolean).join(" ");
+  return b2`<span class=${classes} style=${tile.color ? `--entity-tile-color: ${tile.color}` : ""} aria-hidden="true"
+    ><svg viewBox="0 0 24 24" focusable="false"><path d=${tile.path}></path></svg
+    >${options.badge ? renderBadge(options.badge) : A}</span
+  >`;
+}
+var entityTileStyles = i`
+  .entity-tile {
+    --_entity-tile-size: var(--entity-tile-size, 30px);
+    position: relative;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: var(--_entity-tile-size);
+    height: var(--_entity-tile-size);
+    border-radius: calc(var(--_entity-tile-size) * 0.3);
+    background: var(--entity-tile-color, #7f7f7f);
+    color: #fff;
+  }
+  .entity-tile > svg {
+    width: calc(var(--_entity-tile-size) * 0.64);
+    height: calc(var(--_entity-tile-size) * 0.64);
+    fill: currentColor;
+  }
+  .entity-tile--neutral {
+    background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+    color: var(--primary-text-color);
+  }
+  .entity-tile__badge {
+    position: absolute;
+    inset-inline-end: -5px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--card-background-color, #fff);
+    color: var(--secondary-text-color);
+    box-shadow: 0 0 0 2px var(--entity-tile-ring, var(--card-background-color, #fff));
+  }
+  .entity-tile__badge > svg {
+    display: block;
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+  }
+`;
+
 // remote-card/src/entity-icons/entity-picker.ts
 var CHECK_PATH = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
 function renderEntityIconPicker(params) {
@@ -2106,85 +2174,200 @@ var entityPickerStyles = i`
   }
 `;
 
-// node_modules/@mdi/js/mdi.js
-var mdiBluetooth = "M14.88,16.29L13,18.17V14.41M13,5.83L14.88,7.71L13,9.58M17.71,7.71L12,2H11V9.58L6.41,5L5,6.41L10.59,12L5,17.58L6.41,19L11,14.41V22H12L17.71,16.29L13.41,12L17.71,7.71Z";
-var mdiLedOutline = "M12,6A4,4 0 0,0 8,10V16H6V18H9V23H11V18H13V23H15V18H18V16H16V10A4,4 0 0,0 12,6M12,8A2,2 0 0,1 14,10V15H10V10A2,2 0 0,1 12,8Z";
-var mdiRadioTower = "M12,10A2,2 0 0,1 14,12C14,12.5 13.82,12.94 13.53,13.29L16.7,22H14.57L12,14.93L9.43,22H7.3L10.47,13.29C10.18,12.94 10,12.5 10,12A2,2 0 0,1 12,10M12,8A4,4 0 0,0 8,12C8,12.5 8.1,13 8.28,13.46L7.4,15.86C6.53,14.81 6,13.47 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12C18,13.47 17.47,14.81 16.6,15.86L15.72,13.46C15.9,13 16,12.5 16,12A4,4 0 0,0 12,8M12,4A8,8 0 0,0 4,12C4,14.36 5,16.5 6.64,17.94L5.92,19.94C3.54,18.11 2,15.23 2,12A10,10 0 0,1 12,2A10,10 0 0,1 22,12C22,15.23 20.46,18.11 18.08,19.94L17.36,17.94C19,16.5 20,14.36 20,12A8,8 0 0,0 12,4Z";
-var mdiWifi = "M12,21L15.6,16.2C14.6,15.45 13.35,15 12,15C10.65,15 9.4,15.45 8.4,16.2L12,21M12,3C7.95,3 4.21,4.34 1.2,6.6L3,9C5.5,7.12 8.62,6 12,6C15.38,6 18.5,7.12 21,9L22.8,6.6C19.79,4.34 16.05,3 12,3M12,9C9.3,9 6.81,9.89 4.8,11.4L6.6,13.8C8.1,12.67 9.97,12 12,12C14.03,12 15.9,12.67 17.4,13.8L19.2,11.4C17.19,9.89 14.7,9 12,9Z";
-
-// remote-card/src/entity-icons/entity-tile.ts
-function entityTile(hubVersion, icon, colorId) {
-  if (typeof icon !== "number") return null;
-  const path = entityIconPath(hubVersion, icon);
-  if (!path) return null;
-  return { path, color: entityColor(hubVersion, colorId), name: entityIconName(hubVersion, icon) };
+// remote-card/src/entity-icons/appearance-editor.ts
+function appearanceLabelsFrom(strings) {
+  return {
+    changeIcon: strings.changeIcon,
+    changeIconAndColor: strings.changeIconAndColor,
+    icon: strings.appearanceIcon,
+    services: strings.appearanceServices,
+    colorName: (colorId) => strings.entityColorName(colorId)
+  };
 }
-var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] };
-var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
-var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
-var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
-function entityTileBadge(deviceClass) {
-  const cls = String(deviceClass ?? "").toLowerCase();
-  if (cls === "ir") return BADGE_IR;
-  if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
-  if (cls.includes("wifi")) return BADGE_WIFI;
-  if (cls.startsWith("rf")) return BADGE_RF;
-  return null;
+function renderPane(params) {
+  return params.tab === "icon" ? renderEntityIconPicker({
+    hubVersion: params.hubVersion,
+    icon: params.icon,
+    color: entityColor(params.hubVersion, params.colorId),
+    servicesLabel: params.labels.services,
+    onPick: (picked) => params.onPick({ icon: picked })
+  }) : renderEntityColorPicker({
+    colorId: params.colorId,
+    colorName: params.labels.colorName,
+    onPick: (picked) => params.onPick({ colorId: picked })
+  });
 }
-function renderBadge(badge2) {
-  const [dx, dy] = badge2.nudge;
-  return b2`<span class="entity-tile__badge"
-    ><svg viewBox="0 0 24 24" focusable="false"><path transform=${`translate(${dx} ${dy})`} d=${badge2.path}></path></svg
-  ></span>`;
+function renderAppearanceEditor(params) {
+  const { labels } = params;
+  const version = params.hubVersion;
+  const colors = entityColorsSupported(version);
+  const draft = params.draft;
+  const icon = draft.icon ?? 1;
+  const colorId = draft.colorId ?? 0;
+  const tile = entityTile(version, icon, colorId);
+  const changeLabel = colors ? labels.changeIconAndColor : labels.changeIcon;
+  const tab = colors ? params.tab : "icon";
+  return b2`
+    <div class="appearance-ident">
+      <button class="appearance-trigger" type="button" title=${changeLabel} aria-label=${changeLabel} aria-expanded=${params.open ? "true" : "false"} @click=${params.onToggle}>
+        ${tile ? renderEntityTile(tile) : A}
+        <span class="appearance-trigger-edit" aria-hidden="true"><ha-icon icon="mdi:pencil"></ha-icon></span>
+      </button>
+      <div class="appearance-name">${params.nameField}</div>
+    </div>
+    ${params.open ? b2`
+          ${colors ? b2`<div class="appearance-tabs" role="tablist">
+                <button role="tab" type="button" class="appearance-tab${tab === "icon" ? " active" : ""}" aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => params.onTab("icon")}>
+                  <ha-icon icon="mdi:shape-outline"></ha-icon><span>${labels.icon}</span>
+                </button>
+                <button role="tab" type="button" class="appearance-tab${tab === "color" ? " active" : ""}" aria-selected=${tab === "color" ? "true" : "false"} @click=${() => params.onTab("color")}>
+                  <span class="appearance-dot" style=${`--entity-swatch: ${entityColorHex(colorId)}`}></span><span>${labels.colorName(colorId >= 1 ? colorId : 1)}</span>
+                </button>
+              </div>` : A}
+          <div class="appearance-pane">
+            ${renderPane({ hubVersion: version, icon, colorId, tab, labels, onPick: (picked) => params.onPick({ ...draft, ...picked }) })}
+          </div>
+        ` : b2`<button class="appearance-reveal" type="button" aria-expanded="false" @click=${params.onToggle}>
+          <ha-icon icon=${colors ? "mdi:palette-outline" : "mdi:shape-outline"}></ha-icon><span>${changeLabel}</span><ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>`}
+  `;
 }
-function renderEntityTile(tile, options = {}) {
-  const classes = ["entity-tile", tile.color ? "" : "entity-tile--neutral", options.className ?? ""].filter(Boolean).join(" ");
-  return b2`<span class=${classes} style=${tile.color ? `--entity-tile-color: ${tile.color}` : ""} aria-hidden="true"
-    ><svg viewBox="0 0 24 24" focusable="false"><path d=${tile.path}></path></svg
-    >${options.badge ? renderBadge(options.badge) : A}</span
-  >`;
+function renderAppearanceToggle(params) {
+  const { labels, state } = params;
+  const version = params.hubVersion;
+  const colors = entityColorsSupported(version);
+  const icon = state.icon ?? 1;
+  const colorId = state.colorId ?? 0;
+  const tile = entityTile(version, icon, colorId);
+  if (!tile) return A;
+  const tab = colors ? state.tab : "icon";
+  const set = (patch) => params.onChange({ ...state, ...patch });
+  return b2`
+    <div class="cache-dialog-appearance">
+      <button class="cache-dialog-appearance-toggle" type="button" aria-expanded=${state.open ? "true" : "false"} ?disabled=${params.disabled ?? false} @click=${() => set({ open: !state.open })}>
+        ${renderEntityTile(tile)}
+        <span>${colors ? labels.changeIconAndColor : labels.changeIcon}</span>
+        <ha-icon icon=${state.open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
+      </button>
+      ${state.open ? b2`
+            ${colors ? b2`<div class="cache-dialog-appearance-tabs" role="tablist">
+                  <button role="tab" type="button" class=${tab === "icon" ? "active" : ""} aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => set({ tab: "icon" })}>${labels.icon}</button>
+                  <button role="tab" type="button" class=${tab === "color" ? "active" : ""} aria-selected=${tab === "color" ? "true" : "false"} @click=${() => set({ tab: "color" })}>${labels.colorName(colorId >= 1 ? colorId : 1)}</button>
+                </div>` : A}
+            <div class="cache-dialog-appearance-pane">
+              ${renderPane({ hubVersion: version, icon, colorId, tab, labels, onPick: (picked) => set(picked) })}
+            </div>
+          ` : A}
+    </div>
+  `;
 }
-var entityTileStyles = i`
-  .entity-tile {
-    --_entity-tile-size: var(--entity-tile-size, 30px);
+function renderDetailEntityTile(tile, params) {
+  return b2`<button class="detail-entity-tile" type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
+    ${renderEntityTile(tile)}
+  </button>`;
+}
+var appearanceEditorStyles = i`
+  .detail-entity-tile {
+    flex: 0 0 auto;
+    display: inline-flex;
+    border: 0;
+    padding: 0;
+    background: none;
+    border-radius: 11px;
+    cursor: pointer;
+    --entity-tile-size: 36px;
+  }
+  .detail-entity-tile:disabled { cursor: default; }
+  .detail-entity-tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .detail-entity-tile:hover:not(:disabled) .entity-tile { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
+  .appearance-ident { display: flex; align-items: center; gap: 14px; }
+  .appearance-name { flex: 1; min-width: 0; }
+  .appearance-name > ha-input, .appearance-name > ha-textfield { display: block; width: 100%; }
+  .appearance-trigger {
     position: relative;
-    flex: none;
-    display: inline-grid;
-    place-items: center;
-    width: var(--_entity-tile-size);
-    height: var(--_entity-tile-size);
-    border-radius: calc(var(--_entity-tile-size) * 0.3);
-    background: var(--entity-tile-color, #7f7f7f);
-    color: #fff;
+    flex: 0 0 auto;
+    display: inline-flex;
+    border: 0;
+    padding: 0;
+    background: none;
+    border-radius: 15px;
+    cursor: pointer;
+    --entity-tile-size: 50px;
   }
-  .entity-tile > svg {
-    width: calc(var(--_entity-tile-size) * 0.64);
-    height: calc(var(--_entity-tile-size) * 0.64);
-    fill: currentColor;
-  }
-  .entity-tile--neutral {
-    background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
-    color: var(--primary-text-color);
-  }
-  .entity-tile__badge {
+  .appearance-trigger:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .appearance-trigger-edit {
     position: absolute;
-    inset-inline-end: -5px;
-    bottom: -5px;
-    width: 16px;
-    height: 16px;
+    inset-inline-end: -6px;
+    bottom: -6px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     display: grid;
     place-items: center;
-    background: var(--card-background-color, #fff);
+    background: var(--ha-card-background, var(--card-background-color));
     color: var(--secondary-text-color);
-    box-shadow: 0 0 0 2px var(--entity-tile-ring, var(--card-background-color, #fff));
+    box-shadow: 0 0 0 1px var(--divider-color);
+    --mdc-icon-size: 13px;
   }
-  .entity-tile__badge > svg {
-    display: block;
-    width: 12px;
-    height: 12px;
-    fill: currentColor;
+  .appearance-reveal {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color));
+    cursor: pointer;
+    --mdc-icon-size: 18px;
   }
+  .appearance-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+  }
+  .appearance-tab {
+    height: 32px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--secondary-text-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    --mdc-icon-size: 16px;
+  }
+  .appearance-tab.active {
+    background: var(--ha-card-background, var(--card-background-color));
+    color: var(--primary-text-color);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+  .appearance-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--entity-swatch); }
+  .appearance-pane { max-height: 232px; overflow-y: auto; padding: 5px; margin: -5px; }
+`;
+var appearanceToggleStyles = i`
+  .cache-dialog-appearance { display: flex; flex-direction: column; gap: 10px; }
+  .cache-dialog-appearance-toggle {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
+    border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13px; font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color)); cursor: pointer;
+    --entity-tile-size: 32px; --mdc-icon-size: 18px;
+  }
+  .cache-dialog-appearance-toggle:disabled { cursor: default; opacity: 0.6; }
+  .cache-dialog-appearance-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--primary-text-color) 7%, transparent); }
+  .cache-dialog-appearance-tabs button { height: 30px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
+  .cache-dialog-appearance-tabs button.active { background: var(--card-background-color, #fff); color: var(--primary-text-color); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .cache-dialog-appearance-pane { max-height: 200px; overflow-y: auto; padding: 5px; margin: -5px; }
 `;
 
 // custom_components/sofabaton_x1s/www/src/shared/styles/theme-polarity.ts
@@ -3252,6 +3435,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
     syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
+    syncFailedRemoteSyncing: "The hub is updating its remote. Wait until the remote is done, then sync again.",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",
@@ -4090,6 +4274,8 @@ function localizeWifiSyncFailure(value) {
       return S5.syncFailedHubMqttNotConnected;
     case "not_found":
       return S5.syncFailedNotFound;
+    case "remote_syncing":
+      return S5.syncFailedRemoteSyncing;
     default:
       return S5.syncFailedGeneric;
   }
@@ -7407,50 +7593,13 @@ function renderCacheTab(params) {
     const clean = sanitizeEntityName(params.hubVersion, input.value);
     if (clean !== input.value) input.value = clean;
   };
-  const appearancePicker = (busy) => {
-    if (!iconHubLine(params.hubVersion)) return null;
-    const BS = TOOLS_CARD_STRINGS.backup;
-    const draft = params.addAppearance;
-    const colors = entityColorsSupported(params.hubVersion);
-    const icon = draft.icon ?? 1;
-    const colorId = draft.colorId ?? 0;
-    const tile = entityTile(params.hubVersion, icon, colorId);
-    const tab = colors ? draft.tab : "icon";
-    const set = (patch) => params.onAddAppearanceChange({ ...draft, ...patch });
-    return b2`
-      <div class="cache-dialog-appearance">
-        <button
-          class="cache-dialog-appearance-toggle"
-          aria-expanded=${draft.open ? "true" : "false"}
-          ?disabled=${busy}
-          @click=${() => set({ open: !draft.open })}
-        >
-          ${tile ? renderEntityTile(tile) : A}
-          <span>${colors ? BS.changeIconAndColor : BS.changeIcon}</span>
-          <ha-icon icon=${draft.open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
-        </button>
-        ${draft.open ? b2`
-              ${colors ? b2`<div class="cache-dialog-appearance-tabs" role="tablist">
-                    <button role="tab" class=${tab === "icon" ? "active" : ""} aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => set({ tab: "icon" })}>${BS.appearanceIcon}</button>
-                    <button role="tab" class=${tab === "color" ? "active" : ""} aria-selected=${tab === "color" ? "true" : "false"} @click=${() => set({ tab: "color" })}>${BS.entityColorName(colorId >= 1 ? colorId : 1)}</button>
-                  </div>` : A}
-              <div class="cache-dialog-appearance-pane">
-                ${tab === "icon" ? renderEntityIconPicker({
-      hubVersion: params.hubVersion,
-      icon,
-      color: entityColor(params.hubVersion, colorId),
-      servicesLabel: BS.appearanceServices,
-      onPick: (picked) => set({ icon: picked })
-    }) : renderEntityColorPicker({
-      colorId,
-      colorName: (id) => BS.entityColorName(id),
-      onPick: (picked) => set({ colorId: picked })
-    })}
-              </div>
-            ` : A}
-      </div>
-    `;
-  };
+  const appearancePicker = (busy) => renderAppearanceToggle({
+    hubVersion: params.hubVersion,
+    state: params.addAppearance,
+    labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+    disabled: busy,
+    onChange: params.onAddAppearanceChange
+  });
   const confirmAddActivity = (event) => {
     const dialog = event.currentTarget.closest(".cache-dialog");
     const input = dialog?.querySelector(".cache-dialog-input");
@@ -12240,6 +12389,10 @@ var editDetailViewStyles = i`
     /* The same pill as a two-option select (the delivery switch). */
     select.transport-select { appearance: none; -webkit-appearance: none; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: normal; padding-right: 20px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 11px) 55%, calc(100% - 7px) 55%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
     select.transport-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
+    @container sofabaton-card (max-width: 420px) {
+      .detail-entity-tile { display: none; }
+    }
     /* Glanceable member roster under the Activity power-sequence rows. */
     .power-members-summary {
       padding: 8px 4px 0;
@@ -12421,150 +12574,6 @@ var editDetailViewStyles = i`
     .managed-wifi-lock-chip ha-icon { --mdc-icon-size: 18px; }
     .managed-wifi-lock-copy { margin: 0; color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; max-width: 46ch; }
   `;
-
-// custom_components/sofabaton_x1s/www/src/components/appearance-editor.ts
-function renderAppearanceEditor(params) {
-  const S5 = TOOLS_CARD_STRINGS.backup;
-  const version = params.hubVersion;
-  const colors = entityColorsSupported(version);
-  const draft = params.draft;
-  const icon = draft.icon ?? 1;
-  const colorId = draft.colorId ?? 0;
-  const tile = entityTile(version, icon, colorId);
-  const changeLabel = colors ? S5.changeIconAndColor : S5.changeIcon;
-  const tab = colors ? params.tab : "icon";
-  return b2`
-    <div class="appearance-ident">
-      <button class="appearance-trigger" title=${changeLabel} aria-label=${changeLabel} aria-expanded=${params.open ? "true" : "false"} @click=${params.onToggle}>
-        ${tile ? renderEntityTile(tile) : A}
-        <span class="appearance-trigger-edit" aria-hidden="true"><ha-icon icon="mdi:pencil"></ha-icon></span>
-      </button>
-      <div class="appearance-name">${params.nameField}</div>
-    </div>
-    ${params.open ? b2`
-          ${colors ? b2`<div class="appearance-tabs" role="tablist">
-                <button role="tab" class="appearance-tab${tab === "icon" ? " active" : ""}" aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => params.onTab("icon")}>
-                  <ha-icon icon="mdi:shape-outline"></ha-icon><span>${S5.appearanceIcon}</span>
-                </button>
-                <button role="tab" class="appearance-tab${tab === "color" ? " active" : ""}" aria-selected=${tab === "color" ? "true" : "false"} @click=${() => params.onTab("color")}>
-                  <span class="appearance-dot" style=${`--entity-swatch: ${entityColorHex(colorId)}`}></span><span>${S5.entityColorName(colorId >= 1 ? colorId : 1)}</span>
-                </button>
-              </div>` : A}
-          <div class="appearance-pane">
-            ${tab === "icon" ? renderEntityIconPicker({
-    hubVersion: version,
-    icon,
-    color: entityColor(version, colorId),
-    servicesLabel: S5.appearanceServices,
-    onPick: (picked) => params.onPick({ ...draft, icon: picked })
-  }) : renderEntityColorPicker({
-    colorId,
-    colorName: (id) => S5.entityColorName(id),
-    onPick: (picked) => params.onPick({ ...draft, colorId: picked })
-  })}
-          </div>
-        ` : b2`<button class="appearance-reveal" aria-expanded="false" @click=${params.onToggle}>
-          <ha-icon icon=${colors ? "mdi:palette-outline" : "mdi:shape-outline"}></ha-icon><span>${changeLabel}</span><ha-icon icon="mdi:chevron-down"></ha-icon>
-        </button>`}
-  `;
-}
-function renderDetailEntityTile(tile, params) {
-  return b2`<button class="detail-entity-tile" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
-    ${renderEntityTile(tile)}
-  </button>`;
-}
-var appearanceEditorStyles = i`
-  .detail-entity-tile {
-    flex: 0 0 auto;
-    display: inline-flex;
-    border: 0;
-    padding: 0;
-    background: none;
-    border-radius: 11px;
-    cursor: pointer;
-    --entity-tile-size: 36px;
-  }
-  .detail-entity-tile:disabled { cursor: default; }
-  .detail-entity-tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-  .detail-entity-tile:hover:not(:disabled) .entity-tile { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
-  @container sofabaton-card (max-width: 420px) {
-    .detail-entity-tile { display: none; }
-  }
-  .appearance-ident { display: flex; align-items: center; gap: 14px; }
-  .appearance-name { flex: 1; min-width: 0; }
-  .appearance-name > ha-input, .appearance-name > ha-textfield { display: block; width: 100%; }
-  .appearance-trigger {
-    position: relative;
-    flex: 0 0 auto;
-    display: inline-flex;
-    border: 0;
-    padding: 0;
-    background: none;
-    border-radius: 15px;
-    cursor: pointer;
-    --entity-tile-size: 50px;
-  }
-  .appearance-trigger:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-  .appearance-trigger-edit {
-    position: absolute;
-    inset-inline-end: -6px;
-    bottom: -6px;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    display: grid;
-    place-items: center;
-    background: var(--ha-card-background, var(--card-background-color));
-    color: var(--secondary-text-color);
-    box-shadow: 0 0 0 1px var(--divider-color);
-    --mdc-icon-size: 13px;
-  }
-  .appearance-reveal {
-    align-self: flex-start;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    border: 0;
-    background: none;
-    padding: 4px 2px;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color));
-    cursor: pointer;
-    --mdc-icon-size: 18px;
-  }
-  .appearance-tabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    padding: 3px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
-  }
-  .appearance-tab {
-    height: 32px;
-    border: 0;
-    border-radius: 999px;
-    background: none;
-    font: inherit;
-    font-size: 13px;
-    color: var(--secondary-text-color);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    cursor: pointer;
-    --mdc-icon-size: 16px;
-  }
-  .appearance-tab.active {
-    background: var(--ha-card-background, var(--card-background-color));
-    color: var(--primary-text-color);
-    font-weight: 600;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  }
-  .appearance-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--entity-swatch); }
-  .appearance-pane { max-height: 232px; overflow-y: auto; padding: 5px; margin: -5px; }
-`;
 
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail/ir-learn-controller.ts
 var LEARN_TIMEOUT_S = 60;
@@ -17201,6 +17210,7 @@ var SofabatonEditDetailView = class extends i4 {
       open: this._editAppearanceOpen,
       tab: this._editAppearanceTab,
       nameField: this._renderEditRenameField(),
+      labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
       onToggle: () => {
         this._editAppearanceOpen = !this._editAppearanceOpen;
       },
@@ -20196,6 +20206,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       open: dialog.pickerOpen,
       tab: dialog.tab,
       nameField,
+      labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
       onToggle: () => this._patchEditDeviceDialog({ pickerOpen: !dialog.pickerOpen }),
       onTab: (tab) => this._patchEditDeviceDialog({ tab }),
       onPick: (draft) => this._patchEditDeviceDialog({ appearance: draft })
@@ -23110,6 +23121,10 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
     }
     .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
+    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
+    @container sofabaton-card (max-width: 420px) {
+      .detail-entity-tile { display: none; }
+    }
     .dialog-body {
       padding: 16px;
       display: flex;
@@ -25860,7 +25875,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     `;
   }
 };
-_SofabatonControlPanelCard.styles = [cardStyles, entityTileStyles, entityPickerStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles];
+_SofabatonControlPanelCard.styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles];
 // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
 // drop the overlay nodes so they don't sit in the DOM forever and so
 // the next animation cleanly restarts via Lit's keyed remount.

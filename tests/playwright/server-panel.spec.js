@@ -1748,10 +1748,15 @@ test.describe("control panel, views", () => {
     await expect(editor.locator("#editor-managed-warning")).toHaveCount(0);
     await expect(page.locator('#subtabs button[data-sub="devices"]')).toHaveClass(/active/);
 
-    // Rename the device: a draft edit; the Sync button carries the dirty signal; the dock says it the card's way.
+    // Rename the device and pick its icon: one draft edit (dialog B, the picker on demand); the Sync button carries the
+    // dirty signal; the dock says it the card's way.
     await editor.locator("#editor-rename").click();
-    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename device");
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Edit device");
     await editor.locator("#rename-input").fill("Living TV!");
+    await expect(editor.locator("#rename-dialog .appearance-pane")).toHaveCount(0);
+    await editor.locator("#rename-dialog .appearance-reveal").click();
+    await editor.locator('#rename-dialog .appearance-pane button[aria-label="Music"]').click();
+    await page.screenshot({ path: shot(testInfo, "device-edit-dialog") });
     await editor.locator("#rename-save").click();
     await expect(editor.locator("#editor-title")).toHaveText("Living TV!");
     await expect(editor.locator("#editor-sync")).toHaveText("Sync to Hub");
@@ -1896,6 +1901,7 @@ test.describe("control panel, views", () => {
     expect(puts[0].method).toBe("PUT");
     expect(puts[0].ifMatch).toBe('"snap-1"');
     expect(puts[0].body.device.name).toBe("Living TV!");
+    expect(puts[0].body.device.icon).toBe(3);
     expect(puts[0].body.device.idle_behavior).toBe(4);
     expect(puts[0].body.commands.map((c) => c.command_id)).toEqual([1, 2]);
     expect(puts[0].body.commands[0].restore_data).toEqual({ transport: "hub_code_record", data_hex: RAW_HEX.replace("02 30 00 00 00 00", "02 58 00 00 00 00"), edited: true });
@@ -2193,7 +2199,7 @@ test.describe("control panel, views", () => {
 
     // Rename: a draft edit with the card's dock banner.
     await editor.locator("#editor-rename").click();
-    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Rename activity");
+    await expect(editor.locator("#rename-dialog .dialog-title")).toHaveText("Edit activity");
     await editor.locator("#rename-input").fill("Movie night");
     await editor.locator("#rename-save").click();
     await expect(editor.locator("#editor-title")).toHaveText("Movie night");
@@ -2540,11 +2546,55 @@ test.describe("control panel, views", () => {
     await expect(page.locator("#add-class option")).toHaveText(["Infrared", "Roku", "Hue", "Sonos", "Generic HTTP"]);
     await page.locator("#add-name").fill("Soundbar");
     await page.locator("#add-class").selectOption("wifi_roku");
+    // The icon picker opens on demand; the pick rides the create (the activity above sent none).
+    await page.locator("#add-dialog .cache-dialog-appearance-toggle").click();
+    await page.locator('#add-dialog .cache-dialog-appearance-pane button[aria-label="Music"]').click();
     await page.locator("#add-confirm").click();
     await expect(page).toHaveURL(/#\/e26a44861b45\/hub\/devices\/2$/);
-    expect(calls.find((c) => c.key === "add_device").body).toEqual({ name: "Soundbar", device_class: "wifi_roku" });
+    expect(calls.find((c) => c.key === "add_device").body).toEqual({ name: "Soundbar", device_class: "wifi_roku", icon: 3 });
     await expect(page.locator("sb-panel-device-editor #editor-title")).toHaveText("Soundbar");
   });
+  test("catalog rows show the hub's own icon on a tile, a device's link as a corner badge", async ({ page }, testInfo) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const H = `**${API}/hubs/${LIVING.hub_id}`;
+    await page.route(`${H}/devices`, (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+        { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 2, icon: 1, color_id: null },
+        { device_id: 2, name: "Streamer", brand: "Roku", device_class: "wifi_roku", device_class_code: 10, power_state: 0, idle_behavior: null, icon: 13, color_id: null },
+        { device_id: 3, name: "Not read yet", brand: null, device_class: "ir", device_class_code: 1, power_state: null, idle_behavior: null, icon: null, color_id: null },
+      ]) });
+    });
+    await page.route(`${H}/activities`, (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+        { activity_id: 101, name: "Watch TV", active: true, needs_confirm: false, icon: 4, color_id: null },
+      ]) });
+    });
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(3);
+    // An X1S tile is neutral; the class glyph moves to the badge (IR and Wifi), and a row without a cached record keeps it.
+    await expect(rows.nth(0).locator(".entity-name-icon--tile .entity-tile--neutral")).toHaveCount(1);
+    await expect(rows.nth(0).locator(".entity-tile__badge svg")).toHaveCount(1);
+    await expect(rows.nth(1).locator(".entity-tile__badge svg")).toHaveCount(1);
+    await expect(rows.nth(2).locator(".entity-tile")).toHaveCount(0);
+    // The badge hangs below the tile and is not clipped by the row's name.
+    const clipped = await rows.nth(0).evaluate((row) => {
+      const badge = row.querySelector(".entity-tile__badge").getBoundingClientRect();
+      const name = row.querySelector(".entity-name");
+      return getComputedStyle(name).overflowY !== "visible" && badge.bottom > name.getBoundingClientRect().bottom;
+    });
+    expect(clipped).toBe(false);
+    await page.screenshot({ path: shot(testInfo, "catalog-tiles") });
+
+    await page.goto(`${PAGE}#/e26a44861b45/hub/activities`);
+    await expect(page.locator("#catalog-rows .entity-block").nth(0).locator(".entity-name-icon--tile .entity-tile")).toHaveCount(1);
+    await expect(page.locator("#catalog-rows .entity-block").nth(0).locator(".entity-tile__badge")).toHaveCount(0);
+  });
+
   test("busy states are the card's: Add keeps its dialog whole with no scrim, Delete and Sync swap the editor for the progress view, a failed delete comes back as a banner", async ({ page }, testInfo) => {
     const state = { hubs: [LIVING], seen: [] };
     const { sockets } = await mockServer(page, state);
@@ -3572,11 +3622,16 @@ test.describe("control panel, wifi commands", () => {
     await expect(tile(1)).toHaveClass(/slot-empty/);
     await expect(detail.locator('.hub-event-action-link[data-power="on"]')).toHaveText("do nothing");
 
-    // Rename the device; it is part of the same draft.
+    // Rename the device and pick its icon (the picker on demand): both are part of the same draft,
+    // and the tile beside the name shows the pick.
     await detail.locator("#wifi-rename-open").click();
+    await expect(view(page).locator("#wifi-rename-dialog .dialog-title")).toHaveText("Edit device");
     await view(page).locator("#wifi-rename").fill("Lamps");
+    await view(page).locator("#wifi-rename-dialog .appearance-reveal").click();
+    await view(page).locator('#wifi-rename-dialog .appearance-pane button[aria-label="Music"]').click();
     await view(page).locator("#wifi-rename-save").click();
     await expect(detail.locator(".detail-title")).toHaveText("Lamps");
+    await expect(detail.locator(".detail-entity-tile .entity-tile")).toHaveCount(1);
     await page.screenshot({ path: shot(testInfo, "wifi-detail-dirty") });
 
     // Leaving asks with the card's dialog; Keep editing stays.
@@ -3598,6 +3653,7 @@ test.describe("control panel, wifi commands", () => {
     await expect.poll(() => calls.filter((c) => c.key === "update").length).toBe(1);
     const body = calls.find((c) => c.key === "update").body;
     expect(body.name).toBe("Lamps");
+    expect([body.icon, body.color_id]).toEqual([3, null]);
     expect(body.slots).toHaveLength(10);
     expect(body.slots[0]).toEqual({ label: "Button 1", long_label: null, ...plain });
     expect(body.slots[1]).toEqual({ label: "Lights off", long_label: null, ...plain });

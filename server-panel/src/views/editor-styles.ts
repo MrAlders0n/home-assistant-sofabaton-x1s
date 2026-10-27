@@ -16,6 +16,10 @@ export const EDITOR_CSS = css`
     }
     .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
     button { border: 0; background: transparent; padding: 0; }
+    /* A narrow editor gives the room to the title; the pencil opens the same dialog. */
+    @container (max-width: 420px) {
+      .detail-entity-tile { display: none; }
+    }
     /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
     .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
     .quick-access-section, .detail-scroll, .power-control { min-width: 0; }

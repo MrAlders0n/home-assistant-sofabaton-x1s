@@ -284,7 +284,7 @@ class FakeProxy:
         return {
             "kind": "hub_bundle", "schema_version": 1, "captured_at": "2026-09-10T00:00:00Z",
             "complete": all(e in self.fetched for e in self._entity_ids()), "payload_profile": "structural",
-            "hub": {"name": self.hub_name},
+            "hub": {"name": self.hub_name, "version": self.model},
             "devices": [_row("device", d.device_id, d.name) for d in self.devices_data],
             "activities": [_row("activity", a.activity_id, a.name) for a in self.activities_data],
         }
@@ -451,16 +451,21 @@ class FakeProxy:
         self.intents.append((name, args))
         if self.reject_intents:
             raise HubRejectedError(f"the hub did not accept {name}")
+        if getattr(self, "remote_syncing", False):
+            from sofabaton import RemoteSyncInProgressError
+            raise RemoteSyncInProgressError(f"the hub refused {name} while it was still updating its remote")
 
-    async def add_device(self, name, device_class):
+    async def add_device(self, name, device_class, *, icon=None, color_id=None):
         await self._intent("add_device", name, device_class)
+        self.create_appearance = (icon, color_id)
         new_id = max(d.device_id for d in self.devices_data) + 1
         self.devices_data.append(Device(device_id=new_id, name=name, brand=None, device_class=device_class,
                                         device_class_code=None, power_state=None, idle_behavior=None))
         return new_id
 
-    async def add_activity(self, name):
+    async def add_activity(self, name, *, icon=None, color_id=None):
         await self._intent("add_activity", name)
+        self.create_appearance = (icon, color_id)
         new_id = max(a.activity_id for a in self.activities_data) + 1
         self.activities_data.append(Activity(activity_id=new_id, name=name, active=False, needs_confirm=False))
         return new_id
