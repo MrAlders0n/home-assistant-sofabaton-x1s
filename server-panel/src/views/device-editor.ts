@@ -1064,7 +1064,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                 <div class="detail-title-actions">
                   ${callback
                     ? nothing
-                    : html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S.renameDevice} title=${S.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon(mdiPencil)}</button>`}
+                    : html`<button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B.editDevice : S.renameDevice} title=${iconHubLine(this._hubVersion) != null ? B.editDevice : S.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon(mdiPencil)}</button>`}
                   ${callback
                     ? nothing
                     : html`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S.deleteDeviceAria} title=${S.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon(mdiTrashCanOutline)}</button>`}

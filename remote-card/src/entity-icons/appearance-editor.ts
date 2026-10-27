@@ -34,6 +34,7 @@ export interface AppearanceLabels {
   icon: string;
   /** The heading over the service logos in the icon grid. */
   services: string;
+  iconName: (name: string) => string;
   colorName: (colorId: number) => string;
 }
 
@@ -44,6 +45,7 @@ export function appearanceLabelsFrom(strings: {
   changeIconAndColor: string;
   appearanceIcon: string;
   appearanceServices: string;
+  entityIconNames: Readonly<Record<string, string>>;
   entityColorName: (colorId: number) => string;
 }): AppearanceLabels {
   return {
@@ -51,6 +53,7 @@ export function appearanceLabelsFrom(strings: {
     changeIconAndColor: strings.changeIconAndColor,
     icon: strings.appearanceIcon,
     services: strings.appearanceServices,
+    iconName: (name) => strings.entityIconNames[name] ?? name,
     colorName: (colorId) => strings.entityColorName(colorId),
   };
 }
@@ -69,6 +72,7 @@ function renderPane(params: {
         icon: params.icon,
         color: entityColor(params.hubVersion, params.colorId),
         servicesLabel: params.labels.services,
+        iconName: params.labels.iconName,
         onPick: (picked) => params.onPick({ icon: picked }),
       })
     : renderEntityColorPicker({

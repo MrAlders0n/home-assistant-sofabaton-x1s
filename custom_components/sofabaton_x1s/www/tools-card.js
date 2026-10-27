@@ -2053,7 +2053,7 @@ function renderEntityIconPicker(params) {
   const { pictures, services } = entityIconGroups(params.hubVersion);
   const button = (id) => {
     const selected = id === params.icon;
-    const name = entityIconName(params.hubVersion, id);
+    const name = params.iconName(entityIconName(params.hubVersion, id));
     const classes = [
       "entity-picker-icon",
       selected ? "entity-picker-icon--selected" : "",
@@ -2181,6 +2181,7 @@ function appearanceLabelsFrom(strings) {
     changeIconAndColor: strings.changeIconAndColor,
     icon: strings.appearanceIcon,
     services: strings.appearanceServices,
+    iconName: (name) => strings.entityIconNames[name] ?? name,
     colorName: (colorId) => strings.entityColorName(colorId)
   };
 }
@@ -2190,6 +2191,7 @@ function renderPane(params) {
     icon: params.icon,
     color: entityColor(params.hubVersion, params.colorId),
     servicesLabel: params.labels.services,
+    iconName: params.labels.iconName,
     onPick: (picked) => params.onPick({ icon: picked })
   }) : renderEntityColorPicker({
     colorId: params.colorId,
@@ -3245,6 +3247,51 @@ var TOOLS_CARD_STRINGS_EN = {
     changeIcon: "Change icon",
     appearanceIcon: "Icon",
     appearanceServices: "Services",
+    entityIconNames: {
+      "Monitor": "Monitor",
+      "Picture": "Picture",
+      "Music": "Music",
+      "Film reel": "Film reel",
+      "TV": "TV",
+      "Gamepad": "Gamepad",
+      "Game controller": "Game controller",
+      "Router": "Router",
+      "Wifi router": "Wifi router",
+      "Projector": "Projector",
+      "Receiver": "Receiver",
+      "Pendant lamp": "Pendant lamp",
+      "Media player": "Media player",
+      "Curved TV": "Curved TV",
+      "Download": "Download",
+      "Satellite dish": "Satellite dish",
+      "Disc": "Disc",
+      "Set-top box": "Set-top box",
+      "Cassette deck": "Cassette deck",
+      "Projector, front": "Projector, front",
+      "Smart speaker": "Smart speaker",
+      "Air conditioner": "Air conditioner",
+      "Desk fan": "Desk fan",
+      "Ceiling fan": "Ceiling fan",
+      "Table lamp": "Table lamp",
+      "Power outlet": "Power outlet",
+      "Wall switch": "Wall switch",
+      "Presentation screen": "Presentation screen",
+      "Party": "Party",
+      "Sleep": "Sleep",
+      "HD TV": "HD TV",
+      "TV on a stand": "TV on a stand",
+      "3D glasses": "3D glasses",
+      "TV with menu": "TV with menu",
+      "Clapperboard": "Clapperboard",
+      "Handheld console": "Handheld console",
+      "Retro console": "Retro console",
+      "Home": "Home",
+      "Computer": "Computer",
+      "Speaker": "Speaker",
+      "Bulb": "Bulb",
+      "AV receiver": "AV receiver",
+      "Disc player": "Disc player"
+    },
     entityColorName: (colorId) => ["Gray", "Red", "Navy", "Purple", "Green", "Salmon", "Cyan", "Slate", "Teal", "Sand", "Sky", "Lavender"][colorId - 1] ?? "Gray",
     renameMacro: "Rename macro",
     renameFavorite: "Rename favorite",
@@ -3325,7 +3372,7 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   decodedPayload: {
     httpTitle: "HTTP request",
-    httpSubtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    httpSubtitle: "Configure the HTTP request sent by the hub. Set its destination using the Host and Port fields.",
     hostIpv4: "Host (IPv4)",
     hostExample: "e.g. 192.168.2.77",
     port: "Port",
@@ -17096,8 +17143,10 @@ var SofabatonEditDetailView = class extends i4 {
   // _confirmDelete).
   _renderDetailRenameDeleteButtons(kind) {
     const managed = this._isManagedWifiLiveDevice();
+    const S5 = TOOLS_CARD_STRINGS.backup;
+    const editLabel = iconHubLine(this.bundle?.hub?.version) != null ? kind === "activity" ? S5.editActivity : S5.editDevice : S5.renameKind(kind);
     return b2`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${editLabel} title=${editLabel}>
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
       ${managed ? A : b2`

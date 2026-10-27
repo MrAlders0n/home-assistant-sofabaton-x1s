@@ -1976,6 +1976,7 @@ test("the edit dialog saves a picked icon and color with the name, and only what
   const closed = templateText(element._renderEditRenameDialog());
   assert.match(closed, /Edit activity/);
   assert.match(closed, /Change icon and color/);
+  assert.match(templateText(element._renderDetailRenameDeleteButtons("activity")), /Edit activity/);
 
   element._editAppearanceOpen = true;
   element._editAppearance = { ...element._editAppearance, icon: 34 };
@@ -2010,5 +2011,6 @@ test("an old bundle without an icon or hub line keeps the plain rename dialog", 
   const text = templateText(element._renderEditRenameDialog());
   assert.match(text, /Rename activity/);
   assert.doesNotMatch(text, /appearance-ident/);
+  assert.match(templateText(element._renderDetailRenameDeleteButtons("activity")), /Rename activity/);
   assert.equal(templateText(element._renderDetailTile("activity")), "");
 });

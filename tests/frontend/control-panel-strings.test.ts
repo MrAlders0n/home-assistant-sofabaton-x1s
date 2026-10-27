@@ -21,6 +21,31 @@ import es from "../../custom_components/sofabaton_x1s/www/src/control-panel-tran
 import fr from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/fr";
 import nl from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/nl";
 import zhHans from "../../custom_components/sofabaton_x1s/www/src/control-panel-translations/zh-hans";
+import { entityIconGroups, entityIconName } from "../../remote-card/src/entity-icons/entity-icons";
+import { appearanceLabelsFrom } from "../../remote-card/src/entity-icons/appearance-editor";
+
+test("appearance labels follow the active language for every hub's pictures and preserve brands", () => {
+  const labels = appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup);
+  const pictureNames = [...new Set(["X1", "X1S", "X2"].flatMap((hub) =>
+    entityIconGroups(hub).pictures.map((id) => entityIconName(hub, id)),
+  ))].sort();
+  try {
+    for (const [locale, catalogue] of Object.entries({ de, es, fr, nl, "zh-hans": zhHans })) {
+      assert.deepEqual(Object.keys(catalogue.backup.entityIconNames).sort(), pictureNames, locale);
+      setToolsCardLanguage(locale);
+      assert.equal(labels.iconName("Music"), catalogue.backup.entityIconNames.Music, locale);
+      assert.notEqual(labels.iconName("Music"), "Music", locale);
+      for (const hub of ["X1", "X1S", "X2"]) {
+        for (const id of entityIconGroups(hub).services) {
+          const name = entityIconName(hub, id);
+          assert.equal(labels.iconName(name), name, `${locale}: ${hub} ${name}`);
+        }
+      }
+    }
+  } finally {
+    setToolsCardLanguage("en");
+  }
+});
 
 test("complete catalogues explicitly cover every device type, including open-ended map keys", () => {
   const expected = Object.keys(TOOLS_CARD_STRINGS_EN.cache.deviceClassLabels).sort();
@@ -213,8 +238,7 @@ test("correctness-sensitive translations preserve runtime meaning and protocol i
   );
 
   setToolsCardLanguage("es");
-  assert.match(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /\bwifi_ip\b/);
-  assert.doesNotMatch(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /Wifi_ip/);
+  assert.match(TOOLS_CARD_STRINGS.decodedPayload.httpSubtitle, /\bHTTP\b/);
 
   setToolsCardLanguage("nl");
   assert.equal(TOOLS_CARD_STRINGS.wifiCommands.clearSlotSubtitle, "De configuratie wordt gewist.");

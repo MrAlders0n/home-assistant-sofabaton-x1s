@@ -13358,6 +13358,51 @@ var TOOLS_CARD_STRINGS_EN = {
     changeIcon: "Change icon",
     appearanceIcon: "Icon",
     appearanceServices: "Services",
+    entityIconNames: {
+      "Monitor": "Monitor",
+      "Picture": "Picture",
+      "Music": "Music",
+      "Film reel": "Film reel",
+      "TV": "TV",
+      "Gamepad": "Gamepad",
+      "Game controller": "Game controller",
+      "Router": "Router",
+      "Wifi router": "Wifi router",
+      "Projector": "Projector",
+      "Receiver": "Receiver",
+      "Pendant lamp": "Pendant lamp",
+      "Media player": "Media player",
+      "Curved TV": "Curved TV",
+      "Download": "Download",
+      "Satellite dish": "Satellite dish",
+      "Disc": "Disc",
+      "Set-top box": "Set-top box",
+      "Cassette deck": "Cassette deck",
+      "Projector, front": "Projector, front",
+      "Smart speaker": "Smart speaker",
+      "Air conditioner": "Air conditioner",
+      "Desk fan": "Desk fan",
+      "Ceiling fan": "Ceiling fan",
+      "Table lamp": "Table lamp",
+      "Power outlet": "Power outlet",
+      "Wall switch": "Wall switch",
+      "Presentation screen": "Presentation screen",
+      "Party": "Party",
+      "Sleep": "Sleep",
+      "HD TV": "HD TV",
+      "TV on a stand": "TV on a stand",
+      "3D glasses": "3D glasses",
+      "TV with menu": "TV with menu",
+      "Clapperboard": "Clapperboard",
+      "Handheld console": "Handheld console",
+      "Retro console": "Retro console",
+      "Home": "Home",
+      "Computer": "Computer",
+      "Speaker": "Speaker",
+      "Bulb": "Bulb",
+      "AV receiver": "AV receiver",
+      "Disc player": "Disc player"
+    },
     entityColorName: (colorId) => ["Gray", "Red", "Navy", "Purple", "Green", "Salmon", "Cyan", "Slate", "Teal", "Sand", "Sky", "Lavender"][colorId - 1] ?? "Gray",
     renameMacro: "Rename macro",
     renameFavorite: "Rename favorite",
@@ -13438,7 +13483,7 @@ var TOOLS_CARD_STRINGS_EN = {
   },
   decodedPayload: {
     httpTitle: "HTTP request",
-    httpSubtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    httpSubtitle: "Configure the HTTP request sent by the hub. Set its destination using the Host and Port fields.",
     hostIpv4: "Host (IPv4)",
     hostExample: "e.g. 192.168.2.77",
     port: "Port",
@@ -21043,7 +21088,7 @@ function renderEntityIconPicker(params) {
   const { pictures, services } = entityIconGroups(params.hubVersion);
   const button = (id) => {
     const selected = id === params.icon;
-    const name = entityIconName(params.hubVersion, id);
+    const name = params.iconName(entityIconName(params.hubVersion, id));
     const classes = [
       "entity-picker-icon",
       selected ? "entity-picker-icon--selected" : "",
@@ -21171,6 +21216,7 @@ function appearanceLabelsFrom(strings) {
     changeIconAndColor: strings.changeIconAndColor,
     icon: strings.appearanceIcon,
     services: strings.appearanceServices,
+    iconName: (name) => strings.entityIconNames[name] ?? name,
     colorName: (colorId) => strings.entityColorName(colorId)
   };
 }
@@ -21180,6 +21226,7 @@ function renderPane(params) {
     icon: params.icon,
     color: entityColor(params.hubVersion, params.colorId),
     servicesLabel: params.labels.services,
+    iconName: params.labels.iconName,
     onPick: (picked) => params.onPick({ icon: picked })
   }) : renderEntityColorPicker({
     colorId: params.colorId,
@@ -24082,7 +24129,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }],
       lead: this._renderHeaderTile(),
       actions: b2`<div class="detail-title-actions">
-              <button class="icon-btn" id="editor-rename" type="button" aria-label=${B2.renameKind("activity")} title=${B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon4(mdiPencil)}</button>
+              <button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B2.editActivity : B2.renameKind("activity")} title=${iconHubLine(this._hubVersion) != null ? B2.editActivity : B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon4(mdiPencil)}</button>
               <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>
               ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? A2.syncToHub : A2.syncUpToDate}</button>`}
             </div>`
@@ -25404,7 +25451,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                 </div>
                 ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
                 <div class="detail-title-actions">
-                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${S5.renameDevice} title=${S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
+                  ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice} title=${iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
                   ${callback ? A : b2`<button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${S5.deleteDeviceAria} title=${S5.deleteDeviceAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "device", deviceId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>`}
                   ${this._offline ? A : b2`<button class="detail-sync-btn ${dirty ? "sync-btn-primary" : "detail-sync-btn--state-ok"}" id="editor-sync" type="button" ?disabled=${!dirty || this._hubBusy} @click=${() => void this._sync()}>${dirty ? S5.syncToHub : S5.syncUpToDate}</button>`}
                 </div>
@@ -29914,7 +29961,7 @@ var SbPanelWifiDevices = class extends i4 {
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon7(mdiArrowLeft)}</button>
                 ${this._renderHeaderTile(device)}
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon7(mdiPencilOutline)}</button>
+                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${iconHubLine(this._hubVersion) != null ? B5.editDevice : T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon7(mdiPencilOutline)}</button>
                 ${this._renderDeliveryPill(device)}
               </div>
               <div class="detail-title-actions">${this._renderSyncButton(device)}</div>

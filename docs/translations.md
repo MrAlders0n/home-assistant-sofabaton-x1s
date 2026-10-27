@@ -83,6 +83,8 @@ setup notice that stays English) goes on the test's allowlist with a reason.
 
 - Keep product and feature names unchanged: `Sofabaton`, `Home Assistant`,
   `Wifi Commands`, `Wifi Events`, and `MQTT Discovery`.
+- Translate generic icon descriptions through `backup.entityIconNames` for
+  picker tooltips and accessible labels. Keep service and brand names unchanged.
 - Preserve printed remote-button legends, including capitalization. `EXIT`
   identifies the physical key; it is not the generic UI action “Exit”. Keep
   that name in the Virtual Remote, Key capture, accessible labels, and Control

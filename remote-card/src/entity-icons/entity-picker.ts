@@ -16,12 +16,14 @@ export function renderEntityIconPicker(params: {
   color: string | null;
   /** Heading of the service logo group. */
   servicesLabel: string;
+  /** Localize picture descriptions; service and brand names stay unchanged. */
+  iconName: (name: string) => string;
   onPick: (icon: number) => void;
 }): TemplateResult {
   const { pictures, services } = entityIconGroups(params.hubVersion);
   const button = (id: number) => {
     const selected = id === params.icon;
-    const name = entityIconName(params.hubVersion, id);
+    const name = params.iconName(entityIconName(params.hubVersion, id));
     const classes = [
       "entity-picker-icon",
       selected ? "entity-picker-icon--selected" : "",

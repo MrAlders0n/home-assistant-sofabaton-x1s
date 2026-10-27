@@ -1248,7 +1248,7 @@ export class SbPanelWifiDevices extends LitElement {
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon(mdiArrowLeft)}</button>
                 ${this._renderHeaderTile(device)}
-                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon(mdiPencilOutline)}</button>
+                <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${iconHubLine(this._hubVersion) != null ? B.editDevice : T.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon(mdiPencilOutline)}</button>
                 ${this._renderDeliveryPill(device)}
               </div>
               <div class="detail-title-actions">${this._renderSyncButton(device)}</div>

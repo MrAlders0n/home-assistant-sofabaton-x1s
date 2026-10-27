@@ -95,6 +95,20 @@ test.describe("tools-card browser harness", () => {
     )).toEqual([]);
   });
 
+  test("icon picker tooltips and accessible labels follow the language while brands stay unchanged", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    for (const [language, music] of [["en", "Music"], ["en-gb", "Music"], ["de", "Musik"], ["es", "Música"], ["fr", "Musique"], ["nl", "Muziek"], ["zh-hans", "音乐"]]) {
+      await page.evaluate(async (language) => {
+        await window.__toolsCardHarness.setLanguage(language);
+        await window.__toolsCardHarness.loadScenario("add-device");
+      }, language);
+      await page.locator("sofabaton-control-panel .cache-dialog-appearance-toggle").click();
+      const picker = page.locator("sofabaton-control-panel .cache-dialog-appearance-pane");
+      await expect(picker.getByRole("button", { name: music, exact: true })).toHaveAttribute("title", music);
+      await expect(picker.getByRole("button", { name: "Netflix", exact: true })).toHaveAttribute("title", "Netflix");
+    }
+  });
+
   test("the admins-only option shows other users a notice (CR-X2-1)", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("1"));

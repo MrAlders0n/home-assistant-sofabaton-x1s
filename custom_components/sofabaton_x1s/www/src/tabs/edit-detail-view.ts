@@ -350,8 +350,12 @@ export class SofabatonEditDetailView extends LitElement {
     // with the Wifi Commands store) but loses delete — removing it belongs in
     // the Wifi Commands tab, which also clears its stored configuration.
     const managed = this._isManagedWifiLiveDevice();
+    const S = TOOLS_CARD_STRINGS.backup;
+    const editLabel = iconHubLine(this.bundle?.hub?.version) != null
+      ? (kind === "activity" ? S.editActivity : S.editDevice)
+      : S.renameKind(kind);
     return html`
-      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${TOOLS_CARD_STRINGS.backup.renameKind(kind)}>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${editLabel} title=${editLabel}>
         <ha-icon icon="mdi:pencil"></ha-icon>
       </button>
       ${managed
