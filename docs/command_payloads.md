@@ -107,20 +107,28 @@ learned signal or an IR database. Raw IR works across X1, X1S, and X2 hubs.
 When the integration recognizes a payload, the editor shows its fields in a
 structured form:
 
-| Class        | Structured fields                                           |
-| ------------ | ----------------------------------------------------------- |
-| `ir`         | Descriptive IR string beginning with `P:` (X2 hubs only)    |
-| `wifi_ip`    | Host, port, method, path, headers, content type, and body   |
-| `wifi_roku`  | Command path                                                |
-| `wifi_hue`   | Path and request body                                       |
-| `wifi_sonos` | Path and request body                                       |
-| `wifi_mqtt`  | Device ID and command ID (ignored by the hub; X2 hubs only) |
+| Class        | Structured fields                                                                  |
+| ------------ | ---------------------------------------------------------------------------------- |
+| `ir`         | Descriptive IR string beginning with `P:` (X2 hubs only)                           |
+| `wifi_ip`    | Protocol (X2 hubs only), host, port, method, path, headers, content type, and body |
+| `wifi_roku`  | Command path                                                                       |
+| `wifi_hue`   | Path and request body                                                              |
+| `wifi_sonos` | Path and request body                                                              |
+| `wifi_mqtt`  | Device ID and command ID (ignored by the hub; X2 hubs only)                        |
 
 The two IDs stored in an MQTT command payload can be written, but the hub
 ignores their values. When the command runs, it publishes the actual device
 and command IDs to the broker (as `device_id` and `key_id`). Changing the
 payload's IDs does not change that message. There are no topic, broker, QoS,
 or retain settings in the command payload.
+
+On X2 hubs the `wifi_ip` form also accepts `https` and a host name in place of
+an IPv4 address. The hub stores such a command in a second format, the one
+commands made in the Sofabaton app on an X2 use as well. That format supports
+GET, POST, and PUT only, and the hub does not check the server's certificate.
+A new command with plain `http` and an IPv4 address uses the format every hub
+understands. An existing command keeps its format unless you switch it to
+`https` or a host name.
 
 Payloads without a supported decoder remain available as raw hex. A readable
 form is a convenience, not a requirement for a valid command.

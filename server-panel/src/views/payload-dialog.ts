@@ -24,8 +24,17 @@ import {
   unwrapUcCodesetRow,
 } from "../../../custom_components/sofabaton_x1s/www/src/shared/ir-format";
 import {
+  buildWifiIpRecord,
+  wifiIpDraftsChanged,
+  wifiIpDraftsFromFields,
+  wifiIpDraftsWithScheme,
+  type WifiIpRecord,
+} from "../../../custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form";
+import {
   DECODED_CLASS_FORM_SPECS,
+  decodedFormFields,
   normalizeCommandPayloadHex,
+  wifiIpFormErrorText,
   type BackupCommandDecodedBlock,
   type DecodedFieldSpec,
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
@@ -83,6 +92,8 @@ export interface PayloadSaveDetail {
   restoreData: Record<string, unknown>;
   /** An edit of an existing structured block: only the fields that changed (the offline editor merges them the card's way). */
   changedFields?: Record<string, unknown>;
+  /** `changedFields` is the whole field set, replacing the block's with the trailer in `restoreData` (a wifi_ip edit may switch record kinds). */
+  replaceFields?: boolean;
   /** An edit of the raw bytes: the normalised hex. */
   rawHex?: string;
 }
@@ -258,6 +269,7 @@ export class SbPayloadDialog extends LitElement {
   }
 
   private _initialDrafts(block: BackupCommandDecodedBlock): Record<string, string> {
+    if (block.className === "wifi_ip") return wifiIpDraftsFromFields(block.fields);
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
     const drafts: Record<string, string> = {};
     for (const field of spec?.fields ?? []) drafts[field.key] = fieldValueToDraft(field, block.fields[field.key]);
@@ -385,8 +397,12 @@ export class SbPayloadDialog extends LitElement {
   };
 
   private _onFieldInput(field: DecodedFieldSpec, event: Event): void {
-    const value = (event.currentTarget as HTMLInputElement | HTMLTextAreaElement).value;
+    const value = (event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).value;
     this._error = "";
+    if (this._decoded?.className === "wifi_ip" && field.key === "scheme") {
+      this._drafts = wifiIpDraftsWithScheme(this._drafts, value);
+      return;
+    }
     if (this._decoded?.className === "ir" && field.key === "descriptor") {
       // The descriptor field flips back to hex on a pasted code the hex tabs own.
       if (this._ucPaste(value)) {
@@ -485,6 +501,21 @@ export class SbPayloadDialog extends LitElement {
   /** The card's live edit: a structured or raw `restore_data` with the `edited` marker; null when nothing changed; undefined on an error shown. */
   private _editDetail(): PayloadSaveDetail | null | undefined {
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      // The whole field set is replaced: the edit may switch record kinds.
+      if (!wifiIpDraftsChanged(block.fields, this._drafts)) return null;
+      const record = this._wifiIpRecord(block, true);
+      if (!record) return undefined;
+      return {
+        name: "",
+        ...(this.snapshot ? { changedFields: record.fields, replaceFields: true } : {}),
+        restoreData: {
+          transport: "hub_code_record",
+          data_hex: this.fetchedHex,
+          decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true },
+        },
+      };
+    }
     if (block) {
       const changed = this._changedFields(block);
       if (!changed) return null;
@@ -515,6 +546,12 @@ export class SbPayloadDialog extends LitElement {
       return undefined;
     }
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      // The template only seeds the form: the new command is request text unless it needs a URL record.
+      const record = this._wifiIpRecord(block, false);
+      if (!record) return undefined;
+      return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true } } };
+    }
     if (block) {
       const spec = DECODED_CLASS_FORM_SPECS[block.className];
       const fields: Record<string, unknown> = { ...block.fields };
@@ -531,6 +568,20 @@ export class SbPayloadDialog extends LitElement {
       return undefined;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
+  }
+
+  /** The wifi_ip record the drafts save as (the card's rule, shared/wifi-ip-form.ts); null with the refusal shown. */
+  private _wifiIpRecord(block: BackupCommandDecodedBlock, existing: boolean): WifiIpRecord | null {
+    try {
+      return buildWifiIpRecord(this._drafts, {
+        original: { fields: block.fields, trailerHex: block.trailerHex },
+        existing,
+        isX2: this._isX2,
+      });
+    } catch (err) {
+      this._error = wifiIpFormErrorText(err);
+      return null;
+    }
   }
 
   // -- render ---------------------------------------------------------------------------------------
@@ -625,7 +676,7 @@ export class SbPayloadDialog extends LitElement {
     return html`
       <div class="decoded-form" data-class=${block.className}>
         ${head}
-        ${(spec?.fields ?? []).map((field) => this._renderField(field))}
+        ${decodedFormFields(block.className, this._isX2).map((field) => this._renderField(field))}
       </div>
     `;
   }
@@ -637,7 +688,11 @@ export class SbPayloadDialog extends LitElement {
     return html`
       <label class="decoded-field" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline
+        ${field.options
+          ? html`<select class="decoded-field-input" @change=${(event: Event) => this._onFieldInput(field, event)}>
+              ${field.options.map((option) => html`<option value=${option} ?selected=${option === value}>${option}</option>`)}
+            </select>`
+          : field.multiline
           ? html`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows="4" spellcheck="false" .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event: Event) => this._onFieldInput(field, event)}></textarea>`
           : html`<input class="decoded-field-input" type=${field.numeric ? "number" : "text"} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event: Event) => this._onFieldInput(field, event)} />`}
         ${helper ? html`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : nothing}

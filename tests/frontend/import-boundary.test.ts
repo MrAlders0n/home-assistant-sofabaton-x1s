@@ -26,6 +26,8 @@ const PANEL_ALLOWED: Record<string, "*" | string[]> = {
   "shared/hub-names": "*",
   "shared/hub-rules": "*",
   "shared/ir-format": "*",
+  // One wifi_ip form for request text and URL records in both editors (PR #317 follow-up).
+  "shared/wifi-ip-form": "*",
   "shared/utils/overlay-menu": "*",
   "tabs/backup-state": "*",
   // The editors' three-way merge when the cache moves under them (the card's own, 2026-10-16).

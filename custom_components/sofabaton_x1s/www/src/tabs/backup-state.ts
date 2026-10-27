@@ -13,6 +13,7 @@ import type {
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
 import { hubDevices } from "../shared/utils/control-panel-selectors";
+import { WIFI_IP_SCHEMES, WifiIpFormError } from "../shared/wifi-ip-form";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 export interface BackupSelectionOption {
@@ -85,6 +86,8 @@ export interface DecodedFieldSpec {
   // Rendered disabled: an editable field that silently does nothing is
   // a worse trap than raw hex.
   readonly?: boolean;
+  // Rendered as a select of these values (the wifi_ip protocol on the X2).
+  options?: readonly string[];
 }
 
 export interface DecodedFormSpec {
@@ -200,6 +203,45 @@ export const DECODED_CLASS_FORM_SPECS = new Proxy(
 );
 
 /**
+ * The fields a decoded form shows on this hub. On the X2 the wifi_ip form
+ * adds the protocol and takes a host name too: https and host names are
+ * saved as URL records (shared/wifi-ip-form.ts), which only the X2 has.
+ */
+export function decodedFormFields(className: DecodableCommandClass, isX2: boolean): DecodedFieldSpec[] {
+  const fields = DECODED_CLASS_FORM_SPECS[className]?.fields ?? [];
+  if (className !== "wifi_ip" || !isX2) return fields;
+  const S = TOOLS_CARD_STRINGS.decodedPayload;
+  return [
+    { key: "scheme", label: S.protocol, options: WIFI_IP_SCHEMES },
+    ...fields.map((field) => {
+      if (field.key === "host") return { ...field, label: S.host, helper: S.hostOrNameExample };
+      if (field.key === "port") return { ...field, helper: S.portDefaultHelper };
+      return field;
+    }),
+  ];
+}
+
+/** The message for a wifi_ip draft the form refused; other errors pass through. */
+export function wifiIpFormErrorText(error: unknown): string {
+  const S = TOOLS_CARD_STRINGS.decodedPayload;
+  if (!(error instanceof WifiIpFormError)) return error instanceof Error ? error.message : String(error);
+  switch (error.code) {
+    case "host_required":
+      return S.hostRequired;
+    case "host_invalid":
+      return S.hostInvalid;
+    case "host_needs_ipv4":
+      return S.hostNeedsIpv4;
+    case "port_invalid":
+      return S.portInvalid;
+    case "method_unsupported":
+      return S.urlMethodUnsupported;
+    case "header_line_invalid":
+      return S.headerLineInvalid;
+  }
+}
+
+/**
  * Shape of the `decoded` block as it lives inside `restore_data` in the
  * bundle JSON. `edited` is set to `true` by the editor to tell the
  * restore path to re-encode the payload from `fields` instead of using
@@ -265,12 +307,17 @@ export function commandDecodedBlock(
  * is set, and re-uses the captured trailer verbatim.
  *
  * No-op when the targeted command, device, or decoded block is absent.
+ *
+ * `replace` swaps the whole field set and the trailer instead: a wifi_ip
+ * edit that switches record kinds (request text to URL record) must not
+ * leave the old kind's fields behind, or the round-trip check refuses it.
  */
 export function updateCommandDecodedFields(
   bundle: BackupBundlePayload,
   deviceId: number,
   commandId: number,
   newFields: Record<string, unknown>,
+  replace?: { trailerHex: string },
 ): BackupBundlePayload {
   const normalizedDeviceId = Number(deviceId);
   const normalizedCommandId = Number(commandId);
@@ -294,7 +341,8 @@ export function updateCommandDecodedFields(
               ...(restoreData as Record<string, unknown>),
               decoded: {
                 ...decodedRecord,
-                fields: { ...existingFields, ...newFields },
+                ...(replace ? { trailer_hex: replace.trailerHex } : {}),
+                fields: replace ? { ...newFields } : { ...existingFields, ...newFields },
                 edited: true,
               },
             },

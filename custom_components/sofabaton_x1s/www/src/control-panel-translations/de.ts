@@ -373,7 +373,12 @@ export const TOOLS_CARD_STRINGS_DE = {
   decodedPayload: {
     httpTitle: "HTTP-Anfrage", httpSubtitle: "Änderungen werden über den wifi_ip-Schreiber des Hubs wiedergegeben. Host, Port und Content-Length werden abgeleitet und hier nicht festgelegt.",
     hostIpv4: "Host (IPv4)", hostExample: "z. B. 192.168.2.77", port: "Port", httpMethod: "HTTP-Methode", httpMethodExample: "z. B. GET, POST", path: "Pfad", extraHeaders: "Zusätzliche Header",
-    extraHeadersHelper: "Ein Header pro Zeile. Host und Content-Length werden automatisch hinzugefügt.", contentType: "Inhaltstyp", body: "Body", rokuTitle: "Roku-ECP-Anfrage", ecpPath: "ECP-URL-Pfad",
+    extraHeadersHelper: "Ein Header pro Zeile. Host und Content-Length werden automatisch hinzugefügt.", contentType: "Inhaltstyp", body: "Body", protocol: "Protokoll", host: "Host",
+    hostOrNameExample: "Eine IPv4-Adresse oder ein Hostname, z. B. 192.168.2.77 oder ha.example.com", portDefaultHelper: "Leer lassen für 80 (http) oder 443 (https).",
+    hostRequired: "Gib den Host ein.", hostInvalid: "Gib hier nur den Host ein. Port und Pfad haben eigene Felder.",
+    hostNeedsIpv4: "Gib eine IPv4-Adresse ein, z. B. 192.168.2.77. Hostnamen und https erfordern einen X2-Hub.", portInvalid: "Der Port muss eine ganze Zahl von 1 bis 65535 sein.",
+    urlMethodUnsupported: "Verwende GET, POST oder PUT. Befehle mit https oder einem Hostnamen sowie in der Sofabaton-App erstellte Befehle unterstützen nur diese.",
+    headerLineInvalid: "Jede Header-Zeile braucht einen Namen und einen Doppelpunkt, z. B. X-Api-Key: 123.", rokuTitle: "Roku-ECP-Anfrage", ecpPath: "ECP-URL-Pfad",
     ecpPathExample: "z. B. /launch/12 oder /keypress/Home", hueTitle: "Hue-REST-Anfrage", sonosTitle: "Sonos-UPnP-Anfrage", bodyBlockSubtitle: "Der Body-Block wird unverändert zwischen den Host-Headern und dem Netzwerkschreibvorgang eingefügt.",
     urlPath: "URL-Pfad", bodyBlock: "Body-Block (unformatierte Übertragungszeichenfolge)", bodyBlockHelper: "Eine einzelne Zeichenfolge, die unverändert an das Gerät gesendet wird. Zeilenumbrüche werden als \\n angezeigt. Du verwaltest Content-Length selbst — der Wert muss der Byteanzahl des Bodys entsprechen.",
     mqttTitle: "MQTT-Kennungen", mqttSubtitle: "Beide Bytes werden vom Hub ignoriert: Beim Tastendruck veröffentlicht er seine eigenen Geräte- und Tasten-IDs an den Broker. Es gibt nichts zu konfigurieren.",

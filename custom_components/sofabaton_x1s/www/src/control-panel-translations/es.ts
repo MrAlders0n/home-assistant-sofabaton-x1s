@@ -361,7 +361,12 @@ export const TOOLS_CARD_STRINGS_ES = {
   decodedPayload: {
     httpTitle: "Solicitud HTTP", httpSubtitle: "Los cambios se reproducen mediante el escritor wifi_ip del hub. El host, el puerto y Content-Length se deducen; no se configuran aquí.",
     hostIpv4: "Host (IPv4)", hostExample: "p. ej., 192.168.2.77", port: "Puerto", httpMethod: "Método HTTP", httpMethodExample: "p. ej., GET, POST", path: "Ruta", extraHeaders: "Encabezados adicionales",
-    extraHeadersHelper: "Un encabezado por línea. Host y Content-Length se añaden automáticamente.", contentType: "Tipo de contenido", body: "Cuerpo", rokuTitle: "Solicitud Roku ECP", ecpPath: "Ruta URL de ECP",
+    extraHeadersHelper: "Un encabezado por línea. Host y Content-Length se añaden automáticamente.", contentType: "Tipo de contenido", body: "Cuerpo", protocol: "Protocolo", host: "Host",
+    hostOrNameExample: "Una dirección IPv4 o un nombre de host, p. ej., 192.168.2.77 o ha.example.com", portDefaultHelper: "Déjalo vacío para 80 (http) o 443 (https).",
+    hostRequired: "Introduce el host.", hostInvalid: "Introduce aquí solo el host. El puerto y la ruta tienen sus propios campos.",
+    hostNeedsIpv4: "Introduce una dirección IPv4, p. ej., 192.168.2.77. Los nombres de host y https requieren un hub X2.", portInvalid: "El puerto debe ser un número entero entre 1 y 65535.",
+    urlMethodUnsupported: "Usa GET, POST o PUT. Los comandos con https o un nombre de host, y los creados en la aplicación Sofabaton, solo admiten estos.",
+    headerLineInvalid: "Cada línea de encabezado necesita un nombre y dos puntos, p. ej., X-Api-Key: 123.", rokuTitle: "Solicitud Roku ECP", ecpPath: "Ruta URL de ECP",
     ecpPathExample: "p. ej., /launch/12 o /keypress/Home", hueTitle: "Solicitud REST de Hue", sonosTitle: "Solicitud UPnP de Sonos", bodyBlockSubtitle: "El bloque del cuerpo se inserta sin cambios entre los encabezados Host y la escritura de red.",
     urlPath: "Ruta URL", bodyBlock: "Bloque del cuerpo (cadena de red sin procesar)", bodyBlockHelper: "Cadena literal única enviada al dispositivo. Los saltos de línea se muestran como \\n. Tú controlas el valor de Content-Length — debe coincidir con el número de bytes del cuerpo.",
     mqttTitle: "Identificadores MQTT", mqttSubtitle: "El hub ignora ambos bytes: al pulsar, publica sus propios identificadores de dispositivo y de tecla en el broker. No hay nada que configurar.",

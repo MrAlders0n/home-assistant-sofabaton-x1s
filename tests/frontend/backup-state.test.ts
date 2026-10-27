@@ -60,6 +60,8 @@ import {
   commandRawPayloadHex,
   normalizeCommandPayloadHex,
   updateCommandRawPayload,
+  updateCommandDecodedFields,
+  decodedFormFields,
   deviceButtonBindingItems,
   deviceIdleBehavior,
   updateBundleDeviceIdleBehavior,
@@ -1611,6 +1613,33 @@ test("updateCommandRawPayload replaces data_hex and drops a stale decoded block"
   // Commands without restore_data are a no-op.
   const untouched = updateCommandRawPayload(bundle, 9, 2, "de ad");
   assert.equal(commandRawPayloadHex(untouched, 9, 2), null);
+});
+
+test("updateCommandDecodedFields merges by default and replaces fields and trailer on request", () => {
+  const bundle = rawPayloadBundle();
+  const merged = commandDecodedBlock(updateCommandDecodedFields(bundle, 9, 3, { extra: 1 }), 9, 3)!;
+  assert.deepEqual(merged.fields, { path: "/keypress/Home", extra: 1 });
+  assert.equal(merged.edited, true);
+
+  // A wifi_ip kind switch leaves nothing of the old kind behind.
+  const replaced = commandDecodedBlock(
+    updateCommandDecodedFields(bundle, 9, 3, { url: "https://a/", method: "GET", headers: [], body: "" }, { trailerHex: "f1" }),
+    9,
+    3,
+  )!;
+  assert.deepEqual(replaced.fields, { url: "https://a/", method: "GET", headers: [], body: "" });
+  assert.equal(replaced.trailerHex, "f1");
+  assert.equal(replaced.edited, true);
+});
+
+test("the wifi_ip form adds the protocol and host names on the X2 only", () => {
+  const x1s = decodedFormFields("wifi_ip", false).map((field) => field.key);
+  const x2 = decodedFormFields("wifi_ip", true);
+  assert.deepEqual(x1s, ["host", "port", "method", "path", "header", "content_type", "body"]);
+  assert.deepEqual(x2.map((field) => field.key), ["scheme", ...x1s]);
+  assert.deepEqual(x2[0].options, ["http", "https"]);
+  // Other classes are the same on every hub.
+  assert.deepEqual(decodedFormFields("wifi_roku", true), decodedFormFields("wifi_roku", false));
 });
 
 test("reconcile repairs missing power refs in interleaved macros", () => {

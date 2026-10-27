@@ -21,6 +21,13 @@ import {
 import type { IrPayloadForeignFormat } from "../../shared/ha-context";
 import { localizeBackendError } from "../../shared/utils/backend-state-localization";
 import {
+  buildWifiIpRecord,
+  wifiIpDraftsChanged,
+  wifiIpDraftsFromFields,
+  wifiIpDraftsWithScheme,
+  type WifiIpRecord,
+} from "../../shared/wifi-ip-form";
+import {
   addBundleDeviceCommand,
   type BackupCommandDecodedBlock,
   type DecodableCommandClass,
@@ -28,6 +35,7 @@ import {
   bundleDeviceClass,
   commandDecodedBlock,
   commandRawPayloadHex,
+  decodedFormFields,
   normalizeCommandPayloadHex,
   setCommandRestoreData,
   updateCommandRawPayload,
@@ -36,6 +44,7 @@ import {
   deviceCommandItems,
   nextFreeDeviceCommandId,
   updateCommandDecodedFields,
+  wifiIpFormErrorText,
 } from "../backup-state";
 import type { FetchedCommandPayload } from "./host-types";
 import { bundleIsX2, editorErrorMessage, sanitizeBundleName } from "./names";
@@ -679,7 +688,7 @@ export class PayloadDialogController implements ReactiveController {
     return html`
       <div class="decoded-form">
         ${head}
-        ${spec.fields.map((field) => this.renderDecodedField(field))}
+        ${decodedFormFields(className, bundleIsX2(this.host.bundle)).map((field) => this.renderDecodedField(field))}
       </div>
     `;
   }
@@ -693,7 +702,13 @@ export class PayloadDialogController implements ReactiveController {
     return html`
       <label class="decoded-field">
         <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline
+        ${field.options
+          ? html`
+              <select class="decoded-field-input" @change=${onInput}>
+                ${field.options.map((option) => html`<option value=${option} ?selected=${option === value}>${option}</option>`)}
+              </select>
+            `
+          : field.multiline
           ? html`
               <textarea
                 class="decoded-field-input ${multilineClass}"
@@ -744,7 +759,11 @@ export class PayloadDialogController implements ReactiveController {
   }
 
   handleDecodedFieldInput = (event: Event, fieldKey: string) => {
-    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement;
+    const input = event.currentTarget as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    if (fieldKey === "scheme" && this.decodedSnapshot?.className === "wifi_ip") {
+      this.decodedDrafts = wifiIpDraftsWithScheme(this.decodedDrafts, input.value);
+      return;
+    }
     // IR descriptor field: pasting hex flips the dialog to the hex tabs
     // (IR8 format auto-recognition). Complete blobs only, so typing a
     // descriptor with digits never gets hijacked.
@@ -951,9 +970,18 @@ export class PayloadDialogController implements ReactiveController {
     const snapshot = this.decodedSnapshot;
     if (snapshot) {
       const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-      const fields: Record<string, unknown> = {};
-      for (const field of spec.fields) {
-        fields[field.key] = draftToFieldValue(this.decodedDrafts[field.key] ?? "", field);
+      let fields: Record<string, unknown> = {};
+      let trailerHex = snapshot.trailerHex;
+      if (snapshot.className === "wifi_ip") {
+        // The template only seeds the form: the new command is request text
+        // unless it needs a URL record.
+        const record = this.wifiIpRecord(snapshot, false);
+        if (!record) return;
+        ({ fields, trailerHex } = record);
+      } else {
+        for (const field of spec.fields) {
+          fields[field.key] = draftToFieldValue(this.decodedDrafts[field.key] ?? "", field);
+        }
       }
       if (snapshot.className === "wifi_mqtt") {
         // Read-only ids: keep them equal to this device and the id the
@@ -972,7 +1000,7 @@ export class PayloadDialogController implements ReactiveController {
         transport: "hub_code_record",
         decoded: {
           class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
+          trailer_hex: trailerHex,
           fields,
           edited: true,
         },
@@ -1006,18 +1034,31 @@ export class PayloadDialogController implements ReactiveController {
     if (!this.host.bundle) return;
     const snapshot = this.decodedSnapshot;
     if (snapshot) {
-      const changedFields = this.collectChangedDecodedFields(snapshot);
-      if (!changedFields) {
-        this.close();
-        return;
+      let fields: Record<string, unknown>;
+      let trailerHex = snapshot.trailerHex;
+      if (snapshot.className === "wifi_ip") {
+        if (!wifiIpDraftsChanged(snapshot.fields, this.decodedDrafts)) {
+          this.close();
+          return;
+        }
+        const record = this.wifiIpRecord(snapshot, true);
+        if (!record) return;
+        ({ fields, trailerHex } = record);
+      } else {
+        const changedFields = this.collectChangedDecodedFields(snapshot);
+        if (!changedFields) {
+          this.close();
+          return;
+        }
+        fields = { ...snapshot.fields, ...changedFields };
       }
       const restoreData = {
         transport: "hub_code_record",
         data_hex: this.liveFetched?.dataHex ?? "",
         decoded: {
           class: snapshot.className,
-          trailer_hex: snapshot.trailerHex,
-          fields: { ...snapshot.fields, ...changedFields },
+          trailer_hex: trailerHex,
+          fields,
           edited: true,
         },
       };
@@ -1140,6 +1181,22 @@ export class PayloadDialogController implements ReactiveController {
       return;
     }
     const snapshot = this.decodedSnapshot;
+    if (snapshot?.className === "wifi_ip") {
+      // The whole field set is replaced: the edit may switch record kinds.
+      if (wifiIpDraftsChanged(snapshot.fields, this.decodedDrafts)) {
+        const record = this.wifiIpRecord(snapshot, true);
+        if (!record) return;
+        this.host._commitEditBundleEdit(updateCommandDecodedFields(
+          this.host.bundle,
+          target.deviceId,
+          target.commandId,
+          record.fields,
+          { trailerHex: record.trailerHex },
+        ));
+      }
+      this.close();
+      return;
+    }
     if (snapshot) {
       // Structured form: diff against the open-dialog snapshot and only
       // push a bundle update when something changed, so `edited: true`
@@ -1173,7 +1230,26 @@ export class PayloadDialogController implements ReactiveController {
     this.close();
   };
 
+  /**
+   * The wifi_ip record the drafts save as: an edit keeps the command's
+   * kind unless it needs a URL record (shared/wifi-ip-form.ts). Null when
+   * the drafts are refused; the reason is shown in the footer.
+   */
+  wifiIpRecord(snapshot: BackupCommandDecodedBlock, existing: boolean): WifiIpRecord | null {
+    try {
+      return buildWifiIpRecord(this.decodedDrafts, {
+        original: { fields: snapshot.fields, trailerHex: snapshot.trailerHex },
+        existing,
+        isX2: bundleIsX2(this.host.bundle),
+      });
+    } catch (error) {
+      this.error = wifiIpFormErrorText(error);
+      return null;
+    }
+  }
+
   initialDecodedDrafts(decoded: BackupCommandDecodedBlock): Record<string, string> {
+    if (decoded.className === "wifi_ip") return wifiIpDraftsFromFields(decoded.fields);
     const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
     if (!spec) return {};
     const drafts: Record<string, string> = {};

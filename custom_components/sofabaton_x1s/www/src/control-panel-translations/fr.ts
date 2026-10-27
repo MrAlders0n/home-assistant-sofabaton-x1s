@@ -362,7 +362,12 @@ export const TOOLS_CARD_STRINGS_FR = {
   decodedPayload: {
     httpTitle: "Requête HTTP", httpSubtitle: "Les modifications sont rejouées via le module d’écriture wifi_ip du hub. L’hôte, le port et Content-Length sont dérivés ; vous ne les définissez pas ici.",
     hostIpv4: "Hôte (IPv4)", hostExample: "p. ex. 192.168.2.77", port: "Port", httpMethod: "Méthode HTTP", httpMethodExample: "p. ex. GET, POST", path: "Chemin", extraHeaders: "En-têtes supplémentaires",
-    extraHeadersHelper: "Un en-tête par ligne. Host et Content-Length sont ajoutés automatiquement.", contentType: "Type de contenu", body: "Corps", rokuTitle: "Requête Roku ECP", ecpPath: "Chemin d’URL ECP",
+    extraHeadersHelper: "Un en-tête par ligne. Host et Content-Length sont ajoutés automatiquement.", contentType: "Type de contenu", body: "Corps", protocol: "Protocole", host: "Hôte",
+    hostOrNameExample: "Une adresse IPv4 ou un nom d’hôte, p. ex. 192.168.2.77 ou ha.example.com", portDefaultHelper: "Laissez vide pour 80 (http) ou 443 (https).",
+    hostRequired: "Saisissez l’hôte.", hostInvalid: "Saisissez uniquement l’hôte ici. Le port et le chemin ont leurs propres champs.",
+    hostNeedsIpv4: "Saisissez une adresse IPv4, p. ex. 192.168.2.77. Les noms d’hôte et https nécessitent un hub X2.", portInvalid: "Le port doit être un nombre entier compris entre 1 et 65535.",
+    urlMethodUnsupported: "Utilisez GET, POST ou PUT. Les commandes en https ou avec un nom d’hôte, ainsi que celles créées dans l’application Sofabaton, ne prennent en charge que ces méthodes.",
+    headerLineInvalid: "Chaque ligne d’en-tête doit contenir un nom et deux-points, p. ex. X-Api-Key: 123.", rokuTitle: "Requête Roku ECP", ecpPath: "Chemin d’URL ECP",
     ecpPathExample: "p. ex. /launch/12 ou /keypress/Home", hueTitle: "Requête REST Hue", sonosTitle: "Requête UPnP Sonos", bodyBlockSubtitle: "Le bloc de corps est injecté tel quel entre les en-têtes Host et l’écriture réseau.",
     urlPath: "Chemin d’URL", bodyBlock: "Bloc de corps (chaîne réseau brute)", bodyBlockHelper: "Une seule chaîne littérale envoyée à l’appareil. Les retours à la ligne sont affichés sous la forme \\n. Vous gérez vous-même la valeur Content-Length — elle doit correspondre au nombre d’octets du corps.",
     mqttTitle: "Identifiants MQTT", mqttSubtitle: "Les deux octets sont ignorés par le hub : lors d’un appui, il publie ses propres identifiants d’appareil et de touche vers le broker. Il n’y a rien à configurer.",

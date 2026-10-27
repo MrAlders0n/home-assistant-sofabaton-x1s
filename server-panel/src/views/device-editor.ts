@@ -509,9 +509,10 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     const { name, restoreData } = event.detail;
     if (this._offline && dialog.mode === "edit") {
       // The card's backup-mode save: merge the changed fields into the file's block, or replace its raw bytes.
-      const { changedFields, rawHex } = event.detail;
+      const { changedFields, rawHex, replaceFields } = event.detail;
       if (changedFields && commandDecodedBlock(this._working, deviceId, dialog.commandId)) {
-        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields));
+        const trailerHex = String((restoreData.decoded as { trailer_hex?: unknown } | undefined)?.trailer_hex ?? "");
+        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields, replaceFields ? { trailerHex } : undefined));
       } else if (rawHex) {
         this._commit(updateCommandRawPayload(this._working, deviceId, dialog.commandId, rawHex));
       } else {

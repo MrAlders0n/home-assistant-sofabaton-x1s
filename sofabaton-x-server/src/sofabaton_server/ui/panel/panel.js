@@ -13440,6 +13440,16 @@ var TOOLS_CARD_STRINGS_EN = {
     extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
     contentType: "Content type",
     body: "Body",
+    protocol: "Protocol",
+    host: "Host",
+    hostOrNameExample: "An IPv4 address or a host name, e.g. 192.168.2.77 or ha.example.com",
+    portDefaultHelper: "Leave empty for 80 (http) or 443 (https).",
+    hostRequired: "Enter the host.",
+    hostInvalid: "Enter only the host here. The port and the path have their own fields.",
+    hostNeedsIpv4: "Enter an IPv4 address, e.g. 192.168.2.77. Host names and https need an X2 hub.",
+    portInvalid: "The port must be a whole number from 1 to 65535.",
+    urlMethodUnsupported: "Use GET, POST or PUT. Commands with https or a host name, and commands made in the Sofabaton app, support only these.",
+    headerLineInvalid: "Each header line needs a name and a colon, e.g. X-Api-Key: 123.",
     rokuTitle: "Roku ECP request",
     ecpPath: "ECP URL path",
     ecpPathExample: "e.g. /launch/12 or /keypress/Home",
@@ -16870,6 +16880,169 @@ function hubIcon(kind, classes = "") {
   return b2`<ha-icon class=${className.trim()} icon=${icon7}></ha-icon>`;
 }
 
+// custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form.ts
+var WIFI_IP_SCHEMES = ["http", "https"];
+var WIFI_IP_URL_METHODS = ["GET", "POST", "PUT"];
+var WIFI_IP_DRAFT_KEYS = [
+  "scheme",
+  "host",
+  "port",
+  "method",
+  "path",
+  "header",
+  "content_type",
+  "body"
+];
+var WifiIpFormError = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+    this.name = "WifiIpFormError";
+  }
+};
+function wifiIpRecordKind(fields) {
+  return "url" in fields ? "url" : "text";
+}
+function fieldText(value) {
+  return value == null ? "" : String(value);
+}
+function sameLines(a4, b3) {
+  return a4.replace(/\r\n|\r/g, "\n") === b3.replace(/\r\n|\r/g, "\n");
+}
+function splitUrl(url) {
+  const match = /^([A-Za-z][A-Za-z0-9+.-]*):\/\/([^/?#]*)([\s\S]*)$/.exec(url);
+  if (!match) return { scheme: "http", host: url, port: "", path: "" };
+  const [, scheme, authority, path] = match;
+  const withPort = /^(.*):(\d*)$/.exec(authority);
+  return {
+    scheme: scheme.toLowerCase(),
+    host: withPort ? withPort[1] : authority,
+    port: withPort ? withPort[2] : "",
+    path
+  };
+}
+function headerDrafts(pairs) {
+  let contentType = null;
+  const lines = [];
+  for (const pair of Array.isArray(pairs) ? pairs : []) {
+    const [name, value] = Array.isArray(pair) ? [fieldText(pair[0]), fieldText(pair[1])] : ["", ""];
+    if (contentType === null && name.toLowerCase() === "content-type") {
+      contentType = value;
+      continue;
+    }
+    lines.push(`${name}: ${value}`);
+  }
+  return { header: lines.join("\r\n"), contentType: contentType ?? "" };
+}
+function wifiIpDraftsFromFields(fields) {
+  if (wifiIpRecordKind(fields) === "url") {
+    const { scheme, host, port, path } = splitUrl(fieldText(fields.url));
+    const { header, contentType } = headerDrafts(fields.headers);
+    return {
+      scheme,
+      host,
+      port,
+      method: fieldText(fields.method),
+      path,
+      header,
+      content_type: contentType,
+      body: fieldText(fields.body)
+    };
+  }
+  return {
+    scheme: "http",
+    host: fieldText(fields.host),
+    port: fields.port == null ? "" : String(Number(fields.port) || 0),
+    method: fieldText(fields.method),
+    path: fieldText(fields.path),
+    header: fieldText(fields.header),
+    content_type: fieldText(fields.content_type),
+    body: fieldText(fields.body)
+  };
+}
+function wifiIpDraftsChanged(fields, drafts) {
+  const original = wifiIpDraftsFromFields(fields);
+  return WIFI_IP_DRAFT_KEYS.some((key) => !sameLines(drafts[key] ?? "", original[key] ?? ""));
+}
+function wifiIpDraftsWithScheme(drafts, scheme) {
+  const port = String(drafts.port ?? "").trim();
+  const nextPort = scheme === "https" && port === "80" ? "443" : scheme === "http" && port === "443" ? "80" : drafts.port ?? "";
+  return { ...drafts, scheme, port: nextPort };
+}
+function canonicalIpv4(host) {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return null;
+  const octets = match.slice(1).map(Number);
+  return octets.every((octet) => octet <= 255) ? octets.join(".") : null;
+}
+function urlHost(host) {
+  if (/[\s/?#@]/.test(host)) throw new WifiIpFormError("host_invalid");
+  if (host.startsWith("[")) return host;
+  const colons = (host.match(/:/g) ?? []).length;
+  if (colons === 1) throw new WifiIpFormError("host_invalid");
+  return colons ? `[${host}]` : host;
+}
+function urlPath(path) {
+  const trimmed = path.trim();
+  return !trimmed || /^[/?#]/.test(trimmed) ? trimmed : `/${trimmed}`;
+}
+function headerPairs(header, contentType) {
+  const pairs = [];
+  for (const line of header.split(/\r\n|\r|\n/)) {
+    if (!line.trim()) continue;
+    const colon = line.indexOf(":");
+    const name = colon < 0 ? "" : line.slice(0, colon).trim();
+    if (!name) throw new WifiIpFormError("header_line_invalid");
+    pairs.push([name, line.slice(colon + 1).trim()]);
+  }
+  if (contentType.trim()) pairs.push(["Content-Type", contentType.trim()]);
+  return pairs;
+}
+function buildWifiIpRecord(drafts, options) {
+  const { original, existing } = options;
+  const scheme = String(drafts.scheme ?? "").trim().toLowerCase() === "https" ? "https" : "http";
+  const host = String(drafts.host ?? "").trim();
+  if (!host) throw new WifiIpFormError("host_required");
+  const ipv4 = canonicalIpv4(host);
+  const portDraft = String(drafts.port ?? "").trim();
+  const port = portDraft ? Number(portDraft) : null;
+  if (port !== null && !(Number.isInteger(port) && port >= 1 && port <= 65535)) {
+    throw new WifiIpFormError("port_invalid");
+  }
+  const originalKind = original ? wifiIpRecordKind(original.fields) : "text";
+  const keepsUrl = existing && originalKind === "url";
+  const needsUrl = scheme === "https" || ipv4 === null;
+  if (needsUrl && !options.isX2 && !keepsUrl) throw new WifiIpFormError("host_needs_ipv4");
+  const kind = needsUrl || keepsUrl ? "url" : "text";
+  const same2 = original !== null && originalKind === kind ? original : null;
+  const originalDrafts = same2 ? wifiIpDraftsFromFields(same2.fields) : null;
+  const untouched = (...keys) => originalDrafts !== null && keys.every((key) => sameLines(drafts[key] ?? "", originalDrafts[key] ?? ""));
+  const keep = (key, value) => same2 && untouched(key) ? same2.fields[key] : value();
+  const trailerHex = same2 ? same2.trailerHex : "";
+  if (kind === "text") {
+    return {
+      trailerHex,
+      fields: {
+        host: keep("host", () => ipv4),
+        port: keep("port", () => port ?? 80),
+        method: keep("method", () => String(drafts.method ?? "").trim().toUpperCase()),
+        path: keep("path", () => String(drafts.path ?? "").trim() || "/"),
+        header: keep("header", () => String(drafts.header ?? "").replace(/\r\n|\r|\n/g, "\r\n")),
+        content_type: keep("content_type", () => String(drafts.content_type ?? "")),
+        body: keep("body", () => String(drafts.body ?? ""))
+      }
+    };
+  }
+  const method = String(drafts.method ?? "").trim().toUpperCase();
+  if (!WIFI_IP_URL_METHODS.includes(method)) throw new WifiIpFormError("method_unsupported");
+  const url = same2 && untouched("scheme", "host", "port", "path") ? fieldText(same2.fields.url) : `${scheme}://${ipv4 ?? urlHost(host)}${port === null ? "" : `:${port}`}${urlPath(String(drafts.path ?? ""))}`;
+  const headers = same2 && untouched("header", "content_type") ? (Array.isArray(same2.fields.headers) ? same2.fields.headers : []).map((pair) => [...pair]) : headerPairs(String(drafts.header ?? ""), String(drafts.content_type ?? ""));
+  return {
+    trailerHex,
+    fields: { url, method, headers, body: keep("body", () => String(drafts.body ?? "")) }
+  };
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
 function decodedClassFormSpecs() {
   const S8 = TOOLS_CARD_STRINGS.decodedPayload;
@@ -16966,6 +17139,37 @@ var DECODED_CLASS_FORM_SPECS = new Proxy(
     }
   }
 );
+function decodedFormFields(className, isX2) {
+  const fields = DECODED_CLASS_FORM_SPECS[className]?.fields ?? [];
+  if (className !== "wifi_ip" || !isX2) return fields;
+  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
+  return [
+    { key: "scheme", label: S8.protocol, options: WIFI_IP_SCHEMES },
+    ...fields.map((field) => {
+      if (field.key === "host") return { ...field, label: S8.host, helper: S8.hostOrNameExample };
+      if (field.key === "port") return { ...field, helper: S8.portDefaultHelper };
+      return field;
+    })
+  ];
+}
+function wifiIpFormErrorText(error) {
+  const S8 = TOOLS_CARD_STRINGS.decodedPayload;
+  if (!(error instanceof WifiIpFormError)) return error instanceof Error ? error.message : String(error);
+  switch (error.code) {
+    case "host_required":
+      return S8.hostRequired;
+    case "host_invalid":
+      return S8.hostInvalid;
+    case "host_needs_ipv4":
+      return S8.hostNeedsIpv4;
+    case "port_invalid":
+      return S8.portInvalid;
+    case "method_unsupported":
+      return S8.urlMethodUnsupported;
+    case "header_line_invalid":
+      return S8.headerLineInvalid;
+  }
+}
 function normalizeDecodableClass(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (normalized in DECODED_CLASS_FORM_SPECS) {
@@ -17001,7 +17205,7 @@ function commandDecodedBlock(bundle, deviceId, commandId) {
     edited: Boolean(decodedRecord.edited)
   };
 }
-function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
+function updateCommandDecodedFields(bundle, deviceId, commandId, newFields, replace) {
   const normalizedDeviceId = Number(deviceId);
   const normalizedCommandId = Number(commandId);
   return {
@@ -17024,7 +17228,8 @@ function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
               ...restoreData,
               decoded: {
                 ...decodedRecord,
-                fields: { ...existingFields, ...newFields },
+                ...replace ? { trailer_hex: replace.trailerHex } : {},
+                fields: replace ? { ...newFields } : { ...existingFields, ...newFields },
                 edited: true
               }
             }
@@ -24015,9 +24220,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     if (!dialog || deviceId == null || !this._working) return;
     const { name, restoreData } = event.detail;
     if (this._offline && dialog.mode === "edit") {
-      const { changedFields, rawHex } = event.detail;
+      const { changedFields, rawHex, replaceFields } = event.detail;
       if (changedFields && commandDecodedBlock(this._working, deviceId, dialog.commandId)) {
-        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields));
+        const trailerHex = String(restoreData.decoded?.trailer_hex ?? "");
+        this._commit(updateCommandDecodedFields(this._working, deviceId, dialog.commandId, changedFields, replaceFields ? { trailerHex } : void 0));
       } else if (rawHex) {
         this._commit(updateCommandRawPayload(this._working, deviceId, dialog.commandId, rawHex));
       } else {
@@ -25073,6 +25279,7 @@ var SbPayloadDialog = class extends i4 {
     return String(this.hubVersion ?? "").toUpperCase().includes("X2");
   }
   _initialDrafts(block) {
+    if (block.className === "wifi_ip") return wifiIpDraftsFromFields(block.fields);
     const spec = DECODED_CLASS_FORM_SPECS[block.className];
     const drafts = {};
     for (const field of spec?.fields ?? []) drafts[field.key] = fieldValueToDraft(field, block.fields[field.key]);
@@ -25142,6 +25349,10 @@ var SbPayloadDialog = class extends i4 {
   _onFieldInput(field, event) {
     const value = event.currentTarget.value;
     this._error = "";
+    if (this._decoded?.className === "wifi_ip" && field.key === "scheme") {
+      this._drafts = wifiIpDraftsWithScheme(this._drafts, value);
+      return;
+    }
     if (this._decoded?.className === "ir" && field.key === "descriptor") {
       if (this._ucPaste(value)) {
         this._drafts = { ...this._drafts, [field.key]: value };
@@ -25215,6 +25426,20 @@ var SbPayloadDialog = class extends i4 {
   /** The card's live edit: a structured or raw `restore_data` with the `edited` marker; null when nothing changed; undefined on an error shown. */
   _editDetail() {
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      if (!wifiIpDraftsChanged(block.fields, this._drafts)) return null;
+      const record = this._wifiIpRecord(block, true);
+      if (!record) return void 0;
+      return {
+        name: "",
+        ...this.snapshot ? { changedFields: record.fields, replaceFields: true } : {},
+        restoreData: {
+          transport: "hub_code_record",
+          data_hex: this.fetchedHex,
+          decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true }
+        }
+      };
+    }
     if (block) {
       const changed = this._changedFields(block);
       if (!changed) return null;
@@ -25244,6 +25469,11 @@ var SbPayloadDialog = class extends i4 {
       return void 0;
     }
     const block = this._decoded;
+    if (block?.className === "wifi_ip") {
+      const record = this._wifiIpRecord(block, false);
+      if (!record) return void 0;
+      return { name, restoreData: { transport: "hub_code_record", decoded: { class: block.className, trailer_hex: record.trailerHex, fields: record.fields, edited: true } } };
+    }
     if (block) {
       const spec = DECODED_CLASS_FORM_SPECS[block.className];
       const fields = { ...block.fields };
@@ -25260,6 +25490,19 @@ var SbPayloadDialog = class extends i4 {
       return void 0;
     }
     return { name, restoreData: { transport: "hub_code_record", data_hex: normalized } };
+  }
+  /** The wifi_ip record the drafts save as (the card's rule, shared/wifi-ip-form.ts); null with the refusal shown. */
+  _wifiIpRecord(block, existing) {
+    try {
+      return buildWifiIpRecord(this._drafts, {
+        original: { fields: block.fields, trailerHex: block.trailerHex },
+        existing,
+        isX2: this._isX2
+      });
+    } catch (err) {
+      this._error = wifiIpFormErrorText(err);
+      return null;
+    }
   }
   // -- render ---------------------------------------------------------------------------------------
   render() {
@@ -25345,7 +25588,7 @@ var SbPayloadDialog = class extends i4 {
     return b2`
       <div class="decoded-form" data-class=${block.className}>
         ${head}
-        ${(spec?.fields ?? []).map((field) => this._renderField(field))}
+        ${decodedFormFields(block.className, this._isX2).map((field) => this._renderField(field))}
       </div>
     `;
   }
@@ -25356,7 +25599,9 @@ var SbPayloadDialog = class extends i4 {
     return b2`
       <label class="decoded-field" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
-        ${field.multiline ? b2`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows="4" spellcheck="false" .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)}></textarea>` : b2`<input class="decoded-field-input" type=${field.numeric ? "number" : "text"} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)} />`}
+        ${field.options ? b2`<select class="decoded-field-input" @change=${(event) => this._onFieldInput(field, event)}>
+              ${field.options.map((option) => b2`<option value=${option} ?selected=${option === value}>${option}</option>`)}
+            </select>` : field.multiline ? b2`<textarea class="decoded-field-input decoded-field-input--multiline ${field.escapedDisplay ? "decoded-field-input--escaped" : ""}" rows="4" spellcheck="false" .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)}></textarea>` : b2`<input class="decoded-field-input" type=${field.numeric ? "number" : "text"} .value=${value} ?disabled=${Boolean(field.readonly)} @input=${(event) => this._onFieldInput(field, event)} />`}
         ${helper ? b2`<span class="decoded-field-helper ${helperClass}">${helper}</span>` : A}
       </label>
     `;

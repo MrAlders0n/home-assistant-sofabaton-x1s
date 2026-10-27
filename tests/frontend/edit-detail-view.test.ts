@@ -1348,6 +1348,144 @@ test("add-command on an empty IR device keeps the IR path (hex tabs on X1S)", as
   assert.equal(element._payload.decodedSnapshot, null);
 });
 
+// ── One wifi_ip form for request text and X2 URL records ─────────────
+
+const APP_URL_RECORD = {
+  url: "http://192.168.1.161:8080/jsonrpc",
+  method: "POST",
+  headers: [["Content-Type", "application/json"]],
+  body: "{\"id\":1}",
+};
+
+const REQUEST_TEXT_RECORD = {
+  host: "192.168.2.77",
+  port: 80,
+  method: "POST",
+  path: "/launch/12",
+  header: "",
+  content_type: "application/json",
+  body: "",
+};
+
+function wifiIpEditor(model: "X1S" | "X2", mode: "live" | "backup", restoreData?: Record<string, unknown>): EditorElement {
+  const element = createEditor(model, "device");
+  element.bundle = {
+    ...element.bundle!,
+    devices: [
+      ...element.bundle!.devices,
+      {
+        device: { device_id: 9, name: "Kodi", device_class: "wifi_ip" },
+        commands: [{ command_id: 1, name: "Home", ...(restoreData ? { restore_data: restoreData } : {}) }],
+      },
+    ],
+  } as BackupBundlePayload;
+  element.mode = mode;
+  element.entityId = 9;
+  return element;
+}
+
+function savedDecoded(changes: BackupBundlePayload[], commandId = 1) {
+  const device = changes[changes.length - 1].devices.find((row) => row.device?.device_id === 9)!;
+  const row = (device.commands ?? []).find((entry) => Number(entry.command_id) === commandId) as { restore_data: Record<string, any> };
+  return row.restore_data.decoded as { class: string; fields: Record<string, unknown>; trailer_hex: string; edited: boolean };
+}
+
+test("an X2 URL record opens in the HTTP form and a body edit keeps its URL", () => {
+  const element = wifiIpEditor("X2", "live");
+  const changes = collectBundleChanges(element);
+  element._payload.openLive(9, 1, {
+    dataHex: "00 01",
+    decoded: { class: "wifi_ip", trailer_hex: "", fields: APP_URL_RECORD },
+  });
+  const drafts = element._payload.decodedDrafts;
+  assert.equal(drafts.scheme, "http");
+  assert.equal(drafts.host, "192.168.1.161");
+  assert.equal(drafts.port, "8080");
+  assert.equal(drafts.path, "/jsonrpc");
+  assert.equal(drafts.content_type, "application/json");
+  const markup = templateText(element._payload.render());
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.protocol));
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.hostOrNameExample));
+
+  element._payload.decodedDrafts = { ...drafts, body: "{\"id\":2}" };
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const decoded = savedDecoded(changes);
+  assert.deepEqual(decoded.fields, { ...APP_URL_RECORD, body: "{\"id\":2}" });
+  assert.equal(decoded.edited, true);
+});
+
+test("switching a backup command to https replaces its request-text fields", () => {
+  const element = wifiIpEditor("X2", "backup", {
+    transport: "hub_code_record",
+    data_hex: "c0 a8 02 4d",
+    decoded: { class: "wifi_ip", trailer_hex: "f1", fields: REQUEST_TEXT_RECORD },
+  });
+  const changes = collectBundleChanges(element);
+  element._payload.openFromBundle(1);
+  element._payload.handleDecodedFieldInput(controlEvent("https"), "scheme");
+  // A port left at the http default follows the protocol.
+  assert.equal(element._payload.decodedDrafts.port, "443");
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const decoded = savedDecoded(changes);
+  assert.deepEqual(decoded.fields, {
+    url: "https://192.168.2.77:443/launch/12",
+    method: "POST",
+    headers: [["Content-Type", "application/json"]],
+    body: "",
+  });
+  assert.equal(decoded.trailer_hex, "");
+  assert.equal(decoded.edited, true);
+});
+
+test("the X1S form has no protocol and refuses a host name", () => {
+  const element = wifiIpEditor("X1S", "live");
+  const changes = collectBundleChanges(element);
+  element._payload.openLive(9, 1, {
+    dataHex: "00 01",
+    decoded: { class: "wifi_ip", trailer_hex: "f1", fields: REQUEST_TEXT_RECORD },
+  });
+  const markup = templateText(element._payload.render());
+  assert.ok(!markup.includes(TOOLS_CARD_STRINGS.decodedPayload.protocol));
+  assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.hostIpv4));
+
+  element._payload.decodedDrafts = { ...element._payload.decodedDrafts, host: "ha.example.com" };
+  element._payload.apply();
+  assert.equal(changes.length, 0);
+  assert.equal(element._payload.open, true);
+  assert.equal(element._payload.error, TOOLS_CARD_STRINGS.decodedPayload.hostNeedsIpv4);
+});
+
+test("a new command seeded from an app-made URL record saves as request text", async () => {
+  const element = wifiIpEditor("X2", "live");
+  const changes = collectBundleChanges(element);
+  element.fetchCommandPayload = async () => ({
+    dataHex: "00 01",
+    decoded: { class: "wifi_ip", trailer_hex: "", fields: APP_URL_RECORD },
+  });
+  await element._payload.openAdd();
+  assert.equal(element._payload.decodedDrafts.host, "192.168.1.161");
+  element._payload.nameDraft = "Back";
+  element._payload.decodedDrafts = { ...element._payload.decodedDrafts, body: "{\"id\":3}" };
+  element._payload.apply();
+
+  assert.equal(changes.length, 1);
+  const decoded = savedDecoded(changes, 2);
+  assert.deepEqual(decoded.fields, {
+    host: "192.168.1.161",
+    port: 8080,
+    method: "POST",
+    path: "/jsonrpc",
+    header: "",
+    content_type: "application/json",
+    body: "{\"id\":3}",
+  });
+  assert.equal(decoded.trailer_hex, "");
+});
+
 test("macro steps reorder from the keyboard, with or without ha-sortable (CR-F2-11)", () => {
   const element = createEditor("X1S", "device");
   element.entityId = 1;
