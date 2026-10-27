@@ -27,6 +27,7 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Mapping
 
+from .devices import validate_appearance
 from .entity_refs import iter_entity_references
 
 # ── Wire constants (kept local so this module stays import-light/pure) ──
@@ -327,9 +328,13 @@ def build_activity_sync_plan(
     baseline: Mapping[str, Any],
     edited: Mapping[str, Any],
     activity_id: int,
+    *,
+    hub_version: str | None = None,
 ) -> list[SyncStep]:
     """Compute the minimal ordered write plan. Raises ``ValueError`` with a
-    user-readable reason on an out-of-scope diff or a missing activity."""
+    user-readable reason on an out-of-scope diff or a missing activity.
+    ``hub_version``, when given, checks an icon or color change against
+    the icons and colors that hub line offers."""
 
     activity_id = _int(activity_id)
     base_activity = _find_activity(baseline, activity_id)
@@ -357,7 +362,7 @@ def build_activity_sync_plan(
     _plan_macros(base_activity, edit_activity, activity_id, macros, macro_pairing=pairing)
     _plan_bindings(base_activity, edit_activity, activity_id, bindings, macro_pairing=pairing)
     _plan_favorites(base_activity, edit_activity, activity_id, favorites, macro_pairing=pairing)
-    _plan_rename(base_activity, edit_activity, activity_id, rename)
+    _plan_rename(base_activity, edit_activity, activity_id, rename, hub_version=hub_version)
 
     plan = [*prereq, *members, *macros, *bindings, *favorites, *idle, *rename]
     if plan:
@@ -371,6 +376,7 @@ def build_device_sync_plan(
     device_id: int,
     *,
     allow_command_removal: bool = False,
+    hub_version: str | None = None,
 ) -> list[SyncStep]:
     """Device-scoped counterpart of :func:`build_activity_sync_plan`.
 
@@ -378,7 +384,7 @@ def build_device_sync_plan(
     including the power-on/off sequences — and button bindings), its
     idle/power byte, its input records, its command records (payload
     overwrites, renames, and additions flagged ``restore_data.new``),
-    its name and brand, and its head ``ip_address``. Everything else (other head
+    its name, brand, icon and color, and its head ``ip_address``. Everything else (other head
     config, other devices, every activity) must be byte-identical
     between the two bundles.
 
@@ -469,22 +475,25 @@ def build_device_sync_plan(
             )
         )
 
-    base_name = str((base_dev.get("device") or {}).get("name") or "")
-    edit_name = str((edit_dev.get("device") or {}).get("name") or "")
-    base_brand = str((base_dev.get("device") or {}).get("brand") or "")
-    edit_brand = str((edit_dev.get("device") or {}).get("brand") or "")
-    if base_name != edit_name or base_brand != edit_brand:
+    base_block = base_dev.get("device") or {}
+    edit_block = edit_dev.get("device") or {}
+    base_name = str(base_block.get("name") or "")
+    edit_name = str(edit_block.get("name") or "")
+    base_brand = str(base_block.get("brand") or "")
+    edit_brand = str(edit_block.get("brand") or "")
+    appearance = _appearance_changes(base_block, edit_block, hub_version)
+    if base_name != edit_name or base_brand != edit_brand or appearance:
         # The brand slot rides along in the same record rewrite: for managed
         # Wifi Devices the HA layer stamps a refreshed m3-<key>-<hash> brand
         # into the edited bundle so a rename keeps the hub-side brand hash in
-        # step with the command-config store.
-        payload: dict[str, Any] = {"device_id": device_id, "name": edit_name}
+        # step with the command-config store. Icon and color ride it too.
+        payload: dict[str, Any] = {"device_id": device_id, "name": edit_name, **appearance}
         if base_brand != edit_brand:
             payload["brand"] = edit_brand
         rename.append(
             SyncStep(
                 kind="device_rename",
-                label="Renaming the device…",
+                label="Renaming the device…" if base_name != edit_name else "Updating the device…",
                 target_device_id=device_id,
                 payload=payload,
             )
@@ -563,12 +572,11 @@ def _device_immutable_signature(
     block = dict(trimmed.get("device") or {})
     block.pop("idle_behavior", None)
     block.pop("power_mode", None)
-    # The name and brand (device_rename step) and head IP (device_ip step)
-    # are live-editable fields; exclude them from the signature so an edit
-    # to any of them stays in scope.
-    block.pop("name", None)
-    block.pop("brand", None)
-    block.pop("ip_address", None)
+    # The name, brand, icon and color (device_rename step) and head IP
+    # (device_ip step) are live-editable fields; exclude them from the
+    # signature so an edit to any of them stays in scope.
+    for key in ("name", "brand", "icon", "color_id", "ip_address"):
+        block.pop(key, None)
     trimmed["device"] = block
     # A command's *payload* (command_payload step) and *name* (command_rename
     # step) are both live-editable, so normalize each command to its id alone
@@ -1309,19 +1317,44 @@ def _plan_favorites(
         )
 
 
+def _appearance_changes(
+    base_block: Mapping[str, Any],
+    edit_block: Mapping[str, Any],
+    hub_version: str | None,
+) -> dict[str, int]:
+    """The ``icon`` / ``color_id`` an edited ``device`` block changes, as
+    head-step payload fields. Checked against the hub line's icons and
+    colors when the line is known."""
+
+    changes = {
+        key: _int(edit_block[key])
+        for key in ("icon", "color_id")
+        if edit_block.get(key) is not None and edit_block.get(key) != base_block.get(key)
+    }
+    if changes and hub_version is not None:
+        validate_appearance(hub_version, **changes)
+    return changes
+
+
 def _plan_rename(
     base_activity: Mapping[str, Any],
     edit_activity: Mapping[str, Any],
     activity_id: int,
     out: list[SyncStep],
+    *,
+    hub_version: str | None = None,
 ) -> None:
-    base_name = str((base_activity.get("device") or {}).get("name") or "")
-    edit_name = str((edit_activity.get("device") or {}).get("name") or "")
-    if base_name != edit_name:
+    base_block = base_activity.get("device") or {}
+    edit_block = edit_activity.get("device") or {}
+    base_name = str(base_block.get("name") or "")
+    edit_name = str(edit_block.get("name") or "")
+    # Icon and color live in the same row the rename rewrites: one write.
+    appearance = _appearance_changes(base_block, edit_block, hub_version)
+    if base_name != edit_name or appearance:
         out.append(
             SyncStep(
                 kind="activity_rename",
-                label="Renaming the activity…",
-                payload={"activity_id": activity_id, "name": edit_name},
+                label="Renaming the activity…" if base_name != edit_name else "Updating the activity…",
+                payload={"activity_id": activity_id, "name": edit_name, **appearance},
             )
         )

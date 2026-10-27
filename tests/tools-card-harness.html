@@ -976,10 +976,10 @@
       // control_panel/state surfaces the activity summary on the hub state;
       // the Activities tab reads it from here (enriched by cache counts).
       activities: [
-        { id: 101, name: "Watch TV",        favorite_count: 3, macro_count: 1 },
-        { id: 102, name: "Listen to Music", favorite_count: 2, macro_count: 0 },
-        { id: 103, name: "Game Mode",       favorite_count: 5, macro_count: 2 },
-        { id: 104, name: "Good Night",      favorite_count: 1, macro_count: 0 },
+        { id: 101, name: "Watch TV",        icon: 1,  favorite_count: 3, macro_count: 1 },
+        { id: 102, name: "Listen to Music", icon: 3,  favorite_count: 2, macro_count: 0 },
+        { id: 103, name: "Game Mode",       icon: 7,  favorite_count: 5, macro_count: 2 },
+        { id: 104, name: "Good Night",      icon: 12, favorite_count: 1, macro_count: 0 },
       ],
       settings: {
         proxy_enabled:       false,
@@ -1011,15 +1011,15 @@
         entry_id: "hub-1",
         name:     "Living Room",
         activities: [
-          { id: 101, name: "Watch TV",        favorite_count: 3, macro_count: 1 },
-          { id: 102, name: "Listen to Music", favorite_count: 2, macro_count: 0 },
-          { id: 103, name: "Game Mode",       favorite_count: 5, macro_count: 2 },
-          { id: 104, name: "Good Night",      favorite_count: 1, macro_count: 0 },
+          { id: 101, name: "Watch TV",        icon: 1,  favorite_count: 3, macro_count: 1 },
+          { id: 102, name: "Listen to Music", icon: 3,  favorite_count: 2, macro_count: 0 },
+          { id: 103, name: "Game Mode",       icon: 7,  favorite_count: 5, macro_count: 2 },
+          { id: 104, name: "Good Night",      icon: 12, favorite_count: 1, macro_count: 0 },
         ],
         devices_list: [
-          { id: 1, name: "Television",         command_count: 6,  device_class: "ir"   },
-          { id: 2, name: "Soundbar",           command_count: 4,  device_class: "ir"   },
-          { id: 7, name: "WiFi Remote Device", command_count: 12, device_class: "wifi" },
+          { id: 1, name: "Television",         icon: 1,  command_count: 6,  device_class: "ir"   },
+          { id: 2, name: "Soundbar",           icon: 11, command_count: 4,  device_class: "ir"   },
+          { id: 7, name: "WiFi Remote Device", icon: 8,  command_count: 12, device_class: "wifi" },
         ],
         commands: {
           "1": { "10": "Power Toggle", "11": "Volume Up",   "12": "Volume Down",
@@ -1069,7 +1069,7 @@
       schema_version: 5,
       hub: { entry_id: "hub-1", name: "Living Room", version: "X1S" },
       devices: [
-        { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1 },
+        { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1, icon: 1 },
           commands: [
             // Raw payload only (learned IR): exercises the raw-hex payload editor.
             { command_id: 10, name: "Power",
@@ -1090,7 +1090,7 @@
             ] },
           ],
           input_record: { entries: [{ command_id: 12, input_index: 1, name: "Input HDMI1" }] } },
-        { device: { device_id: 2, name: "Soundbar", device_class: "ir", sort: 2 },
+        { device: { device_id: 2, name: "Soundbar", device_class: "ir", sort: 2, icon: 11 },
           commands: [
             { command_id: 20, name: "Power" },
             { command_id: 21, name: "Volume Up" },
@@ -1127,7 +1127,7 @@
           ] },
       ],
       activities: [
-        { device: { device_id: 101, name: "Watch TV", entity_type: "activity", sort: 1 },
+        { device: { device_id: 101, name: "Watch TV", entity_type: "activity", sort: 1, icon: 1 },
           referenced_source_device_ids: [1, 2],
           favorite_slots: [
             { button_id: 1, device_id: 1, command_id: 10, name: "TV Power" },
@@ -1157,7 +1157,7 @@
             { button_id: 0xB0, button_name: "OK", device_id: 1, command_id: 10,
               long_press_device_id: 2, long_press_command_id: 20 },
           ] },
-        { device: { device_id: 102, name: "Listen to Music", entity_type: "activity", sort: 2 },
+        { device: { device_id: 102, name: "Listen to Music", entity_type: "activity", sort: 2, icon: 3 },
           referenced_source_device_ids: [2],
           favorite_slots: [],
           macros: [] },
@@ -1243,7 +1243,7 @@
     // WifiDeviceSummary objects — used in command_devices/list response
     const WIFI_DEVICE_LR = {
       device_key: "dev-lr", device_name: "Living Room Remote",
-      configured_slot_count: 3, deployed_device_id: 12345,
+      configured_slot_count: 3, deployed_device_id: 3,
       ...WIFI_SYNC_IDLE,
     };
     const WIFI_DEVICE_BR = {
@@ -2653,6 +2653,34 @@
         async postLoad(card) {
           await openActivityEditor(card, "Watch TV");
         },
+      },
+      {
+        id: "hub-x2-icons", group: "Hub Tab",
+        label: "Hub — an X2's activities on their colored icon tiles",
+        states: {
+          "remote.living_room": {
+            ...STATES_CONNECTED["remote.living_room"],
+            attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
+          },
+        },
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            activities: [
+              { id: 101, name: "Watch TV",        icon: 5,  color_id: 7, favorite_count: 3, macro_count: 1 },
+              { id: 102, name: "Listen to Music", icon: 3,  color_id: 4, favorite_count: 2, macro_count: 0 },
+              { id: 103, name: "Game Mode",       icon: 7,  color_id: 5, favorite_count: 5, macro_count: 2 },
+              { id: 104, name: "Good Night",      icon: 34, color_id: 3, favorite_count: 1, macro_count: 0 },
+            ],
+            devices_list: [
+              { id: 1, name: "Television",         icon: 18, color_id: 0,  command_count: 6,  device_class: "ir" },
+              { id: 2, name: "Soundbar",           icon: 11, color_id: 8,  command_count: 4,  device_class: "ir" },
+              { id: 7, name: "WiFi Remote Device", icon: 29, color_id: 10, command_count: 12, device_class: "wifi" },
+            ],
+          }],
+        },
+        postLoad: card => clickTab(card, "Hub"),
       },
       {
         id: "cache-refresh-all", group: "Hub Tab",

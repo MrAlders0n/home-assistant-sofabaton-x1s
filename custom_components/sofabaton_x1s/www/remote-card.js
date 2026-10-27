@@ -5205,11 +5205,18 @@ function currentActivityIdFromRemote(remoteState) {
   if (activityId != null) return Number(activityId);
   return null;
 }
+function appearanceOf(source) {
+  return {
+    ...Number.isInteger(source?.icon) ? { icon: Number(source.icon) } : {},
+    ...Number.isInteger(source?.color_id) ? { color_id: Number(source.color_id) } : {}
+  };
+}
 function normalizeActivities(source) {
   return (Array.isArray(source) ? source : []).map((activity) => ({
     id: Number(activity?.id),
     name: String(activity?.name ?? ""),
-    state: String(activity?.state ?? "")
+    state: String(activity?.state ?? ""),
+    ...appearanceOf(activity)
   })).filter((activity) => Number.isFinite(activity.id) && activity.name);
 }
 function activitiesFromRemote(remoteState, isHubIntegration, hubActivitiesCache) {
@@ -5225,7 +5232,8 @@ function devicesFromRemote(remoteState) {
   return (Array.isArray(list) ? list : []).map((device) => ({
     id: Number(device?.id),
     name: String(device?.name ?? ""),
-    device_class: device?.device_class != null ? String(device.device_class) : void 0
+    device_class: device?.device_class != null ? String(device.device_class) : void 0,
+    ...appearanceOf(device)
   })).filter((device) => Number.isFinite(device.id) && device.name);
 }
 function deviceNameForId(devices, deviceId) {

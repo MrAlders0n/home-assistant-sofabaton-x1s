@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { X1_ICON_PATHS, X2_ICON_PATHS } from "../../custom_components/sofabaton_x1s/www/src/shared/x2-icons";
+import { X1_ICON_PATHS, X2_ICON_PATHS } from "../../remote-card/src/entity-icons/x2-icons";
 import * as geometry from "../../scripts/x2-icons/geometry.mjs";
 import { ICONS, X1_ICONS } from "../../scripts/x2-icons/icons.mjs";
 

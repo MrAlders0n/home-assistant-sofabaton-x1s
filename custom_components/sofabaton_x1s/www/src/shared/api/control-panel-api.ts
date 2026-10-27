@@ -33,6 +33,19 @@ import type {
 } from "../ha-context";
 import { TOOLS_CARD_STRINGS } from "../../strings";
 
+/** A new activity's / device's icon and X2 color, when the user picked them. */
+export interface CreateAppearance {
+  icon?: number | null;
+  colorId?: number | null;
+}
+
+function appearanceFields(appearance: CreateAppearance): { icon?: number; color_id?: number } {
+  return {
+    ...(appearance.icon != null ? { icon: appearance.icon } : {}),
+    ...(appearance.colorId != null ? { color_id: appearance.colorId } : {}),
+  };
+}
+
 export class ControlPanelApi {
   constructor(private readonly hass: HassLike) {}
 
@@ -260,23 +273,25 @@ export class ControlPanelApi {
 
   // Create a fresh, empty activity on the hub; resolves with the
   // hub-assigned activity id so the caller can open the live editor on it.
-  createActivity(entryId: string, name: string) {
+  createActivity(entryId: string, name: string, appearance: CreateAppearance = {}) {
     return this.hass.callWS<{ status?: string; activity_id?: number }>({
       type: "sofabaton_x1s/activity/create",
       entry_id: entryId,
       name,
+      ...appearanceFields(appearance),
     });
   }
 
   // Create an EMPTY device of the given class on the hub (Hub tab "Add
   // device"); resolves with the hub-assigned device id so the caller can
   // open the live editor on it. Commands are added there.
-  createDevice(entryId: string, name: string, deviceClass: string) {
+  createDevice(entryId: string, name: string, deviceClass: string, appearance: CreateAppearance = {}) {
     return this.hass.callWS<{ status?: string; device_id?: number }>({
       type: "sofabaton_x1s/device/create",
       entry_id: entryId,
       name,
       device_class: deviceClass,
+      ...appearanceFields(appearance),
     });
   }
 

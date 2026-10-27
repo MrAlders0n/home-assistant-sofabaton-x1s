@@ -891,16 +891,22 @@ class HubOpsMixin:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         return result
 
-    async def async_create_activity(self, name: str) -> dict[str, Any] | None:
+    async def async_create_activity(
+        self, name: str, *, icon: int | None = None, color_id: int | None = None
+    ) -> dict[str, Any] | None:
         """Create a fresh, empty activity named *name* on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.create_activity,
-            name,
+            partial(self._proxy.create_activity, name, icon=icon, color_id=color_id)
         )
 
     async def async_create_device(
-        self, name: str, *, device_class: str
+        self,
+        name: str,
+        *,
+        device_class: str,
+        icon: int | None = None,
+        color_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Create an empty device of *device_class* named *name* on the hub.
 
@@ -913,7 +919,13 @@ class HubOpsMixin:
         """
 
         result = await self.hass.async_add_executor_job(
-            partial(self._proxy.create_device, name, device_class=device_class)
+            partial(
+                self._proxy.create_device,
+                name,
+                device_class=device_class,
+                icon=icon,
+                color_id=color_id,
+            )
         )
         if isinstance(result, dict) and str(result.get("status")) == "success":
             self._devices_generation += 1

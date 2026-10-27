@@ -1012,9 +1012,11 @@ class _CreatingHub(_Hub):
         self._result = result
         self.version = version
         self.created = None
+        self.appearance = None
 
-    async def async_create_device(self, name, *, device_class):
+    async def async_create_device(self, name, *, device_class, icon=None, color_id=None):
         self.created = (name, device_class)
+        self.appearance = (icon, color_id)
         return self._result
 
 
@@ -1073,8 +1075,9 @@ def test_ws_device_create_refuses_names_the_hub_cannot_store(monkeypatch, versio
 
 
 class _CreatingActivityHub(_CreatingHub):
-    async def async_create_activity(self, name):
+    async def async_create_activity(self, name, *, icon=None, color_id=None):
         self.created = name
+        self.appearance = (icon, color_id)
         return self._result
 
 
@@ -1128,6 +1131,32 @@ def test_ws_device_create_accepts_mqtt_on_x2(monkeypatch):
     }))
     assert conn.error is None
     assert hub.created == ("Broker", "wifi_mqtt")
+
+
+def test_ws_device_create_passes_a_picked_icon_and_color(monkeypatch):
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 9}, version="X2")
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 56, "entry_id": "entry-1", "name": "Lamp", "device_class": "ir", "icon": 29, "color_id": 10,
+    }))
+    assert conn.error is None
+    assert hub.appearance == (29, 10)
+
+
+@pytest.mark.parametrize("extra", [{"icon": 17}, {"color_id": 3}])
+def test_ws_device_create_refuses_an_icon_or_color_the_hub_lacks(monkeypatch, extra):
+    # An X1S offers icons 1-16 and no colors.
+    conn = _Conn()
+    hub = _CreatingHub({"status": "success", "device_id": 9}, version="X1S")
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_create(hass, conn, {
+        "id": 57, "entry_id": "entry-1", "name": "Lamp", "device_class": "ir", **extra,
+    }))
+    assert conn.error[1] == "invalid_appearance"
+    assert hub.created is None
 
 
 def test_ws_device_create_reports_failure_when_hub_declines(monkeypatch):

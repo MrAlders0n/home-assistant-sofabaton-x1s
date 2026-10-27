@@ -388,6 +388,31 @@ def test_create_activity_payload_passes_restore_validation(monkeypatch) -> None:
     assert request.favorites == []
 
 
+def test_create_activity_carries_a_picked_icon_and_color(monkeypatch) -> None:
+    proxy = _make_proxy("X2")
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_settle_order", lambda kind, ids: "kept")
+    monkeypatch.setattr(proxy, "sync_remotes_after_write", lambda **kw: True)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        proxy,
+        "restore_activity",
+        lambda payload, **kw: captured.update(payload=payload) or {"status": "success", "activity_id": 0x69},
+    )
+
+    assert proxy.create_activity("Sleep", icon=34, color_id=3) is not None
+    assert (captured["payload"]["device"]["icon"], captured["payload"]["device"]["color_id"]) == (34, 3)
+
+
+def test_create_activity_refuses_an_icon_the_hub_lacks(monkeypatch) -> None:
+    proxy = _make_proxy()  # X1S: icons 1-16, no colors
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "restore_activity", lambda *a, **kw: pytest.fail("must not write"))
+
+    assert proxy.create_activity("Sleep", icon=34) is None
+    assert proxy.create_activity("Sleep", color_id=3) is None
+
+
 def test_create_activity_refuses_empty_name(monkeypatch) -> None:
     proxy = _make_proxy()
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)

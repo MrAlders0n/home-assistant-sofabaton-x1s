@@ -7,6 +7,8 @@ import { phraseNameStyles, phraseWithName } from "../components/phrase-name";
 import { renderWifiDeliveryPanel, wifiDeliveryStyles, type WifiDeliveryBusy } from "../components/wifi-delivery-panel";
 import { HubBrokerFormController, hubBrokerFormStyles } from "../components/hub-broker-form";
 import type {
+  BackupBundlePayload,
+  BackupProgressEvent,
   ControlPanelHubState,
   HassLike,
   HubEventFireEvent,
@@ -31,6 +33,11 @@ import {
 import { sanitizeWifiName } from "../shared/hub-names";
 import { buttonTakeover, hubSupportsPowerInput } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
+import { appearanceEditorStyles, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../components/appearance-editor";
+import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { bundleEntityAppearance, renameBundleDevice, setBundleEntityAppearance } from "./backup-state";
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
@@ -215,6 +222,23 @@ interface WifiCommandSlot {
 
 type SyncState = WifiCommandSyncState;
 
+/** The Edit device dialog of a deployed Wifi Device: its hub record's name,
+ *  icon and (X2) color, written by the editor's device sync. */
+interface WifiDeviceEditDialog {
+  deviceKey: string;
+  deviceId: number;
+  hubVersion: string;
+  /** The name the dialog opened with; an untouched name is not rewritten. */
+  initialName: string;
+  name: string;
+  appearance: AppearanceDraft;
+  /** The hub record is in the cache: without it there is nothing to sync against. */
+  cached: boolean;
+  pickerOpen: boolean;
+  tab: AppearanceTab;
+  error: string;
+}
+
 class SofabatonWifiCommandsTab extends LitElement {
   private static readonly _DEVICE_SESSION_KEY_PREFIX = "sofabaton_x1s:wifi_commands:selected_device:";
 
@@ -291,10 +315,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     _hubEventResetError: { state: true },
     _commandConfigLoadFailed: { state: true },
     _commandsSaveError: { state: true },
+    _editDeviceDialog: { state: true },
+    _deviceEditRunning: { state: true },
+    _deviceEditProgress: { state: true },
     lastHubEvent: { attribute: false },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, wifiDeliveryStyles, hubBrokerFormStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, addButtonStyles, phraseNameStyles, wifiDeliveryStyles, hubBrokerFormStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -682,6 +709,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       outline: none;
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
     }
+    .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
     .dialog-body {
       padding: 16px;
       display: flex;
@@ -878,6 +906,10 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _deliveryBusy: { key: string; kind: Exclude<WifiDeliveryBusy, null> } | null = null;
   private _deliveryError: { key: string; message: string } | null = null;
   private _deliveryLastTest: { key: string; delivery: WifiDelivery } | null = null;
+  // The Edit device dialog (deployed devices only) and the device sync it starts.
+  private _editDeviceDialog: WifiDeviceEditDialog | null = null;
+  private _deviceEditRunning = false;
+  private _deviceEditProgress: BackupProgressEvent | null = null;
   // The hub's MQTT broker link (the create dialog's MQTT option) and the
   // form that points the hub at a broker.
   private readonly _brokerForm = new HubBrokerFormController(this, () => this.hass);
@@ -1099,10 +1131,12 @@ class SofabatonWifiCommandsTab extends LitElement {
                 <button class="back-btn" aria-label=${TOOLS_CARD_STRINGS.common.backAria} @click=${this._goBackToDeviceList}>
                   <ha-icon class="rtl-flip" icon="mdi:arrow-left"></ha-icon>
                 </button>
+                ${this._renderDeviceTile(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
                 <div class="detail-title">${selectedDevice.device_name}</div>
                 ${this._renderTransportPill(selectedDevice)}
               </div>
               <div class="detail-title-actions">
+                ${this._renderEditDeviceButton(selectedDevice, remoteUnavailable || syncRunning || externallyLocked)}
                 ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
               </div>
             </div>
@@ -1110,6 +1144,12 @@ class SofabatonWifiCommandsTab extends LitElement {
           <div class="detail-scroll">
             ${remoteUnavailable
               ? nothing
+              : this._deviceEditRunning
+                ? renderOperationProgress({
+                    mode: "restore",
+                    title: TOOLS_CARD_STRINGS.activities.syncingTitle,
+                    message: localizeBackendProgress(this._deviceEditProgress, "entity_sync"),
+                  })
               : syncRunning
                 ? renderOperationProgress({
                     mode: "wifi-deploy",
@@ -1144,8 +1184,274 @@ class SofabatonWifiCommandsTab extends LitElement {
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
         ${this._renderDevicePowerPickerModal()}
+        ${this._renderEditDeviceDialog()}
       </div>
     `;
+  }
+
+  /** The pencil of a deployed device (name, icon and color of its hub
+   *  record), where the editors keep theirs. A device still waiting for its
+   *  first Sync has no record to edit yet. */
+  private _renderEditDeviceButton(device: WifiDeviceSummary, locked: boolean) {
+    if (this._deployedHubDeviceId(device) == null) return nothing;
+    const label = iconHubLine(this._hubVersion()) != null
+      ? TOOLS_CARD_STRINGS.backup.editDevice
+      : TOOLS_CARD_STRINGS.backup.renameDevice;
+    return html`<button class="icon-btn" title=${label} aria-label=${label} ?disabled=${locked || this._deviceEditRunning} @click=${this._openEditDeviceDialog}>
+      <ha-icon icon="mdi:pencil"></ha-icon>
+    </button>`;
+  }
+
+  /** The deployed device's hub icon beside the title, as in the editors: it
+   *  opens the Edit device dialog with the picker showing. Nothing until the
+   *  remote entity publishes the record's icon (persistent cache on). */
+  private _renderDeviceTile(device: WifiDeviceSummary, locked: boolean) {
+    const deviceId = this._deployedHubDeviceId(device);
+    if (deviceId == null) return nothing;
+    const appearance = this._hubDeviceAppearance(deviceId);
+    const tile = entityTile(this._hubVersion(), appearance.icon, appearance.colorId);
+    if (!tile) return nothing;
+    return renderDetailEntityTile(tile, {
+      label: TOOLS_CARD_STRINGS.backup.editDevice,
+      disabled: locked || this._deviceEditRunning,
+      onClick: () => { void this._openEditDevice(true); },
+    });
+  }
+
+  /** The record's icon and color from the remote entity's `devices` rows. */
+  private _hubDeviceAppearance(deviceId: number): AppearanceDraft {
+    const devices = (this._remoteAttrs() as { devices?: unknown }).devices;
+    const row = Array.isArray(devices)
+      ? (devices.find((item) => Number((item as { id?: unknown })?.id) === deviceId) as Record<string, unknown> | undefined)
+      : undefined;
+    const icon = Number(row?.icon);
+    const colorId = Number(row?.color_id);
+    return {
+      icon: row?.icon != null && Number.isInteger(icon) ? icon : null,
+      colorId: row?.color_id != null && Number.isInteger(colorId) ? colorId : null,
+    };
+  }
+
+  private _deployedHubDeviceId(device: WifiDeviceSummary | null): number | null {
+    const id = Number(device?.deployed_device_id);
+    return Number.isInteger(id) && id >= 1 && id <= 255 ? id : null;
+  }
+
+  private async _captureStructuralBundle(entryId: string): Promise<BackupBundlePayload | null> {
+    try {
+      return (await this.api().getStructuralBundle(entryId))?.bundle ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private _bundleHasDevice(bundle: BackupBundlePayload | null, deviceId: number) {
+    return (bundle?.devices ?? []).some((entry) => Number(entry?.device?.device_id) === deviceId);
+  }
+
+  private _openEditDeviceDialog = () => this._openEditDevice(false);
+
+  /** The header tile opens it with the picker showing. */
+  private async _openEditDevice(pickerOpen: boolean) {
+    const device = this._selectedWifiDevice();
+    const deviceId = this._deployedHubDeviceId(device);
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!device || deviceId == null || !entryId || this._hubCommandLocked() || this._deviceEditRunning) return;
+    const bundle = await this._captureStructuralBundle(entryId);
+    if (entryId !== String(this.hub?.entry_id || "").trim() || this._selectedDeviceKey !== device.device_key) return;
+    const cached = this._bundleHasDevice(bundle, deviceId);
+    const name = this._sanitizeWifiDeviceName(device.device_name);
+    this._editDeviceDialog = {
+      deviceKey: device.device_key,
+      deviceId,
+      hubVersion: String(bundle?.hub?.version || this._hubVersion()),
+      initialName: name,
+      name,
+      appearance: cached ? bundleEntityAppearance(bundle, "device", deviceId) : { icon: null, colorId: null },
+      cached,
+      pickerOpen: pickerOpen && cached,
+      tab: "icon",
+      error: cached ? "" : TOOLS_CARD_STRINGS.activities.needsRefreshTitle,
+    };
+  }
+
+  private _patchEditDeviceDialog(patch: Partial<WifiDeviceEditDialog>) {
+    if (this._editDeviceDialog) this._editDeviceDialog = { ...this._editDeviceDialog, ...patch };
+  }
+
+  private _closeEditDeviceDialog = () => {
+    this._editDeviceDialog = null;
+  };
+
+  private _renderEditDeviceDialog() {
+    const dialog = this._editDeviceDialog;
+    if (!dialog) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const appearance = dialog.cached && iconHubLine(dialog.hubVersion) != null;
+    const nameField = this._renderEditDeviceNameField(dialog);
+    return html`
+      <div class="modal-backdrop" @click=${this._closeEditDeviceDialog}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${appearance ? S.editDevice : S.renameDevice}</div>
+            <button class="dialog-close" aria-label=${TOOLS_CARD_STRINGS.common.closeAria} @click=${this._closeEditDeviceDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${appearance
+              ? renderAppearanceEditor({
+                  hubVersion: dialog.hubVersion,
+                  draft: dialog.appearance,
+                  open: dialog.pickerOpen,
+                  tab: dialog.tab,
+                  nameField,
+                  onToggle: () => this._patchEditDeviceDialog({ pickerOpen: !dialog.pickerOpen }),
+                  onTab: (tab) => this._patchEditDeviceDialog({ tab }),
+                  onPick: (draft) => this._patchEditDeviceDialog({ appearance: draft }),
+                })
+              : nameField}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${dialog.error}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeEditDeviceDialog}>${TOOLS_CARD_STRINGS.common.cancel}</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${!dialog.cached} @click=${this._saveEditDeviceDialog}>${TOOLS_CARD_STRINGS.common.save}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderEditDeviceNameField(dialog: WifiDeviceEditDialog) {
+    const onInput = (event: Event) => {
+      const input = event.currentTarget as HTMLElement & { value: string };
+      const value = this._sanitizeWifiDeviceName(input.value);
+      input.value = value;
+      this._patchEditDeviceDialog(dialog.cached ? { name: value, error: "" } : { name: value });
+    };
+    const onKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Enter") { event.preventDefault(); void this._saveEditDeviceDialog(); }
+    };
+    return this._useLegacyTextField()
+      ? html`
+          <ha-textfield
+            id="sb-edit-device-name"
+            .label=${TOOLS_CARD_STRINGS.wifiCommands.deviceName}
+            .maxLength=${20}
+            .value=${dialog.name}
+            @input=${onInput}
+            @change=${onInput}
+            @keydown=${onKeydown}
+          ></ha-textfield>
+        `
+      : html`
+          <ha-input
+            id="sb-edit-device-name"
+            type="text"
+            .label=${TOOLS_CARD_STRINGS.wifiCommands.deviceName}
+            .maxlength=${20}
+            .value=${dialog.name}
+            @input=${onInput}
+            @change=${onInput}
+            @keydown=${onKeydown}
+          ></ha-input>
+        `;
+  }
+
+  private _saveEditDeviceDialog = async () => {
+    const dialog = this._editDeviceDialog;
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!dialog || !dialog.cached || !entryId) return;
+    const name = this._sanitizeWifiDeviceName(dialog.name).trim();
+    if (!name) {
+      this._patchEditDeviceDialog({ error: TOOLS_CARD_STRINGS.backup.enterName });
+      return;
+    }
+    if (this._hubCommandLocked() || this._deviceEditRunning) {
+      this._patchEditDeviceDialog({ error: TOOLS_CARD_STRINGS.errors.anotherOperation });
+      return;
+    }
+    // A fresh capture: the device sync checks its baseline against the cache.
+    const baseline = await this._captureStructuralBundle(entryId);
+    if (this._editDeviceDialog !== dialog) return;
+    if (!baseline || !this._bundleHasDevice(baseline, dialog.deviceId)) {
+      this._patchEditDeviceDialog({ cached: false, error: TOOLS_CARD_STRINGS.activities.needsRefreshTitle });
+      return;
+    }
+    // Only what the user changed: an untouched name or pick leaves the
+    // record's own bytes, a never-picked color 0 included.
+    const base = bundleEntityAppearance(baseline, "device", dialog.deviceId);
+    const picked = dialog.appearance;
+    const renamed = name !== dialog.initialName ? renameBundleDevice(baseline, dialog.deviceId, name) : baseline;
+    const edited = setBundleEntityAppearance(renamed, "device", dialog.deviceId, {
+      icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+      colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null,
+    });
+    this._editDeviceDialog = null;
+    if (JSON.stringify(edited) === JSON.stringify(baseline)) return;
+    await this._runDeviceEdit(entryId, dialog.deviceKey, dialog.deviceId, baseline, edited);
+  };
+
+  /** The editor's device sync, started from here: the hub record takes the
+   *  name, icon and color, and the store follows the name (a device that
+   *  was in sync stays in sync, entity_sync's managed Wifi rename). */
+  private async _runDeviceEdit(
+    entryId: string,
+    deviceKey: string,
+    deviceId: number,
+    baseline: BackupBundlePayload,
+    edited: BackupBundlePayload,
+  ) {
+    this._deviceEditRunning = true;
+    this._deviceEditProgress = null;
+    let ok = false;
+    try {
+      const start = await this.api().startDeviceSync(entryId, deviceId, baseline, edited);
+      await this._refreshControlPanelState();
+      const result = await this._awaitDeviceEdit(String(start?.operation_id || ""));
+      ok = result.status === "success";
+    } catch {
+      ok = false;
+    } finally {
+      this._deviceEditRunning = false;
+      this._deviceEditProgress = null;
+      this.showCompletion?.(
+        ok
+          ? { tone: "success", label: TOOLS_CARD_STRINGS.activities.syncSuccess }
+          : { tone: "error", label: TOOLS_CARD_STRINGS.errors.syncFailed },
+        entryId,
+      );
+      await this._loadWifiDevices(true);
+      if (this._selectedDeviceKey === deviceKey) await this._loadCommandSyncProgress(true);
+      await this._refreshControlPanelState();
+    }
+  }
+
+  /** Follow the device sync to its end; progress feeds the busy screen. */
+  private _awaitDeviceEdit(operationId: string): Promise<BackupProgressEvent> {
+    return new Promise((resolve, reject) => {
+      let unsub: (() => unknown) | null = null;
+      let settled = false;
+      const finish = (payload: BackupProgressEvent) => {
+        if (settled) return;
+        settled = true;
+        try { unsub?.(); } catch { /* ignore */ }
+        void this.api().clearBackupResult(operationId).catch(() => undefined);
+        resolve(payload);
+      };
+      this.api().subscribeBackupProgress(operationId, (payload) => {
+        if (payload.status === "success" || payload.status === "failed") {
+          finish(payload);
+          return;
+        }
+        this._deviceEditProgress = payload;
+      }).then((off) => {
+        unsub = off as () => unknown;
+        if (settled) {
+          try { unsub(); } catch { /* ignore */ }
+        }
+      }, reject);
+    });
   }
 
   /** The read-only pill of a device row and of the selected device's

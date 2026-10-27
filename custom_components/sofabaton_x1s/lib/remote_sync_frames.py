@@ -186,13 +186,16 @@ def entities_touched_by(steps: Iterable[Any], default_entity: int) -> tuple[int,
     """The entities whose remote copy a write plan changed, in step order:
     each activity a step names (``activity_id`` from 101 up), otherwise
     ``default_entity`` (the device the plan edits, or a device-page step's
-    own device). Remote-neutral steps count for nothing."""
+    own device). Remote-neutral steps count for nothing, except a rename
+    that also carries an icon or color: that rides the same record write,
+    but no bench has shown it reaching the remotes on its own yet."""
 
     touched: list[int] = []
     for step in steps:
-        if getattr(step, "kind", None) in REMOTE_NEUTRAL_STEP_KINDS:
-            continue
         payload = getattr(step, "payload", None) or {}
+        appearance = isinstance(payload, dict) and ("icon" in payload or "color_id" in payload)
+        if getattr(step, "kind", None) in REMOTE_NEUTRAL_STEP_KINDS and not appearance:
+            continue
         activity = payload.get("activity_id") if isinstance(payload, dict) else None
         if activity is not None and int(activity) & 0xFF >= ACTIVITY_ID_BASE:
             touched.append(int(activity) & 0xFF)

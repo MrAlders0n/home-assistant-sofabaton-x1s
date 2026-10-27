@@ -1172,6 +1172,73 @@ def test_device_rename_step_keeps_color_and_bluetooth_mode(monkeypatch):
     assert (written.color_id, written.bt_mode) == (5, 2)
 
 
+def test_activity_rename_step_writes_icon_and_color_into_the_row(monkeypatch):
+    """X1S/X2: icon and color are patched into the hub's own row next to
+    the name, and the cache follows once the hub acks."""
+    from custom_components.sofabaton_x1s.lib.ack import AckOutcome
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        record_appearance,
+    )
+    from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version="X2"
+    )
+    row = build_device_create_payload(
+        DeviceConfig(name="Watch TV", device_id=0x65, icon=5, color_id=7), hub_version="X2"
+    )
+    proxy.state.activities[0x65] = {"name": "Watch TV", "raw_body": row[3:]}
+    proxy._activity_row_payloads[0x65] = row
+    sent: list = []
+    monkeypatch.setattr(
+        proxy, "_status_exchange", lambda *args, **kw: sent.append(args[2]) or AckOutcome.acked
+    )
+
+    assert proxy._sync_step_activity_rename(
+        {"activity_id": 0x65, "name": "Watch TV", "icon": 34, "color_id": 3}
+    ) is True
+    assert record_appearance(sent[0][3:], hub_version="X2") == (34, 3)
+    # Only those two bytes and the cleared confirm flag may differ.
+    assert sum(a != b for a, b in zip(sent[0], row)) <= 3
+    assert record_appearance(proxy.state.activities[0x65]["raw_body"], hub_version="X2") == (34, 3)
+    assert proxy._activity_row_payloads[0x65] == sent[0]
+
+
+def test_device_rename_step_writes_icon_and_color(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Shield", code_type=0x03, device_id=1, icon=1, color_id=5, bt_mode=2)
+    cached = {"raw_body": build_device_create_payload(original, hub_version="X2")[3:], "name": "Shield"}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X2"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+    monkeypatch.setattr(
+        pas, "run_create_sequence", lambda proxy, steps: captured.extend(steps) or SimpleNamespace(success=True)
+    )
+
+    assert RenameProxy()._sync_step_device_rename(
+        {"device_id": 1, "name": "Shield", "icon": 13, "color_id": 11}
+    ) is True
+    written = parse_device_record(bytes(captured[0].payload[3:]), hub_version="X2")
+    assert (written.name, written.icon, written.color_id, written.bt_mode) == ("Shield", 13, 11, 2)
+    assert parse_device_record(cached["raw_body"], hub_version="X2").icon == 13
+
+
 def test_wifi_head_commit_keeps_icon_and_color(monkeypatch):
     """The Wifi Commands head rewrite rebuilds the callback head from
     scratch; the icon and the X2 color must come through it, or every

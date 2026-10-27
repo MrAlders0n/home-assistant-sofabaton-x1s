@@ -2,11 +2,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  entityIconGroups,
   entityIconIds,
+  entityIconName,
   entityIconPath,
   iconHubLine,
-} from "../../custom_components/sofabaton_x1s/www/src/shared/entity-icons";
-import { X1_ICON_PATHS, X2_ICON_PATHS } from "../../custom_components/sofabaton_x1s/www/src/shared/x2-icons";
+} from "../../remote-card/src/entity-icons/entity-icons";
+import {
+  ENTITY_COLOR_IDS,
+  entityColor,
+  entityColorsSupported,
+} from "../../remote-card/src/entity-icons/entity-colors";
+import { entityTile, entityTileBadge } from "../../remote-card/src/entity-icons/entity-tile";
+import { X1_ICON_PATHS, X2_ICON_PATHS } from "../../remote-card/src/entity-icons/x2-icons";
 
 test("iconHubLine reads the line out of a hub version", () => {
   assert.equal(iconHubLine("X1"), "X1");
@@ -25,9 +33,50 @@ test("entityIconIds offers each line's own set", () => {
   assert.deepEqual(entityIconIds(undefined), []);
 });
 
-test("X1S and X2 share ids: the X1S shows X2 paths 1-16", () => {
-  for (const id of entityIconIds("X1S")) assert.equal(entityIconPath("X1S", id), X2_ICON_PATHS[id]);
+test("X1S and X2 share ids: the X1S shows X2 paths 1-16 where the object is the same", () => {
+  // The X2 redrew 4, 5, 6, 9 and 15 as other objects; the X1S keeps its own
+  // (the X1 drawing of that object): 9 stays an AV receiver, not a router.
+  const own: Record<number, number> = { 4: 6, 5: 8, 6: 10, 9: 22, 15: 25 };
+  for (const id of entityIconIds("X1S")) {
+    assert.equal(entityIconPath("X1S", id), own[id] ? X1_ICON_PATHS[own[id]] : X2_ICON_PATHS[id], `X1S icon ${id}`);
+  }
+  assert.equal(entityIconName("X1S", 9), "AV receiver");
+  assert.equal(entityIconName("X2", 9), "Wifi router");
   for (const id of entityIconIds("X2")) assert.equal(entityIconPath("X2", id), X2_ICON_PATHS[id]);
+});
+
+test("every icon of every line has a name, and the picker groups split off the logos", () => {
+  for (const line of ["X1", "X1S", "X2"]) {
+    for (const id of entityIconIds(line)) assert.ok(entityIconName(line, id), `${line} icon ${id}`);
+    const { pictures, services } = entityIconGroups(line);
+    assert.deepEqual([...pictures, ...services].sort((a, b) => a - b), entityIconIds(line));
+  }
+  assert.deepEqual(entityIconGroups("X2").services, [13, 14, 15, 16, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]);
+  assert.deepEqual(entityIconGroups("X1").services, [13, 14, 15, 16, 25]);
+  assert.equal(entityIconName("X1", 2), "HD TV");
+  assert.equal(entityIconName("U2", 2), "");
+});
+
+test("only the X2 has colors; 0 and unknown ids draw grey", () => {
+  assert.equal(entityColorsSupported("X2"), true);
+  assert.equal(entityColorsSupported("X1S"), false);
+  assert.deepEqual(ENTITY_COLOR_IDS, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.equal(entityColor("X2", 7), "#00A8E0");
+  assert.equal(entityColor("X2", 0), "#7F7F7F");
+  assert.equal(entityColor("X2", 13), "#7F7F7F");
+  assert.equal(entityColor("X1S", 7), null);
+});
+
+test("a tile needs a known icon; a neutral one on hubs without colors", () => {
+  assert.equal(entityTile("X2", undefined, 7), null);
+  assert.equal(entityTile("U2", 3, 7), null);
+  assert.deepEqual(entityTile("X2", 16, 2), { path: X2_ICON_PATHS[16], color: "#F16161", name: "Netflix" });
+  assert.deepEqual(entityTile("X1S", 9, 4), { path: X1_ICON_PATHS[22], color: null, name: "AV receiver" });
+  assert.equal(entityTileBadge("ir")?.icon, "mdi:led-outline");
+  assert.equal(entityTileBadge(""), null);
+  assert.equal(entityTileBadge("bluetooth")?.icon, "mdi:bluetooth");
+  assert.equal(entityTileBadge("wifi_mqtt")?.icon, "mdi:wifi");
+  assert.equal(entityTileBadge("rf_433mhz")?.icon, "mdi:radio-tower");
 });
 
 test("every X1 id resolves: its own drawing, else the mapped X2 one", () => {

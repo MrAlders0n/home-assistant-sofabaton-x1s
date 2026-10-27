@@ -525,9 +525,12 @@ export const cardStyles = [secondaryTabStyles, css`
   .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: var(--ha-card-border-radius, 12px); transition: background-color 120ms ease; }
   .entity-summary:hover { background: color-mix(in srgb, var(--primary-color) 5%, var(--secondary-background-color, var(--ha-card-background))); }
   .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-  .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; }
+  /* Clipped sideways only: a device tile's class badge hangs below the tile. */
+  .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow-x: clip; }
   .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--state-icon-color, var(--secondary-text-color)); flex-shrink: 0; }
   .entity-name-icon ha-icon { --mdc-icon-size: 16px; }
+  /* The hub's own icon on its tile (row height unchanged: 30px like the buttons). */
+  .entity-name-icon--tile { --entity-tile-size: 30px; --entity-tile-ring: var(--secondary-background-color, var(--ha-card-background)); }
   .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0; overflow: hidden; }
   .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entity-body { display: none; }
@@ -627,6 +630,19 @@ export const cardStyles = [secondaryTabStyles, css`
   .cache-dialog-select { cursor: pointer; }
   .cache-dialog-select:disabled { cursor: default; opacity: 0.6; }
   .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  /* Add dialogs: the icon (and X2 color) picker, closed until asked for. */
+  .cache-dialog-appearance { display: flex; flex-direction: column; gap: 10px; }
+  .cache-dialog-appearance-toggle {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
+    border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13px; font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color)); cursor: pointer;
+    --entity-tile-size: 32px; --mdc-icon-size: 18px;
+  }
+  .cache-dialog-appearance-toggle:disabled { cursor: default; opacity: 0.6; }
+  .cache-dialog-appearance-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--primary-text-color) 7%, transparent); }
+  .cache-dialog-appearance-tabs button { height: 30px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
+  .cache-dialog-appearance-tabs button.active { background: var(--card-background-color, #fff); color: var(--primary-text-color); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .cache-dialog-appearance-pane { max-height: 200px; overflow-y: auto; padding: 5px; margin: -5px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }

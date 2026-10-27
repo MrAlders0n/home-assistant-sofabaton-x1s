@@ -124,6 +124,9 @@ class Activity:
     ``sort`` is the hub's stored display position (the byte the app's and
     :meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the
     record carries none. ``activities()`` already lists in that order.
+    ``icon`` is the hub's icon id (the app's numbering for the hub line)
+    and ``color_id`` the X2 palette id (``0`` = never picked, None on
+    other hubs); either is None when the record is not cached.
     """
 
     activity_id: int
@@ -131,6 +134,8 @@ class Activity:
     active: bool
     needs_confirm: bool
     sort: int = 0
+    icon: Optional[int] = None
+    color_id: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -147,7 +152,7 @@ class Device:
     the device's power-behaviour mode when known. ``sort`` is the hub's
     stored display position (what :meth:`AsyncXProxy.reorder_devices`
     writes), ``0`` when the record carries none; ``devices()`` already
-    lists in that order.
+    lists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.
     """
 
     device_id: int
@@ -158,6 +163,8 @@ class Device:
     power_state: Optional[int]
     idle_behavior: Optional[int]
     sort: int = 0
+    icon: Optional[int] = None
+    color_id: Optional[int] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

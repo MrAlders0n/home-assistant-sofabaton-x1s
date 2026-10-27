@@ -21,7 +21,7 @@
         "type": "object"
       },
       "Activity": {
-        "description": "One activity from the hub's catalog.\n\n``sort`` is the hub's stored display position (the byte the app's and\n:meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the\nrecord carries none. ``activities()`` already lists in that order.",
+        "description": "One activity from the hub's catalog.\n\n``sort`` is the hub's stored display position (the byte the app's and\n:meth:`AsyncXProxy.reorder_activities` writes set), ``0`` when the\nrecord carries none. ``activities()`` already lists in that order.\n``icon`` is the hub's icon id (the app's numbering for the hub line)\nand ``color_id`` the X2 palette id (``0`` = never picked, None on\nother hubs); either is None when the record is not cached.",
         "properties": {
           "active": {
             "title": "Active",
@@ -30,6 +30,28 @@
           "activity_id": {
             "title": "Activity Id",
             "type": "integer"
+          },
+          "color_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Id"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "name": {
             "title": "Name",
@@ -1378,7 +1400,7 @@
         "type": "object"
       },
       "Device": {
-        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order.",
+        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.",
         "properties": {
           "brand": {
             "anyOf": [
@@ -1390,6 +1412,17 @@
               }
             ],
             "title": "Brand"
+          },
+          "color_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Id"
           },
           "device_class": {
             "anyOf": [
@@ -1416,6 +1449,17 @@
           "device_id": {
             "title": "Device Id",
             "type": "integer"
+          },
+          "icon": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Icon"
           },
           "idle_behavior": {
             "anyOf": [

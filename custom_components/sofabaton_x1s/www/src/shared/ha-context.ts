@@ -73,11 +73,15 @@ export interface ControlPanelHubState {
   /** Backend-computed: the hub is connected and no app client holds it. */
   actions?: { can_find_remote?: boolean; can_sync_remote?: boolean };
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
-  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
+  // icon / color_id: the record's icon id and X2 palette id, absent until
+  // the record is cached (the row then keeps its class glyph).
+  activities?: Array<{ id: number; name?: string; sort?: number; icon?: number; color_id?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
     sort?: number;
+    icon?: number;
+    color_id?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
@@ -157,11 +161,15 @@ export interface CacheHubState {
   /** The generation these rows were read at. */
   cache_generation?: number;
   cache_epoch?: number;
-  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
+  // icon / color_id: the record's icon id and X2 palette id, absent until
+  // the record is cached (the row then keeps its class glyph).
+  activities?: Array<{ id: number; name?: string; sort?: number; icon?: number; color_id?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
     sort?: number;
+    icon?: number;
+    color_id?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
@@ -490,6 +498,11 @@ export interface BackupBundleDeviceBlock {
   // The device record's tail byte. A different value from idle_behavior
   // (it sits at 1 on real hubs) and never stands in for it.
   power_mode?: number | null;
+  // The icon id (record byte 5, the app's numbering for the hub line) and
+  // the X2 palette id (tail byte 22, 0 = none picked). The sync writes both
+  // with the name in one record write.
+  icon?: number | null;
+  color_id?: number | null;
 }
 
 export interface BackupBundleDevicePayload {

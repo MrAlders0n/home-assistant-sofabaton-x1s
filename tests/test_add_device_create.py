@@ -251,6 +251,25 @@ def test_create_device_builds_empty_payload_and_syncs(monkeypatch) -> None:
     assert calls == [("settle", "devices", [0x2A]), ("idle", 0x2A), "resync"]
 
 
+def test_create_device_carries_a_picked_icon_and_color(monkeypatch) -> None:
+    proxy = _make_proxy(HUB_VERSION_X2)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    _stub_tail(monkeypatch, proxy)
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        proxy,
+        "restore_device",
+        lambda payload, **kw: captured.update(payload=payload) or {"status": "success", "device_id": 0x2A},
+    )
+
+    assert proxy.create_device("Lamp", device_class="ir", icon=29, color_id=10) is not None
+    assert (captured["payload"]["device"]["icon"], captured["payload"]["device"]["color_id"]) == (29, 10)
+    # Out of the X2's set: refused before anything is written.
+    captured.clear()
+    assert proxy.create_device("Lamp", device_class="ir", icon=46) is None
+    assert captured == {}
+
+
 def test_create_device_payload_passes_restore_validation(monkeypatch) -> None:
     """The synthetic payload must survive restore_device's own validation
     for every creatable class (including the non-IR classes, which used to
