@@ -41,15 +41,12 @@ export function renderSettingsTab(params: {
   onRenameHub: () => void;
   /** Opens the sidebar panel rename dialog (the card owns the dialog state). */
   onRenameSidebarPanel: () => void;
-  /** The MQTT broker line (decision 9), global: shown on every hub's tab
-   *  while an X2 is configured, absent otherwise. */
+  /** The X2's MQTT broker line (decision 9): per hub, absent for other models. */
   broker?: {
     description: string;
-    /** The X2 reports a broker: the action is Change (behind a warning). */
+    /** The hub reports a broker: the action is Change (behind a warning). */
     connected: boolean;
     loading: boolean;
-    /** The X2 the line is about can take hub actions. */
-    available: boolean;
     onOpen: () => void;
   } | null;
 }) {
@@ -204,23 +201,6 @@ export function renderSettingsTab(params: {
                 <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
               </select>`,
             })}
-            ${params.broker
-              ? (() => {
-                  const broker = params.broker;
-                  const canOpen = !busy && broker.available && !broker.loading;
-                  return renderSettingTile({
-                    title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
-                    description: broker.description,
-                    classes: `action setting-broker${canOpen ? "" : " disabled"}`,
-                    footerLabel: TOOLS_CARD_STRINGS.wifiDelivery.brokerFooter,
-                    control: html`<span class="setting-broker-action">${broker.connected
-                      ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange
-                      : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
-                    onClick: canOpen ? broker.onOpen : undefined,
-                    button: true,
-                  });
-                })()
-              : nothing}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
               description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
@@ -242,6 +222,22 @@ export function renderSettingsTab(params: {
               control: html`<ha-switch .checked=${settingValue("wifi_device_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("wifi_device_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
               onClick: busy ? undefined : () => params.onToggleSetting("wifi_device_enabled", !settingValue("wifi_device_enabled")),
             })}
+            ${params.broker
+              ? (() => {
+                  const broker = params.broker;
+                  const canOpen = canAct && !broker.loading;
+                  return renderSettingTile({
+                    title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
+                    description: broker.description,
+                    classes: `action setting-broker${canOpen ? "" : " disabled"}`,
+                    control: html`<span class="setting-broker-action">${broker.connected
+                      ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange
+                      : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
+                    onClick: canOpen ? broker.onOpen : undefined,
+                    button: true,
+                  });
+                })()
+              : nothing}
             ${renderSettingTile({
               title: TOOLS_CARD_STRINGS.settings.findRemoteTitle,
               description: TOOLS_CARD_STRINGS.settings.findRemoteDescription,

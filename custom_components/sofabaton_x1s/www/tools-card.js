@@ -3591,10 +3591,6 @@ var TOOLS_CARD_STRINGS_EN = {
     useHttpInstead: "Use HTTP",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
-    // The line is global: it shows on every hub's Settings tab while an X2
-    // is configured, and names that X2 on another hub's tab.
-    brokerFooter: "GLOBAL",
-    brokerForHub: (hub, status) => `${hub}: ${status}`,
     brokerLoading: "Checking the hub's broker connection\u2026",
     brokerConnected: "The hub is connected to an MQTT broker.",
     brokerNotConnected: "The hub is not connected to an MQTT broker.",
@@ -4542,11 +4538,6 @@ function localizeBackendProgress(progress, operationOverride) {
 function selectedHub(snapshot) {
   const hubs = snapshot.state?.hubs ?? [];
   return hubs.find((hub) => hub.entry_id === snapshot.selectedHubEntryId) ?? hubs[0] ?? null;
-}
-function brokerHub(snapshot) {
-  const selected = selectedHub(snapshot);
-  if (selected?.broker_setup_available === true) return selected;
-  return (snapshot.state?.hubs ?? []).find((hub) => hub.broker_setup_available === true) ?? null;
 }
 function creatableDeviceClasses(hubVersion) {
   switch (String(hubVersion ?? "")) {
@@ -6813,19 +6804,6 @@ function renderSettingsTab(params) {
                 <option value="admin" ?selected=${params.sidebarPanelMode === "admin"}>${TOOLS_CARD_STRINGS.settings.sidebarPanelOptionAdmin}</option>
               </select>`
   })}
-            ${params.broker ? (() => {
-    const broker = params.broker;
-    const canOpen = !busy && broker.available && !broker.loading;
-    return renderSettingTile({
-      title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
-      description: broker.description,
-      classes: `action setting-broker${canOpen ? "" : " disabled"}`,
-      footerLabel: TOOLS_CARD_STRINGS.wifiDelivery.brokerFooter,
-      control: b2`<span class="setting-broker-action">${broker.connected ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
-      onClick: canOpen ? broker.onOpen : void 0,
-      button: true
-    });
-  })() : A}
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
     description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
@@ -6856,6 +6834,18 @@ function renderSettingsTab(params) {
     }}></ha-switch>`,
     onClick: busy ? void 0 : () => params.onToggleSetting("wifi_device_enabled", !settingValue("wifi_device_enabled"))
   })}
+            ${params.broker ? (() => {
+    const broker = params.broker;
+    const canOpen = canAct && !broker.loading;
+    return renderSettingTile({
+      title: TOOLS_CARD_STRINGS.wifiDelivery.brokerTitle,
+      description: broker.description,
+      classes: `action setting-broker${canOpen ? "" : " disabled"}`,
+      control: b2`<span class="setting-broker-action">${broker.connected ? TOOLS_CARD_STRINGS.wifiDelivery.brokerChange : TOOLS_CARD_STRINGS.wifiDelivery.brokerSetUp}</span>`,
+      onClick: canOpen ? broker.onOpen : void 0,
+      button: true
+    });
+  })() : A}
             ${renderSettingTile({
     title: TOOLS_CARD_STRINGS.settings.findRemoteTitle,
     description: TOOLS_CARD_STRINGS.settings.findRemoteDescription,
@@ -25047,12 +25037,12 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._lastRenderedTab = this._snapshot.selectedTab;
     this.syncBrokerLine();
   }
-  /** The Settings tab reads the broker link of the X2 its global broker
-   *  line is about (one hub exchange per X2); other tabs never ask. */
+  /** The Settings tab reads an X2's broker link once per hub it shows (one
+   *  hub exchange); other tabs and models never ask. */
   syncBrokerLine() {
-    const hub = brokerHub(this._snapshot);
+    const hub = selectedHub(this._snapshot);
     const entryId = String(hub?.entry_id ?? "");
-    const wanted = this._snapshot.selectedTab === "settings" && entryId !== "";
+    const wanted = this._snapshot.selectedTab === "settings" && hub?.broker_setup_available === true && entryId !== "";
     if (!wanted) {
       if (this._brokerForm.loadedFor && this._brokerForm.loadedFor !== entryId) this._brokerForm.reset();
       return;
@@ -25658,7 +25648,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     const sharedHubCommandBusy = Boolean(
       runtimeOperationBusy || hubRefreshing || hubExternalLabel !== null || this._snapshot.pendingActionKey
     );
-    const x2 = brokerHub(this._snapshot);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -25677,17 +25666,12 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
       onRenameSidebarPanel: () => this.openSidebarRename(),
-      broker: x2 ? {
-        // On another hub's tab the line names the X2 it is about.
-        description: x2.entry_id === hub?.entry_id ? this._brokerForm.renderSettingDescription() : TOOLS_CARD_STRINGS.wifiDelivery.brokerForHub(
-          x2.name || TOOLS_CARD_STRINGS.settings.unknownHubName,
-          this._brokerForm.renderSettingDescription()
-        ),
+      broker: hub?.broker_setup_available === true ? {
+        description: this._brokerForm.renderSettingDescription(),
         connected: this._brokerForm.state?.hub_connected === true,
         loading: this._brokerForm.loading,
-        available: canRunHubActions(this._snapshot.hass, x2),
         // The setup answers with the link state after it: nothing to reload.
-        onOpen: () => this._brokerForm.openFor(x2.entry_id)
+        onOpen: () => this._brokerForm.openFor(hub.entry_id)
       } : null
     });
     if (this._snapshot.selectedTab === "logs") {

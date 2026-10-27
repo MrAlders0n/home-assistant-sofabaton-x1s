@@ -512,8 +512,6 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
     setUpNow: "设置",
     useHttpInstead: "使用 HTTP",
     brokerTitle: "MQTT broker",
-    brokerFooter: "全局",
-    brokerForHub: (hub: string, status: string) => `${hub}：${status}`,
     brokerLoading: "正在检查 Hub 的 broker 连接…",
     brokerConnected: "Hub 已连接到 MQTT broker。",
     brokerNotConnected: "Hub 未连接到 MQTT broker。",

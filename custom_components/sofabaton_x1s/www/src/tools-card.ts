@@ -17,8 +17,6 @@ import type {
 } from "./shared/ha-context";
 import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
-  brokerHub,
-  canRunHubActions,
   hubActivities,
   hubDevices,
   hubClickAction,
@@ -454,12 +452,14 @@ class SofabatonControlPanelCard extends LitElement {
     this.syncBrokerLine();
   }
 
-  /** The Settings tab reads the broker link of the X2 its global broker
-   *  line is about (one hub exchange per X2); other tabs never ask. */
+  /** The Settings tab reads an X2's broker link once per hub it shows (one
+   *  hub exchange); other tabs and models never ask. */
   private syncBrokerLine() {
-    const hub = brokerHub(this._snapshot);
+    const hub = selectedHub(this._snapshot);
     const entryId = String(hub?.entry_id ?? "");
-    const wanted = this._snapshot.selectedTab === "settings" && entryId !== "";
+    const wanted = this._snapshot.selectedTab === "settings"
+      && hub?.broker_setup_available === true
+      && entryId !== "";
     if (!wanted) {
       if (this._brokerForm.loadedFor && this._brokerForm.loadedFor !== entryId) this._brokerForm.reset();
       return;
@@ -1193,7 +1193,6 @@ class SofabatonControlPanelCard extends LitElement {
       hubExternalLabel !== null ||
       this._snapshot.pendingActionKey,
     );
-    const x2 = brokerHub(this._snapshot);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -1212,20 +1211,13 @@ class SofabatonControlPanelCard extends LitElement {
       onRunAction: (action) => this.handleAction(action),
       onRenameHub: () => this.openHubRename(),
       onRenameSidebarPanel: () => this.openSidebarRename(),
-      broker: x2
+      broker: hub?.broker_setup_available === true
         ? {
-            // On another hub's tab the line names the X2 it is about.
-            description: x2.entry_id === hub?.entry_id
-              ? this._brokerForm.renderSettingDescription()
-              : TOOLS_CARD_STRINGS.wifiDelivery.brokerForHub(
-                x2.name || TOOLS_CARD_STRINGS.settings.unknownHubName,
-                this._brokerForm.renderSettingDescription(),
-              ),
+            description: this._brokerForm.renderSettingDescription(),
             connected: this._brokerForm.state?.hub_connected === true,
             loading: this._brokerForm.loading,
-            available: canRunHubActions(this._snapshot.hass, x2),
             // The setup answers with the link state after it: nothing to reload.
-            onOpen: () => this._brokerForm.openFor(x2.entry_id),
+            onOpen: () => this._brokerForm.openFor(hub.entry_id),
           }
         : null,
     });

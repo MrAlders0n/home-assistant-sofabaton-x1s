@@ -702,24 +702,27 @@ test.describe("tools-card browser harness", () => {
     expect(calls.some((call) => call.message?.type === "sofabaton_x1s/hub_mqtt/setup")).toBe(false);
   });
 
-  test("the broker line is global: last of the GLOBAL rows, shown on another hub's tab naming the X2", async ({ page }) => {
+  test("the broker line is per hub: absent on another hub's tab, a hub row on the X2's own", async ({ page }) => {
     await page.goto("/tests/tools-card-harness.html");
     await page.evaluate(() => window.__toolsCardHarness.loadScenario("settings-x2-broker-other-hub"));
-    const tile = () => page.evaluate(() =>
-      window.__toolsCardHarness.getCard().shadowRoot?.querySelector(".setting-broker")?.textContent?.replace(/\s+/g, " ").trim() ?? "");
-    await expect.poll(tile).toContain("Basement X2: The hub is connected to an MQTT broker.");
-    expect(await tile()).toContain("Change");
-    const rows = await page.evaluate(() =>
+    const rows = () => page.evaluate(() =>
       [...window.__toolsCardHarness.getCard().shadowRoot.querySelectorAll(".settings-list .setting-tile")].map((row) => ({
         broker: row.classList.contains("setting-broker"),
         global: Boolean(row.querySelector(".setting-global-tag")),
+        text: row.textContent.replace(/\s+/g, " ").trim(),
       })));
-    const brokerIndex = rows.findIndex((row) => row.broker);
-    expect(rows[brokerIndex].global).toBe(true);
-    // Every row before it is global, none after it.
-    expect(rows.slice(0, brokerIndex).every((row) => row.global)).toBe(true);
-    expect(rows.slice(brokerIndex + 1).some((row) => row.global)).toBe(false);
-    await page.evaluate(() => window.__toolsCardHarness.getCard().shadowRoot.querySelector(".setting-broker").click());
-    await page.waitForFunction(() => Boolean(window.__toolsCardHarness.getCard().shadowRoot.querySelector(".broker-warning")));
+    await expect.poll(async () => (await rows()).length).toBeGreaterThan(0);
+    // The X1S's tab has no broker line, and nothing asks the X2 for one.
+    expect((await rows()).some((row) => row.broker)).toBe(false);
+    const brokerCalls = () => page.evaluate(() =>
+      window.__toolsCardHarness.getCalls().filter((call) => String(call.message?.type ?? "").startsWith("sofabaton_x1s/hub_mqtt/")).length);
+    expect(await brokerCalls()).toBe(0);
+    await page.evaluate(() => window.__toolsCardHarness.getCard()._store.selectHub("hub-x2"));
+    await expect.poll(async () => (await rows()).find((row) => row.broker)?.text ?? "")
+      .toContain("The hub is connected to an MQTT broker.");
+    const tile = (await rows()).find((row) => row.broker);
+    expect(tile.global).toBe(false);
+    expect(tile.text).not.toContain("Basement X2");
+    expect(tile.text).toContain("Change");
   });
 });

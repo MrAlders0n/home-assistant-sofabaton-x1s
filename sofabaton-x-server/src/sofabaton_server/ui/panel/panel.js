@@ -13704,10 +13704,6 @@ var TOOLS_CARD_STRINGS_EN = {
     useHttpInstead: "Use HTTP",
     // The hub's broker (Settings tab line and the setup dialog).
     brokerTitle: "MQTT broker",
-    // The line is global: it shows on every hub's Settings tab while an X2
-    // is configured, and names that X2 on another hub's tab.
-    brokerFooter: "GLOBAL",
-    brokerForHub: (hub, status) => `${hub}: ${status}`,
     brokerLoading: "Checking the hub's broker connection\u2026",
     brokerConnected: "The hub is connected to an MQTT broker.",
     brokerNotConnected: "The hub is not connected to an MQTT broker.",

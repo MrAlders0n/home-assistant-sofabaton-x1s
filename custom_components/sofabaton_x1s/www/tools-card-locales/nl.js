@@ -1048,8 +1048,6 @@ var TOOLS_CARD_STRINGS_NL = {
     setUpNow: "Instellen",
     useHttpInstead: "HTTP gebruiken",
     brokerTitle: "MQTT-broker",
-    brokerFooter: "ALGEMEEN",
-    brokerForHub: (hub, status) => `${hub}: ${status}`,
     brokerLoading: "Brokerverbinding van de hub controleren\u2026",
     brokerConnected: "De hub is verbonden met een MQTT-broker.",
     brokerNotConnected: "De hub is niet verbonden met een MQTT-broker.",

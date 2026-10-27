@@ -1045,8 +1045,6 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     setUpNow: "\u8BBE\u7F6E",
     useHttpInstead: "\u4F7F\u7528 HTTP",
     brokerTitle: "MQTT broker",
-    brokerFooter: "\u5168\u5C40",
-    brokerForHub: (hub, status) => `${hub}\uFF1A${status}`,
     brokerLoading: "\u6B63\u5728\u68C0\u67E5 Hub \u7684 broker \u8FDE\u63A5\u2026",
     brokerConnected: "Hub \u5DF2\u8FDE\u63A5\u5230 MQTT broker\u3002",
     brokerNotConnected: "Hub \u672A\u8FDE\u63A5\u5230 MQTT broker\u3002",

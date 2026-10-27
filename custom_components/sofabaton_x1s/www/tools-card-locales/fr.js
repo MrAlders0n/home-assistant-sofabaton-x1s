@@ -1045,8 +1045,6 @@ var TOOLS_CARD_STRINGS_FR = {
     setUpNow: "Configurer",
     useHttpInstead: "Utiliser HTTP",
     brokerTitle: "Broker MQTT",
-    brokerFooter: "GLOBAL",
-    brokerForHub: (hub, status) => `${hub}\xA0: ${status}`,
     brokerLoading: "V\xE9rification de la connexion du hub au broker\u2026",
     brokerConnected: "Le hub est connect\xE9 \xE0 un broker MQTT.",
     brokerNotConnected: "Le hub n\u2019est connect\xE9 \xE0 aucun broker MQTT.",
