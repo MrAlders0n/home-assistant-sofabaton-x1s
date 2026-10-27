@@ -33,7 +33,7 @@ import {
 import { sanitizeWifiName } from "../shared/hub-names";
 import { buttonTakeover, hubSupportsPowerInput } from "../shared/hub-rules";
 import { TOOLS_CARD_STRINGS } from "../strings";
-import { appearanceEditorStyles, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../components/appearance-editor";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../../../remote-card/src/entity-icons/appearance-editor";
 import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
 import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
@@ -710,6 +710,10 @@ class SofabatonWifiCommandsTab extends LitElement {
       box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
     }
     .icon-btn:disabled { opacity: 0.42; cursor: default; pointer-events: none; }
+    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
+    @container sofabaton-card (max-width: 420px) {
+      .detail-entity-tile { display: none; }
+    }
     .dialog-body {
       padding: 16px;
       display: flex;
@@ -1304,6 +1308,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                   open: dialog.pickerOpen,
                   tab: dialog.tab,
                   nameField,
+                  labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
                   onToggle: () => this._patchEditDeviceDialog({ pickerOpen: !dialog.pickerOpen }),
                   onTab: (tab) => this._patchEditDeviceDialog({ tab }),
                   onPick: (draft) => this._patchEditDeviceDialog({ appearance: draft }),

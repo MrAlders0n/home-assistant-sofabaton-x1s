@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from functools import partial
@@ -98,8 +99,14 @@ WIFI_SYNC_FAILURE_MESSAGES: dict[str, str] = {
     "mqtt_not_connected": "Home Assistant's MQTT integration is not connected to a broker.",
     "hub_mqtt_not_connected": "The hub is not connected to an MQTT broker.",
     "redeploy_needed": "This Wifi Device must be synced again before it can be tested.",
+    "remote_syncing": "The hub is updating its remote. Wait until the remote is done, then sync again.",
     "sync_failed": "The sync stopped. Sync again.",
 }
+
+
+def _refused_during_remote_sync(proxy: object, started: float) -> bool:
+    check = getattr(proxy, "refused_during_remote_sync", None)
+    return bool(check(started)) if callable(check) else False
 
 
 class WifiSyncError(HomeAssistantError):
@@ -665,6 +672,17 @@ class WifiDeployMixin:
             steps.append(step)
         return replace(plan, steps=tuple(steps))
 
+    def _raise_if_remote_syncing(self, started: float) -> None:
+        """A write the hub refused while it was updating its remote (a
+        STATUS_ACK 0x04 soon after this engine's last remote-sync trigger)
+        stops the sync with the code that says so: wait, then sync again."""
+
+        if _refused_during_remote_sync(self._proxy, started):
+            raise WifiSyncError(
+                "remote_syncing",
+                "The hub refused a write while it was still updating its remote",
+            )
+
     async def _async_try_inplace_command_sync(
         self,
         *,
@@ -931,6 +949,7 @@ class WifiDeployMixin:
 
                 loop.call_soon_threadsafe(_inner)
 
+            plan_started = time.monotonic()
             result = await self.hass.async_add_executor_job(
                 partial(self._proxy.run_wifi_inplace_plan, plan, progress_callback=_progress)
             )
@@ -951,6 +970,7 @@ class WifiDeployMixin:
                         self.entry_id,
                         exc_info=True,
                     )
+                self._raise_if_remote_syncing(plan_started)
                 raise WifiSyncError("inplace_failed", f"In-place sync failed: {message}")
             item_synced = set(result.get("item_synced") or ())
         else:
@@ -1569,6 +1589,7 @@ class WifiDeployMixin:
             phase="creating_device",
             message="Creating Wifi Device on Hub",
         )
+        create_started = time.monotonic()
         if selected_transport == WIFI_TRANSPORT_MQTT:
             created = await self.async_create_wifi_mqtt_device(
                 device_name=device_name,
@@ -1596,6 +1617,7 @@ class WifiDeployMixin:
                 send_remote_sync=False,
             )
         if not created or not created.get("device_id"):
+            self._raise_if_remote_syncing(create_started)
             raise WifiSyncError("create_failed", "Failed creating Wifi Device")
 
         wifi_device_id = int(created["device_id"])

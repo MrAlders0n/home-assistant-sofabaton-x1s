@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
+import { appearanceToggleStyles } from "../../../../remote-card/src/entity-icons/appearance-editor";
 import { entityPickerStyles } from "../../../../remote-card/src/entity-icons/entity-picker";
 import { entityTileStyles } from "../../../../remote-card/src/entity-icons/entity-tile";
 import { applyThemePolarity } from "./shared/styles/theme-polarity";
@@ -197,7 +198,7 @@ const previewStyles = css`
 `;
 
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles, entityTileStyles, entityPickerStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles];
+  static styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so

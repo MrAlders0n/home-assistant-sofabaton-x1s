@@ -67,7 +67,7 @@ from .discovery import (  # noqa: F401
 )
 
 # Device catalog records and provisioning flows.
-from .devices import DeviceConfig, device_config_from_backup, parse_device_record  # noqa: F401
+from .devices import DeviceConfig, device_config_from_backup, parse_device_record, validate_appearance  # noqa: F401
 from .device_create import (  # noqa: F401
     DeviceCreateRequest,
     DeviceCreateResult,
@@ -153,6 +153,7 @@ from .errors import (  # noqa: F401
     SnapshotOutdatedError,
     StateDocumentError,
     HubRejectedError,
+    RemoteSyncInProgressError,
     WifiUpdateDeclined,
     WifiUpdateFailed,
     IrLearnError,
@@ -217,6 +218,7 @@ _CURATED = [
     "DeviceConfig",
     "device_config_from_backup",
     "parse_device_record",
+    "validate_appearance",
     "DeviceCreateRequest",
     "DeviceCreateResult",
     "run_device_create",
@@ -275,6 +277,7 @@ _CURATED = [
     "SnapshotOutdatedError",
     "StateDocumentError",
     "HubRejectedError",
+    "RemoteSyncInProgressError",
     "IrLearnError",
     "WifiUpdateDeclined",
     "WifiUpdateFailed",

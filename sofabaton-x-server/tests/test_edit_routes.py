@@ -290,3 +290,53 @@ def test_failed_sync_is_a_failed_job_carrying_the_result(tmp_path: Path) -> None
         r = client.post(f"{H}/activities/101/rename", json={"name": "Movie"})
         job = _wait(client, r.json()["job_id"])
         assert job["error"]["status"] == 502 and job["result"]["completed_steps"] == 1
+
+
+def test_icons_and_colors_are_checked_against_the_hub_line(tmp_path: Path) -> None:
+    client, factory = _rig(tmp_path)  # an X1S: icons 1-16, no colors
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+
+        # Creates carry an icon; one the hub line lacks, or a color off the X2, is a 422 before any job.
+        r = client.post(f"{H}/devices", json={"name": "Fan", "device_class": "ir", "icon": 9})
+        assert r.status_code == 202 and _wait(client, r.json()["job_id"])["status"] == "done"
+        assert proxy.create_appearance == (9, None)
+        r = client.post(f"{H}/activities", json={"name": "Read", "icon": 4})
+        assert r.status_code == 202 and _wait(client, r.json()["job_id"])["status"] == "done"
+        assert proxy.create_appearance == (4, None)
+        intents = len(proxy.intents)
+        r = client.post(f"{H}/devices", json={"name": "Lamp", "device_class": "ir", "icon": 30})
+        assert r.status_code == 422 and r.json()["type"] == "invalid_appearance", r.text
+        r = client.post(f"{H}/activities", json={"name": "Nap", "color_id": 3})
+        assert r.status_code == 422 and r.json()["type"] == "invalid_appearance", r.text
+        assert client.post(f"{H}/activities", json={"name": "Nap", "icon": 46}).status_code == 422
+        assert len(proxy.intents) == intents
+
+        # A row edit's changed icon goes to the sync; one the hub line lacks is a 422, not a failed job.
+        proxy.fetched = {1, 2, 101, 102}
+        doc, etag = _snapshot(client)
+        device = copy.deepcopy(next(d for d in doc["devices"] if d["device"]["device_id"] == 1))
+        device["device"]["icon"] = 99
+        r = client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})
+        assert r.status_code == 422 and r.json()["type"] == "invalid_appearance", r.text
+        device["device"]["icon"] = 12
+        r = client.post(f"{H}/devices/1/plan", json=device)
+        assert r.status_code == 200, r.text
+        r = client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})
+        assert r.status_code == 202, r.text
+        _wait(client, r.json()["job_id"])
+        edited = next(d for d in proxy.syncs[-1]["edited"]["devices"] if d["device"]["device_id"] == 1)
+        assert edited["device"]["icon"] == 12
+
+
+def test_a_write_refused_while_the_remote_updates_is_a_409_to_retry(tmp_path: Path) -> None:
+    client, factory = _rig(tmp_path)
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+        proxy.remote_syncing = True
+        r = client.post(f"{H}/activities", json={"name": "Read"})
+        job = _wait(client, r.json()["job_id"])
+        assert job["status"] == "failed" and job["error"]["type"] == "remote_syncing" and job["error"]["status"] == 409
+        assert job["error"]["title"] == "The hub is updating its remote"

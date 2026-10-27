@@ -14,6 +14,10 @@ export const editDetailViewStyles = css`
     /* The same pill as a two-option select (the delivery switch). */
     select.transport-select { appearance: none; -webkit-appearance: none; cursor: pointer; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: normal; padding-right: 20px; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 11px) 55%, calc(100% - 7px) 55%; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
     select.transport-select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+    /* A narrow card gives the room to the title; the pencil opens the same dialog. */
+    @container sofabaton-card (max-width: 420px) {
+      .detail-entity-tile { display: none; }
+    }
     /* Glanceable member roster under the Activity power-sequence rows. */
     .power-members-summary {
       padding: 8px 4px 0;

@@ -54,6 +54,10 @@ import {
 } from "@mdi/js";
 
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../remote-card/src/entity-icons/appearance-editor";
+import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
 import { deliveryFailed, formatLatency, targetPort } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/wifi-delivery";
 
 import { jobOutcomeText, problemText, type ApiResponse, type CallbackListener, type JobView, type MqttState, type PanelApi, type WifiDeviceList, type WifiDeviceView } from "../panel-api";
@@ -102,6 +106,7 @@ import {
 } from "./wifi-devices-state";
 
 const S = TOOLS_CARD_STRINGS.wifiCommands;
+const B = TOOLS_CARD_STRINGS.backup;
 const A = TOOLS_CARD_STRINGS.activities;
 const D = TOOLS_CARD_STRINGS.wifiDelivery;
 
@@ -194,6 +199,9 @@ export class SbPanelWifiDevices extends LitElement {
 
   static styles = [
     PANEL_BASE_CSS,
+    entityTileStyles,
+    entityPickerStyles,
+    appearanceEditorStyles,
     EDITOR_CSS,
     FIRMWARE_BLOCK_CSS,
     OPERATION_PROGRESS_CSS,
@@ -377,7 +385,18 @@ export class SbPanelWifiDevices extends LitElement {
   private _create: CreateState | null = null;
   private _delete: DeleteState | null = null;
   private _slotEdit: SlotEditState | null = null;
-  private _rename: { name: string; error: string } | null = null;
+  /** The Edit device dialog: the name and, on a hub with icons, the icon / X2 color draft. */
+  private _rename: {
+    name: string;
+    error: string;
+    /** What the dialog opened with, so only a real pick lands in the draft. */
+    shown?: AppearanceDraft;
+    appearance?: AppearanceDraft;
+    pickerOpen?: boolean;
+    tab?: AppearanceTab;
+  } | null = null;
+  /** The hub's own icon and color per device id (the catalog rows), for a device whose draft names none. */
+  private _hubAppearance = new Map<number, AppearanceDraft>();
   private _powerPicker: "on" | "off" | null = null;
   private _confirmClear: number | null = null;
   /** The pending move behind the "Unsynced changes" dialog. */
@@ -571,7 +590,7 @@ export class SbPanelWifiDevices extends LitElement {
     this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
-      const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
+      const [list, activities, listener, mqtt, devices] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState(), this.api.devices(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
@@ -581,6 +600,7 @@ export class SbPanelWifiDevices extends LitElement {
       const dirty = this.hasUnsyncedChanges();
       this._list = list.body;
       if (activities.ok && activities.body) this._activities = activities.body.map((a) => ({ id: a.activity_id, name: a.name })).filter((a) => Number.isInteger(a.id) && a.name);
+      if (devices.ok && devices.body) this._hubAppearance = new Map(devices.body.map((d) => [d.device_id, { icon: d.icon ?? null, colorId: d.color_id ?? null }]));
       this._listener = listener.ok ? listener.body : this._listener;
       this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       // A clean working copy follows the server; unsynced edits stay the user's.
@@ -794,11 +814,23 @@ export class SbPanelWifiDevices extends LitElement {
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
   }
 
-  private _openRename = (): void => {
+  private _openRename = (): void => this._openEdit(false);
+
+  /** The header tile opens it with the picker showing. */
+  private _openEdit(pickerOpen: boolean): void {
     if (!this._draft || this._locked) return;
-    this._rename = { name: this._draft.name, error: "" };
-    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>("#wifi-rename")?.select());
-  };
+    const shown = this._shownAppearance();
+    this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen, tab: "icon" };
+    if (!pickerOpen) void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>("#wifi-rename")?.select());
+  }
+
+  /** The icon and color the device shows: the draft's pick, else the hub record's. */
+  private _shownAppearance(): AppearanceDraft {
+    const draft = this._draft;
+    const id = this._device?.device_id;
+    const hub = id != null ? this._hubAppearance.get(id) : undefined;
+    return { icon: draft?.icon ?? hub?.icon ?? null, colorId: draft?.colorId ?? hub?.colorId ?? null };
+  }
 
   private _saveRename = (): void => {
     const state = this._rename;
@@ -809,9 +841,25 @@ export class SbPanelWifiDevices extends LitElement {
       this._rename = { ...state, error: problem };
       return;
     }
-    this._edit({ ...this._draft, name: name.trim() });
+    // Only a real pick joins the draft: an untouched icon or color stays the hub's.
+    const shown = state.shown ?? { icon: null, colorId: null };
+    const picked = state.appearance ?? shown;
+    this._edit({
+      ...this._draft,
+      name: name.trim(),
+      icon: picked.icon !== shown.icon ? picked.icon : this._draft.icon,
+      colorId: picked.colorId !== shown.colorId ? picked.colorId : this._draft.colorId,
+    });
     this._rename = null;
   };
+
+  /** The device's icon beside its name, as in the editors: the Edit device dialog with the picker showing. */
+  private _renderHeaderTile(device: WifiDeviceView): TemplateResult | typeof nothing {
+    const shown = this._shownAppearance();
+    const tile = entityTile(this._hubVersion, shown.icon, shown.colorId);
+    if (!tile) return nothing;
+    return renderDetailEntityTile(tile, { label: B.editDevice, disabled: this._locked || device.stale, onClick: () => this._openEdit(true) });
+  }
 
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
 
@@ -1102,6 +1150,7 @@ export class SbPanelWifiDevices extends LitElement {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon(mdiArrowLeft)}</button>
+                ${this._renderHeaderTile(device)}
                 <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon(mdiPencilOutline)}</button>
                 ${this._renderTransportPill(device)}
               </div>
@@ -1319,11 +1368,25 @@ export class SbPanelWifiDevices extends LitElement {
     const state = this._rename;
     if (!state) return nothing;
     const close = (): void => { this._rename = null; };
+    const appearance = iconHubLine(this._hubVersion) != null ? state.appearance ?? null : null;
+    const nameField = this._nameInput("wifi-rename", state.name, S.deviceName, false, (name) => { if (this._rename) this._rename = { ...this._rename, name, error: "" }; }, this._saveRename);
     return html`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${T.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S.createModalCancel} @click=${close}>${icon(mdiClose)}</button></div>
-          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S.deviceName, false, (name) => { this._rename = { name, error: "" }; }, this._saveRename)}</div>
+          <div class="dialog-header"><div class="dialog-title">${appearance ? B.editDevice : T.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S.createModalCancel} @click=${close}>${icon(mdiClose)}</button></div>
+          <div class="dialog-body">${appearance
+            ? renderAppearanceEditor({
+                hubVersion: this._hubVersion,
+                draft: appearance,
+                open: state.pickerOpen ?? false,
+                tab: state.tab ?? "icon",
+                nameField,
+                labels: appearanceLabelsFrom(B),
+                onToggle: () => { if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen }; },
+                onTab: (tab) => { if (this._rename) this._rename = { ...this._rename, tab }; },
+                onPick: (draft) => { if (this._rename) this._rename = { ...this._rename, appearance: draft }; },
+              })
+            : nameField}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${state.error}</div>
             <div class="dialog-footer-actions">

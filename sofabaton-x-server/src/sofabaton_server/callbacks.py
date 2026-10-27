@@ -1129,6 +1129,8 @@ class CallbackService:
             power_off_slot=body.get("power_off_slot"),
             input_slots=tuple(body.get("input_slots") or ()),
             brand=brand_for_key(key),
+            icon=body.get("icon"),
+            color_id=body.get("color_id"),
         ).normalized()
 
     def check_port(self, hub_version: Optional[str]) -> None:

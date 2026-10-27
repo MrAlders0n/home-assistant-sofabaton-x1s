@@ -14,23 +14,15 @@ import {
 import { sanitizeEntityName } from "../shared/hub-names";
 import { localizeBackendError } from "../shared/utils/backend-state-localization";
 import { TOOLS_CARD_STRINGS } from "../strings";
-import { entityColor, entityColorsSupported } from "../../../../../remote-card/src/entity-icons/entity-colors";
-import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
-import { renderEntityColorPicker, renderEntityIconPicker } from "../../../../../remote-card/src/entity-icons/entity-picker";
+import { appearanceLabelsFrom, renderAppearanceToggle, type AppearanceToggleState } from "../../../../../remote-card/src/entity-icons/appearance-editor";
 import { entityTile, entityTileBadge, renderEntityTile } from "../../../../../remote-card/src/entity-icons/entity-tile";
 
 function badge(type: string, value: string | number) {
   return html`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
 }
 
-/** The Add dialogs' icon / color draft (null = the create's own default)
- *  and their picker's state; the host owns it. */
-export interface AddAppearanceDraft {
-  icon: number | null;
-  colorId: number | null;
-  open: boolean;
-  tab: "icon" | "color";
-}
+/** The Add dialogs' icon / color draft and their picker's state; the host owns it. */
+export type AddAppearanceDraft = AppearanceToggleState;
 
 // The id badges name the remote.send_command parameters these values plug
 // into (device/command), so they are protocol identifiers and stay
@@ -424,56 +416,13 @@ export function renderCacheTab(params: {
 
   // The icon (and X2 color) picker of both Add dialogs, closed until asked
   // for: a create without a pick writes the hub's default as before.
-  const appearancePicker = (busy: boolean) => {
-    if (!iconHubLine(params.hubVersion)) return null;
-    const BS = TOOLS_CARD_STRINGS.backup;
-    const draft = params.addAppearance;
-    const colors = entityColorsSupported(params.hubVersion);
-    const icon = draft.icon ?? 1;
-    const colorId = draft.colorId ?? 0;
-    const tile = entityTile(params.hubVersion, icon, colorId);
-    const tab = colors ? draft.tab : "icon";
-    const set = (patch: Partial<AddAppearanceDraft>) => params.onAddAppearanceChange({ ...draft, ...patch });
-    return html`
-      <div class="cache-dialog-appearance">
-        <button
-          class="cache-dialog-appearance-toggle"
-          aria-expanded=${draft.open ? "true" : "false"}
-          ?disabled=${busy}
-          @click=${() => set({ open: !draft.open })}
-        >
-          ${tile ? renderEntityTile(tile) : nothing}
-          <span>${colors ? BS.changeIconAndColor : BS.changeIcon}</span>
-          <ha-icon icon=${draft.open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
-        </button>
-        ${draft.open
-          ? html`
-              ${colors
-                ? html`<div class="cache-dialog-appearance-tabs" role="tablist">
-                    <button role="tab" class=${tab === "icon" ? "active" : ""} aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => set({ tab: "icon" })}>${BS.appearanceIcon}</button>
-                    <button role="tab" class=${tab === "color" ? "active" : ""} aria-selected=${tab === "color" ? "true" : "false"} @click=${() => set({ tab: "color" })}>${BS.entityColorName(colorId >= 1 ? colorId : 1)}</button>
-                  </div>`
-                : nothing}
-              <div class="cache-dialog-appearance-pane">
-                ${tab === "icon"
-                  ? renderEntityIconPicker({
-                      hubVersion: params.hubVersion,
-                      icon,
-                      color: entityColor(params.hubVersion, colorId),
-                      servicesLabel: BS.appearanceServices,
-                      onPick: (picked) => set({ icon: picked }),
-                    })
-                  : renderEntityColorPicker({
-                      colorId,
-                      colorName: (id) => BS.entityColorName(id),
-                      onPick: (picked) => set({ colorId: picked }),
-                    })}
-              </div>
-            `
-          : nothing}
-      </div>
-    `;
-  };
+  const appearancePicker = (busy: boolean) => renderAppearanceToggle({
+    hubVersion: params.hubVersion,
+    state: params.addAppearance,
+    labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+    disabled: busy,
+    onChange: params.onAddAppearanceChange,
+  });
 
   const confirmAddActivity = (event: Event) => {
     const dialog = (event.currentTarget as HTMLElement).closest(".cache-dialog");

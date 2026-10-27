@@ -64,6 +64,21 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   only. A document's icon and color reach the hub through `sync_hub()`,
   created entities included. Until a bench shows the remotes pick an icon
   change up on their own, it ends with a per-item remote sync.
+- `add_device()` / `add_activity()` take `icon` and `color_id`, and
+  `validate_appearance(hub_version, icon=, color_id=)` checks a pair against
+  the hub line without touching the hub (a `ValueError` names the reason).
+- `WifiDeviceSpec.icon` and `WifiDeviceSpec.color_id`: the managed Wifi
+  Device's icon and X2 color. `deploy_wifi_device()` writes them with its
+  first update and `update_wifi_device()` with its head commit; `None` (the
+  default, and what older stored specs read as) keeps what the hub has.
+- `RemoteSyncInProgressError`, a `HubRejectedError`: for a few seconds after
+  a remote-sync trigger the hub still takes writes, then it refuses them
+  (STATUS_ACK 0x04) until its remote has the update (about a minute on the
+  X1S, up to a few minutes for an X2 full sync). A write refused that way
+  within 5 minutes of this proxy's own trigger raises this error instead of
+  a bare `HubRejectedError`, and a sync reports it as
+  `SyncResult.reason == "remote_syncing"`. Nothing waits or retries: wait
+  until the remote is done, then write again.
 
 ### Fixed
 

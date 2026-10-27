@@ -48,7 +48,9 @@ function unreadLeaves(table: unknown, source: string, dynamicTables: string[]): 
 
 test("every tools-card English string has a production reader (CR-X7-1)", () => {
   const source = productionSource(
-    ["custom_components/sofabaton_x1s/www/src", "server-panel/src"],
+    // The shared icon editors read the backup strings both hosts pass in
+    // (appearanceLabelsFrom).
+    ["custom_components/sofabaton_x1s/www/src", "server-panel/src", "remote-card/src/entity-icons"],
     /\/www\/src\/(strings\.ts|control-panel-translations\/)/,
   );
   const dynamicTables = [

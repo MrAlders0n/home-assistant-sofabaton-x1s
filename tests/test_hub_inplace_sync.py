@@ -567,3 +567,24 @@ def test_baseline_read_refreshes_the_activity_catalog_once(monkeypatch):
     assert refreshes == ["activities"]
     assert activity_reads == [{"refresh_catalog": False}] * 3
     loop.close()
+
+
+def test_a_refusal_while_the_remote_updates_stops_with_remote_syncing(monkeypatch):
+    """A write the hub refused soon after this engine's remote-sync trigger
+    stops the Wifi sync with the code that tells the user to wait."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    store = _Store()
+    failed = {"status": "failed", "failed_at": "wifi_head_commit", "completed_steps": 0, "total_steps": 1,
+              "counters": {}, "message": "rejected"}
+    hub = _make_hub(monkeypatch, loop, store=store, device_entry=_device_entry(), run_result=failed)
+    monkeypatch.setattr(hub._proxy, "refused_during_remote_sync", lambda since: True, raising=False)
+    with pytest.raises(wifi_deploy_module.WifiSyncError) as caught:
+        _run_sync(loop, hub, _payload())
+    assert caught.value.code == "remote_syncing"
+    # Without that verdict the same failure stays the plain in-place refusal.
+    monkeypatch.setattr(hub._proxy, "refused_during_remote_sync", lambda since: False, raising=False)
+    with pytest.raises(wifi_deploy_module.WifiSyncError) as caught:
+        _run_sync(loop, hub, _payload())
+    assert caught.value.code == "inplace_failed"
+    loop.close()

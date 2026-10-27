@@ -81,6 +81,7 @@ export function localizeWifiSyncFailure(value: unknown): string {
     case "mqtt_not_connected": return S.syncFailedMqttNotConnected;
     case "hub_mqtt_not_connected": return S.syncFailedHubMqttNotConnected;
     case "not_found": return S.syncFailedNotFound;
+    case "remote_syncing": return S.syncFailedRemoteSyncing;
     default: return S.syncFailedGeneric;
   }
 }

@@ -49,6 +49,10 @@ import {
 
 import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload } from "../../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import { TOOLS_CARD_STRINGS } from "../../../custom_components/sofabaton_x1s/www/src/strings";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../remote-card/src/entity-icons/appearance-editor";
+import { iconHubLine } from "../../../remote-card/src/entity-icons/entity-icons";
+import { entityPickerStyles } from "../../../remote-card/src/entity-icons/entity-picker";
+import { entityTile, entityTileStyles } from "../../../remote-card/src/entity-icons/entity-tile";
 import { anchoredListPosition, moveListFocus, overlayMenuPosition, menuAnchorRect, type MenuAnchor } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
 import {
   activityAddableDevices,
@@ -80,6 +84,8 @@ import {
   deviceCommandItems,
   removeActivityMacroStep,
   renameBundleActivity,
+  bundleEntityAppearance,
+  setBundleEntityAppearance,
   renameBundleActivityFavorite,
   renameBundleActivityMacro,
   reorderActivityMacroSteps,
@@ -250,7 +256,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     _stepDialog: { state: true },
   };
 
-  static styles = [PANEL_BASE_CSS, EDITOR_CSS, OPERATION_PROGRESS_CSS];
+  static styles = [PANEL_BASE_CSS, entityTileStyles, entityPickerStyles, appearanceEditorStyles, EDITOR_CSS, OPERATION_PROGRESS_CSS];
 
   activityId: number | null = null;
 
@@ -259,7 +265,15 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
     return this.activityId;
   }
 
-  private _rename: { target: RenameTarget; draft: string; error: string } | null = null;
+  /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
+  private _rename: {
+    target: RenameTarget;
+    draft: string;
+    error: string;
+    appearance?: AppearanceDraft;
+    pickerOpen?: boolean;
+    tab?: AppearanceTab;
+  } | null = null;
   private _deleteConfirm: { target: BackupDeleteTarget; label: string } | null = null;
   /** The open sequence or macro (the card's macro step editor sub-view). */
   private _macroEditor: { buttonId: number; name: string } | null = null;
@@ -448,9 +462,23 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
 
   // -- rename (activity, macro) ----------------------------------------------------------------------------
 
-  private _openRename(target: RenameTarget): void {
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
+  private _openRename(target: RenameTarget, pickerOpen = false): void {
     const draft = target.kind === "activity" ? this._title : target.kind === "favorite" ? target.label : this._macroName(target.buttonId) || this._macroEditor?.name || "";
-    this._rename = { target, draft, error: "" };
+    const activityId = this.activityId;
+    this._rename = target.kind === "activity" && activityId != null && this._working
+      ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen, tab: "icon" }
+      : { target, draft, error: "" };
+  }
+
+  /** The activity's hub icon beside the title: the edit dialog with the picker showing. */
+  private _renderHeaderTile(): TemplateResult | typeof nothing {
+    const activityId = this.activityId;
+    if (activityId == null || !this._working) return nothing;
+    const appearance = bundleEntityAppearance(this._working, "activity", activityId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    if (!tile) return nothing;
+    return renderDetailEntityTile(tile, { label: B.editActivity, onClick: () => this._openRename({ kind: "activity" }, true) });
   }
 
   private _closeRename = (): void => {
@@ -475,7 +503,14 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
       return;
     }
     if (dialog.target.kind === "activity") {
-      this._commit(renameBundleActivity(this._working, activityId, next));
+      // Only what the user picked: an untouched draft keeps the record's own
+      // bytes, a never-picked color 0 included.
+      const base = bundleEntityAppearance(this._working, "activity", activityId);
+      const picked = dialog.appearance ?? base;
+      this._commit(setBundleEntityAppearance(renameBundleActivity(this._working, activityId, next), "activity", activityId, {
+        icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+        colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null,
+      }));
     } else if (dialog.target.kind === "favorite") {
       // Offline only (the card's rule): a live favorite carries its command's name.
       this._commit(renameBundleActivityFavorite(this._working, activityId, dialog.target.buttonId, next));
@@ -895,12 +930,13 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
 
   // -- render: shared pieces ------------------------------------------------------------------------------------------------
 
-  private _renderHeader(options: { id: string; title: string; titleId: string; onBack: () => void; crumbs: Array<{ label: string; onClick: () => void }>; actions?: TemplateResult | typeof nothing }): TemplateResult {
+  private _renderHeader(options: { id: string; title: string; titleId: string; onBack: () => void; crumbs: Array<{ label: string; onClick: () => void }>; lead?: TemplateResult | typeof nothing; actions?: TemplateResult | typeof nothing }): TemplateResult {
     return html`
       <div class="sticky-header">
         <div class="detail-title-row">
           <div class="detail-title-main">
             <button class="back-btn" id=${options.id} type="button" aria-label=${FRAME.back} @click=${options.onBack}>${icon(mdiArrowLeft)}</button>
+            ${options.lead ?? nothing}
             <div class="detail-title-stack">
               <div class="detail-crumbs">
                 ${options.crumbs.map((crumb) => html`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
@@ -1171,6 +1207,7 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
           ${this._renderHeader({
             id: "editor-back", title: this._title, titleId: "editor-title", onBack: this._requestClose,
             crumbs: [{ label: B.crumbActivities, onClick: this._requestClose }],
+            lead: this._renderHeaderTile(),
             actions: html`<div class="detail-title-actions">
               <button class="icon-btn" id="editor-rename" type="button" aria-label=${B.renameKind("activity")} title=${B.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon(mdiPencil)}</button>
               <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B.deleteActivityAria} title=${B.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon(mdiTrashCanOutline)}</button>
@@ -1478,12 +1515,26 @@ export class SbPanelActivityEditor extends SbPanelEntityEditor {
   private _renderRenameDialog(): TemplateResult | typeof nothing {
     const dialog = this._rename;
     if (!dialog) return nothing;
-    const title = dialog.target.kind === "activity" ? B.renameActivity : dialog.target.kind === "favorite" ? B.renameFavorite : B.renameMacro;
-    return this._dialog("rename-dialog", title, this._closeRename, html`
+    const appearance = dialog.target.kind === "activity" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B.editActivity : dialog.target.kind === "activity" ? B.renameActivity : dialog.target.kind === "favorite" ? B.renameFavorite : B.renameMacro;
+    const nameField = html`
       <label class="decoded-field">
         <span class="decoded-field-label">${B.name}</span>
         <input class="decoded-field-input" id="rename-input" type="text" maxlength="30" .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter") { event.preventDefault(); this._applyRename(); } }} />
-      </label>`, html`
+      </label>`;
+    return this._dialog("rename-dialog", title, this._closeRename, appearance
+      ? renderAppearanceEditor({
+          hubVersion: this._hubVersion,
+          draft: appearance,
+          open: dialog.pickerOpen ?? false,
+          tab: dialog.tab ?? "icon",
+          nameField,
+          labels: appearanceLabelsFrom(B),
+          onToggle: () => { if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen }; },
+          onTab: (tab) => { if (this._rename) this._rename = { ...this._rename, tab }; },
+          onPick: (draft) => { if (this._rename) this._rename = { ...this._rename, appearance: draft }; },
+        })
+      : nameField, html`
       <button class="dialog-btn" type="button" @click=${this._closeRename}>${B.deleteCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B.bindingSave}</button>`, dialog.error);
   }

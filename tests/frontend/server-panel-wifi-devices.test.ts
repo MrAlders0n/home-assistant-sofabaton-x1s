@@ -54,7 +54,7 @@ function spec(overrides: Partial<WifiDeviceSpec> = {}): WifiDeviceSpec {
   const slots = Array.from({ length: WIFI_SLOT_COUNT }, (_row, i) => ({ label: `Button ${i + 1}`, long_label: `Button ${i + 1} Long` }));
   slots[0] = { label: "Lights on", long_label: "Lights on Long", favorite: true, button: 182, long_press: true, activities: [102, 101], input_activity_id: null } as (typeof slots)[number];
   slots[1] = { label: "Lights off", long_label: "All off" };
-  return { name: "Lights", slots, power_on_slot: 1, power_off_slot: null, input_slots: [2], brand: "c0-a1b2c3d4", ...overrides };
+  return { name: "Lights", slots, power_on_slot: 1, power_off_slot: null, input_slots: [2], icon: null, color_id: null, brand: "c0-a1b2c3d4", ...overrides };
 }
 
 function device(overrides: Partial<WifiDeviceView> = {}): WifiDeviceView {
@@ -82,7 +82,7 @@ test("the draft round-trips the server's spec and keeps only long labels someone
   assert.deepEqual([body.name, body.power_on_slot, body.power_off_slot, body.input_slots], ["Lights", 1, null, [2]]);
   assert.equal("brand" in body, false);                                               // the server owns the brand
   // A record from before slots had references (the 0.2.0 callback device) reads as plain slots.
-  const old = draftFromSpec({ name: "Server", slots: [{ label: "Play", long_label: "Play Long" }], power_on_slot: null, power_off_slot: null, input_slots: [] });
+  const old = draftFromSpec({ name: "Server", slots: [{ label: "Play", long_label: "Play Long" }], power_on_slot: null, power_off_slot: null, input_slots: [], icon: null, color_id: null });
   assert.deepEqual(old.slots[0], { label: "Play", longLabel: null, favorite: false, button: null, longPress: false, activities: [], inputActivityId: null });
   // A short or empty spec (a brand-new device) pads to ten unnamed slots.
   const fresh = draftFromSpec(null);
@@ -312,4 +312,16 @@ test("the API client's wifi-devices calls and the job labels", async () => {
   assert.equal("transport" in JSON.parse(String(calls[2].init?.body)), false);         // a deployed device's transport is fixed
   assert.equal(jobLabel("deploy_wifi_device"), "Deploying the Wifi Device");
   assert.equal(jobLabel("update_wifi_device"), "Syncing the Wifi Device");
+});
+
+
+test("a Wifi Device's icon and color travel in the draft; null keeps the hub's", () => {
+  const draft = draftFromSpec(spec({ icon: 13, color_id: null }));
+  assert.deepEqual([draft.icon, draft.colorId], [13, null]);
+  const body = specFromDraft({ ...draft, colorId: 4 });
+  assert.deepEqual([body.icon, body.color_id], [13, 4]);
+  // A spec from before icons (no keys) reads as "keep the hub's", and an edit elsewhere leaves it so.
+  const legacy = draftFromSpec({ ...spec(), icon: undefined, color_id: undefined } as unknown as WifiDeviceSpec);
+  assert.deepEqual([legacy.icon, legacy.colorId], [null, null]);
+  assert.deepEqual([specFromDraft(withSlotLabel(legacy, 2, "Dim")).icon, specFromDraft(legacy).color_id], [null, null]);
 });

@@ -1762,3 +1762,38 @@ def test_update_wifi_device_heals_x1_quick_access_orders(monkeypatch) -> None:
             assert "resync" not in engine.trace and not any(t[0] == "sync" for t in engine.trace if isinstance(t, tuple))
 
     asyncio.run(main())
+
+
+def test_deploy_wifi_device_applies_a_picked_icon_with_the_first_update(monkeypatch) -> None:
+    async def main():
+        engine, creates = _wifi_engine(monkeypatch)
+        picked = _WifiDeviceSpec(name="Server", icon=11)
+        bare = picked.normalized()
+        bare = wifi_device_mod.WifiDeviceSpec(name=bare.name, slots=bare.slots, brand=bare.brand)
+        created = wifi_device_mod.WifiDeployment(
+            device_id=12, spec=bare, target=wifi_device_mod.WifiTarget(_TARGET, 8060, "aabbccddeeff"),
+            labels=wifi_device_mod.labels_from_spec(bare), hub_version="X1S")
+        monkeypatch.setattr(engine, "backup_device", lambda dev_id, **kw: _live_device(created))
+        engine.state.activities = {101: {"name": "Watch"}}
+        engine._activities_catalog_ready = True
+        monkeypatch.setattr(engine, "backup_activity", lambda act_id, **kw: _live_activity(act_id, []))
+        captured: list = []
+        monkeypatch.setattr(engine, "run_wifi_inplace_plan", lambda plan, *, progress_callback=None: (
+            captured.append(plan) or {"status": "success", "completed_steps": len(plan.steps), "total_steps": len(plan.steps), "counters": {}}))
+        monkeypatch.setattr(engine, "resync_remote", lambda *a, **kw: True)
+        proxy = aio.AsyncXProxy.wrap(engine)
+
+        # The create writes the hub's default icon; the first update's head commit writes the pick.
+        dep = await proxy.deploy_wifi_device(picked, host=_TARGET, port=8060)
+        assert len(creates) == 1 and creates[0]["send_remote_sync"] is False
+        head = [s for s in captured[0].steps if s.kind == "wifi_head_commit"]
+        assert len(head) == 1 and head[0].payload["icon"] == 11
+        assert dep.spec.icon == 11
+
+        # An icon the hub line lacks, or a color off the X2, is refused before the hub is touched.
+        for bad in (_WifiDeviceSpec(name="Server", icon=30), _WifiDeviceSpec(name="Server", color_id=2)):
+            with pytest.raises(ValueError):
+                await proxy.deploy_wifi_device(bad, host=_TARGET, port=8060)
+        assert len(creates) == 1
+
+    asyncio.run(main())

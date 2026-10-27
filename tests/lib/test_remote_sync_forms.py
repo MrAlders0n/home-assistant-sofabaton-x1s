@@ -371,3 +371,33 @@ def test_a_rename_carrying_an_icon_or_color_counts_as_touched() -> None:
     device.payload["color_id"] = 3
     assert frames.entities_touched_by([plain], 0x10C) == ()
     assert frames.entities_touched_by([themed, device], 0x0C) == (101, 0x0C)
+
+
+def test_a_refusal_soon_after_a_remote_sync_reads_as_the_remote_updating(monkeypatch) -> None:
+    engine = x1_proxy_mod.X1Proxy("127.0.0.1", hub_version="X1S", proxy_enabled=False)
+    clock = [1000.0]
+    monkeypatch.setattr(write_batch.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(engine, "enqueue_cmd", lambda *a, **k: True)
+    start = clock[0]
+    # No trigger sent yet: a 0x04 refusal is a plain refusal.
+    engine._note_step_refusal(0x04)
+    assert engine.refused_during_remote_sync(start) is False
+    assert engine.resync_remote() is True   # the trigger is noted when it goes out
+    clock[0] += 3
+    engine._note_step_refusal(0x04)
+    assert engine.refused_during_remote_sync(start) is True
+    # Another status, a refusal from before the write began, or one past the window is not.
+    engine._note_step_refusal(0x01)
+    assert engine.refused_during_remote_sync(start) is False
+    engine._note_step_refusal(0x04)
+    assert engine.refused_during_remote_sync(clock[0] + 1) is False
+    clock[0] += write_batch.REMOTE_SYNC_REFUSAL_WINDOW_S + 1
+    engine._note_step_refusal(0x04)
+    assert engine.refused_during_remote_sync(start) is False
+    # A trigger a batch only recorded is not one the hub got.
+    clock[0] += 10
+    engine.begin_write_batch()
+    engine.resync_remote()
+    clock[0] += 1
+    engine._note_step_refusal(0x04)
+    assert engine.refused_during_remote_sync(start) is False

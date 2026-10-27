@@ -901,6 +901,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
     syncFailedHubMqttNotConnected: "Hub \u672A\u8FDE\u63A5\u5230 MQTT broker\u3002",
     syncFailedGeneric: "\u540C\u6B65\u5DF2\u505C\u6B62\u3002\u8BF7\u518D\u6B21\u540C\u6B65\u3002",
     syncFailedNotFound: "\u6B64 Wifi \u8BBE\u5907\u5DF2\u4E0D\u5B58\u5728\u3002\u8BF7\u91CD\u65B0\u52A0\u8F7D\u5361\u7247\u3002",
+    syncFailedRemoteSyncing: "Hub \u6B63\u5728\u66F4\u65B0\u9065\u63A7\u5668\u3002\u8BF7\u7B49\u5F85\u9065\u63A7\u5668\u66F4\u65B0\u5B8C\u6210\uFF0C\u7136\u540E\u518D\u6B21\u540C\u6B65\u3002",
     deviceDeleting: "\u6B63\u5728\u5220\u9664\u2026",
     deviceSynced: "\u5DF2\u540C\u6B65",
     actionButtonUnavailable: "\u4E0D\u53EF\u7528",

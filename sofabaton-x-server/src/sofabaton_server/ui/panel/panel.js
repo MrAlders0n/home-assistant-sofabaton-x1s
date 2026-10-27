@@ -8196,6 +8196,7 @@ var mdiSeat = "M4,18V21H7V18H17V21H20V15H4V18M19,10H22V13H19V10M2,10H5V13H2V10M1
 var mdiSeatOutline = "M15,5V12H9V5H15M15,3H9A2,2 0 0,0 7,5V14H17V5A2,2 0 0,0 15,3M22,10H19V13H22V10M5,10H2V13H5V10M20,15H4V21H6V17H18V21H20V15Z";
 var mdiServer = "M4,1H20A1,1 0 0,1 21,2V6A1,1 0 0,1 20,7H4A1,1 0 0,1 3,6V2A1,1 0 0,1 4,1M4,9H20A1,1 0 0,1 21,10V14A1,1 0 0,1 20,15H4A1,1 0 0,1 3,14V10A1,1 0 0,1 4,9M4,17H20A1,1 0 0,1 21,18V22A1,1 0 0,1 20,23H4A1,1 0 0,1 3,22V18A1,1 0 0,1 4,17M9,5H10V3H9V5M9,13H10V11H9V13M9,21H10V19H9V21M5,3V5H7V3H5M5,11V13H7V11H5M5,19V21H7V19H5Z";
 var mdiServerNetwork = "M13,19H14A1,1 0 0,1 15,20H22V22H15A1,1 0 0,1 14,23H10A1,1 0 0,1 9,22H2V20H9A1,1 0 0,1 10,19H11V17H4A1,1 0 0,1 3,16V12A1,1 0 0,1 4,11H20A1,1 0 0,1 21,12V16A1,1 0 0,1 20,17H13V19M4,3H20A1,1 0 0,1 21,4V8A1,1 0 0,1 20,9H4A1,1 0 0,1 3,8V4A1,1 0 0,1 4,3M9,7H10V5H9V7M9,15H10V13H9V15M5,5V7H7V5H5M5,13V15H7V13H5Z";
+var mdiShapeOutline = "M11,13.5V21.5H3V13.5H11M9,15.5H5V19.5H9V15.5M12,2L17.5,11H6.5L12,2M12,5.86L10.08,9H13.92L12,5.86M17.5,13C20,13 22,15 22,17.5C22,20 20,22 17.5,22C15,22 13,20 13,17.5C13,15 15,13 17.5,13M17.5,15A2.5,2.5 0 0,0 15,17.5A2.5,2.5 0 0,0 17.5,20A2.5,2.5 0 0,0 20,17.5A2.5,2.5 0 0,0 17.5,15Z";
 var mdiShieldCheck = "M10,17L6,13L7.41,11.59L10,14.17L16.59,7.58L18,9M12,1L3,5V11C3,16.55 6.84,21.74 12,23C17.16,21.74 21,16.55 21,11V5L12,1Z";
 var mdiShieldHome = "M11,13H13V16H16V11H18L12,6L6,11H8V16H11V13M12,1L21,5V11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1Z";
 var mdiShieldHomeOutline = "M21,11C21,16.55 17.16,21.74 12,23C6.84,21.74 3,16.55 3,11V5L12,1L21,5V11M12,21C15.75,20 19,15.54 19,11.22V6.3L12,3.18L5,6.3V11.22C5,15.54 8.25,20 12,21M11,14H13V17H16V12H18L12,7L6,12H8V17H11V14";
@@ -8489,6 +8490,7 @@ var MDI_ICON_PATHS = {
   "pause": mdiPause,
   "pause-circle": mdiPauseCircle,
   "pause-circle-outline": mdiPauseCircleOutline,
+  "pencil": mdiPencil,
   "picture-in-picture-bottom-right": mdiPictureInPictureBottomRight,
   "pin": mdiPin,
   "pin-off-outline": mdiPinOffOutline,
@@ -8537,6 +8539,7 @@ var MDI_ICON_PATHS = {
   "seat": mdiSeat,
   "seat-outline": mdiSeatOutline,
   "server": mdiServer,
+  "shape-outline": mdiShapeOutline,
   "shield-check": mdiShieldCheck,
   "shield-home": mdiShieldHome,
   "shield-home-outline": mdiShieldHomeOutline,
@@ -11447,6 +11450,12 @@ function jobOutcomeText(job) {
   if (job.status === "failed") return "Failed";
   return "Still running on the server; the dock shows when it ends";
 }
+function appearanceBody(appearance) {
+  return {
+    ...appearance.icon != null ? { icon: appearance.icon } : {},
+    ...appearance.colorId != null ? { color_id: appearance.colorId } : {}
+  };
+}
 var PanelApi = class {
   constructor(baseUrl, fetchImpl) {
     /** Called when a request answers 401 for a signed-out browser (the shell shows the sign-in). */
@@ -11671,12 +11680,12 @@ var PanelApi = class {
     return this.request("DELETE", `${this._hub(hubId)}/activities/${activityId}`);
   }
   /** Create an empty activity (a job); the result carries the hub-assigned `activity_id`. */
-  addActivity(hubId, name) {
-    return this.request("POST", `${this._hub(hubId)}/activities`, { body: { name } });
+  addActivity(hubId, name, appearance = {}) {
+    return this.request("POST", `${this._hub(hubId)}/activities`, { body: { name, ...appearanceBody(appearance) } });
   }
   /** Create an empty device of a class the hub can create (a job); the result carries the hub-assigned `device_id`. */
-  addDevice(hubId, name, deviceClass) {
-    return this.request("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass } });
+  addDevice(hubId, name, deviceClass, appearance = {}) {
+    return this.request("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass, ...appearanceBody(appearance) } });
   }
   /** Store the display order of every activity or device, once each (a job). */
   reorderEntities(hubId, kind, order) {
@@ -13539,6 +13548,7 @@ var TOOLS_CARD_STRINGS_EN = {
     syncFailedHubMqttNotConnected: "The hub is not connected to an MQTT broker.",
     syncFailedGeneric: "The sync stopped. Sync again.",
     syncFailedNotFound: "This Wifi Device no longer exists. Reload the card.",
+    syncFailedRemoteSyncing: "The hub is updating its remote. Wait until the remote is done, then sync again.",
     syncShortRunning: "Syncing",
     syncShortFailed: "Sync failed",
     syncShortNeeded: "Sync needed",
@@ -17439,6 +17449,30 @@ function renameBundleActivity(bundle, activityId, name) {
 function renameBundleDevice(bundle, deviceId, name) {
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
 }
+function appearanceInList(list, id, appearance) {
+  return (list ?? []).map((entry) => {
+    const block = entry?.device;
+    if (!block || Number(block.device_id || 0) !== id) return entry;
+    const next = { ...block };
+    if (appearance.icon != null) next.icon = appearance.icon;
+    if (appearance.colorId != null) next.color_id = appearance.colorId;
+    return { ...entry, device: next };
+  });
+}
+function setBundleEntityAppearance(bundle, kind, entityId, appearance) {
+  const id = Number(entityId);
+  return kind === "activity" ? { ...bundle, activities: appearanceInList(bundle.activities, id, appearance) } : { ...bundle, devices: appearanceInList(bundle.devices, id, appearance) };
+}
+function bundleEntityAppearance(bundle, kind, entityId) {
+  const list = kind === "activity" ? bundle?.activities : bundle?.devices;
+  const block = (list ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(entityId))?.device;
+  const icon7 = Number(block?.icon);
+  const colorId = Number(block?.color_id);
+  return {
+    icon: block?.icon != null && Number.isInteger(icon7) ? icon7 : null,
+    colorId: block?.color_id != null && Number.isInteger(colorId) ? colorId : null
+  };
+}
 function updateActivity(bundle, activityId, updater) {
   const normalizedId = Number(activityId);
   return {
@@ -20636,6 +20670,683 @@ function defineBackupView() {
   if (!customElements.get(BACKUP_VIEW_TAG)) customElements.define(BACKUP_VIEW_TAG, SbPanelBackup);
 }
 
+// remote-card/src/entity-icons/x2-icons.ts
+var X2_ICON_PATHS = {
+  // Monitor
+  1: "M4 3.9h15.8a1.2 1.2 0 0 1 1.2 1.2v9.7a1.2 1.2 0 0 1-1.2 1.2h-15.8a1.2 1.2 0 0 1-1.2-1.2v-9.7a1.2 1.2 0 0 1 1.2-1.2zm7.5 11.6h1v3.2h-1zM6.95 18.3h10.3a.75.75 0 0 1 .75.75h0a.75.75 0 0 1-.75.75h-10.3a.75.75 0 0 1-.75-.75h0a.75.75 0 0 1 .75-.75z",
+  // Picture
+  2: "M3.8 4.5h16.4a1.2 1.2 0 0 1 1.2 1.2v12.5a1.2 1.2 0 0 1-1.2 1.2h-16.4a1.2 1.2 0 0 1-1.2-1.2v-12.5a1.2 1.2 0 0 1 1.2-1.2zM5.45 8.3a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM4.9 17.4h14.9l-5.6-7.3-3.9 5.2-2.5-3z",
+  // Music
+  3: "M2.44 19.45a3.3 2.75-30 1 1 5.72-3.3a3.3 2.75-30 1 1-5.72 3.3zm11.51-3.2a3 2.55-30 1 1 5.2-3a3 2.55-30 1 1-5.2 3zM7 16.8v-10.85a.7.7 0 0 1 .6-.7l11.3-3a.6.6 0 0 1 .6.6v12.15h-1.5v-8.25l-9.5 2.25v7.8z",
+  // Film reel
+  4: "M2.55 11.7a9.2 9.2 0 1 1 18.4 0a9.2 9.2 0 1 1-18.4 0zm15.8 7.15a.75.75 0 1 1 1.5 0a.75.75 0 1 1-1.5 0zM15.5 17l3.6 1.1v1.5c-1.3 0-2.1-.4-4.1.3zM10.45 8.1a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM7 11.65a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zm7 0a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0zM10.5 15.2a1.1 1.1 0 1 0 2.2 0a1.1 1.1 0 1 0-2.2 0z",
+  // TV
+  5: "M4.4 6h15.6a.9.9 0 0 1 .9.9v11.6a.9.9 0 0 1-.9.9h-15.6a.9.9 0 0 1-.9-.9v-11.6a.9.9 0 0 1 .9-.9zm8.4 1a.9.9 0 0 1-1.2 1.2l-4.9-4.6a.9.9 0 0 1 1.2-1.3zm0 1.2a.9.9 0 0 1-1.2-1.2l4.9-4.7a.9.9 0 0 1 1.2 1.3zm-2.8 2v4.8l4.6-2.4z",
+  // Gamepad
+  6: "M8.5 5.4h6.9a6.5 6.5 0 0 1 6.5 6.5v1.4a6.5 6.5 0 0 1-6.5 6.5h-6.9a6.5 6.5 0 0 1-6.5-6.5v-1.4a6.5 6.5 0 0 1 6.5-6.5zM12 2.5a1 1 0 0 1 1 1v2.5h-2v-2.5a1 1 0 0 1 1-1zM7.35 10.6v1.05h-1.05a.6.6 0 0 0 0 1.2h1.05v1.05a.6.6 0 0 0 1.2 0v-1.05h1.05a.6.6 0 0 0 0-1.2h-1.05v-1.05a.6.6 0 0 0-1.2 0zm6.75.05a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0zm2.5 2.95a.9.9 0 1 0 1.8 0a.9.9 0 1 0-1.8 0z",
+  // Game controller
+  7: "M11.85 8.3c1.15 0 2.35-1.3 4.15-1.3 2.8 0 4.3 1.3 5 4 .6 2.2 1.1 4.5 1 6.6-.05 1.4-.6 2.2-1.7 2.1-3-1.4-5.8-3.3-8.45-3.3-2.65 0-5.45 1.9-8.45 3.3-1.1.1-1.65-.7-1.7-2.1-.1-2.1.4-4.4 1-6.6.7-2.7 2.2-4 5-4 1.8 0 3 1.3 4.15 1.3zM13 7.3h-2v-2.85h2zM11 4.45a2.5 2.5 0 0 1 2.5-2.5v2a.5.5 0 0 0-.5.5zm2.5-.5v-2h4.1v2zM6 10.65v1.35h-1.35v1.5h0 1.35v1.35h1.5 0v-1.35h1.35v-1.5h0-1.35v-1.35h-1.5zm8.15 1.85a1.8 1.8 0 1 0 3.6 0a1.8 1.8 0 1 0-3.6 0z",
+  // Router
+  8: "M3 10.4h18a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-18a1.5 1.5 0 0 1-1.5-1.5v-6a1.5 1.5 0 0 1 1.5-1.5zM6.3 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h0a.75.75 0 0 1-.75-.75v-3.5a.75.75 0 0 1 .75-.75zM5.7 7.2h1.4a.4.4 0 0 1 .4.4v3.1h-2.2v-3.1a.4.4 0 0 1 .4-.4zM17.7 3a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-.75.75h0a.75.75 0 0 1-.75-.75v-3.5a.75.75 0 0 1 .75-.75zm-.8 4.2h1.4a.4.4 0 0 1 .4.4v3.1h-2.2v-3.1a.4.4 0 0 1 .4-.4zM4.9 14a.9.9 0 0 0-.9.9h0a.9.9 0 0 0 .9.9h4.2a.9.9 0 0 0 .9-.9h0a.9.9 0 0 0-.9-.9zm10.5.95a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zm3 0a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0z",
+  // Wifi router
+  9: "M2.9 11.4h18.1a1.4 1.4 0 0 1 1.4 1.4v5.6a1.4 1.4 0 0 1-1.4 1.4h-18.1a1.4 1.4 0 0 1-1.4-1.4v-5.6a1.4 1.4 0 0 1 1.4-1.4zM15.8 7.9a1.2 1.2 0 0 1 1.2 1.2v2.8h-2.4v-2.8a1.2 1.2 0 0 1 1.2-1.2zM9.3 6.6a7.1 7.1 0 0 1 13.4 0a1 1 0 0 1-1.9.64a5.1 5.1 0 0 0-9.6 0a1 1 0 0 1-1.9-.64zm3 1.16a3.9 3.9 0 0 1 7.4 0a1 1 0 0 1-1.9.58a1.9 1.9 0 0 0-3.6 0a1 1 0 0 1-1.9-.58zM4.4 15.1a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zm3.4 0a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0z",
+  // Projector
+  10: "M2 6h8.44a5.2 5.2 0 1 0 9.42 0h2.04a1 1 0 0 1 1 1v7.9a1 1 0 0 1-1 1h-19.9a1 1 0 0 1-1-1v-7.9a1 1 0 0 1 1-1zm9.05 2.2a4.1 4.1 0 1 1 8.2 0a4.1 4.1 0 1 1-8.2 0zm1.35 0a2.75 2.75 0 1 0 5.5 0a2.75 2.75 0 1 0-5.5 0zM4.5 15.5h3.6l-2 3.9h-2.1zm10.9 0h3.6l.5 3.9h-2.1zM4 10.9a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h1.5a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zm0 2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h1.5a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5z",
+  // Receiver
+  11: "M3.3 6.9h16.9a1.8 1.8 0 0 1 1.8 1.8v6.2a1.8 1.8 0 0 1-1.8 1.8h-16.9a1.8 1.8 0 0 1-1.8-1.8v-6.2a1.8 1.8 0 0 1 1.8-1.8zm.1 5.05a1 1 0 1 0 2 0a1 1 0 1 0-2 0zm14.6 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0zm-11.35 0a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0-4.2 0zm1.25 0a.85.85 0 1 1 1.7 0a.85.85 0 1 1-1.7 0zm5 0a2.1 2.1 0 1 0 4.2 0a2.1 2.1 0 1 0-4.2 0zm1.25 0a.85.85 0 1 1 1.7 0a.85.85 0 1 1-1.7 0z",
+  // Pendant lamp
+  12: "M4.4 12.9a7.6 7.9 0 0 1 15.2 0zM12 3.3a.55.55 0 0 1 .55.55v1.4a.55.55 0 0 1-.55.55h0a.55.55 0 0 1-.55-.55v-1.4a.55.55 0 0 1 .55-.55zm3 10.1a3 3 0 0 1-6 0h3zm-3.35 4.4a.4.4 0 0 1 .8 0v1.2a.4.4 0 0 1-.8 0zM8.7 16.5a.45.45 0 0 1 .6.6l-1.1 1.1a.45.45 0 0 1-.6-.6zm6 .6a.45.45 0 0 1 .6-.6l1.1 1.1a.45.45 0 0 1-.6.6z",
+  // Apple TV
+  13: "M5.6 9.7c.8-.4 2.3-.8 3.7.3-.7.6-1 1.4-.9 2.3.1 1 .6 1.7 1.35 2-.35 1-1.05 2.2-2.15 2.3-.7.05-1.2-.3-2-.3-.8 0-1.3.35-1.9.3-1.1-.2-2-2.4-1.95-4.4.05-1.8 1.15-2.9 2.25-2.9.6 0 1.1.2 1.6.4zm.3-.8a1.35.55-48 1 1 1.8-2a1.35.55-48 1 1-1.8 2zM14 8.5v6.1c0 .7.2.8 1.25.8v1.3c-1.45 0-2.45-.8-2.45-2.1h0v-6.1zM11.5 10h3.5v1h-3.5zM16 10h1.3l1.4 4 .7 1 .6-1 1.1-4h1.3l-1.3 4-.8 2.6h-1.6l-1.2-2.6z",
+  // Roku
+  14: "M1.5 8.25h1.25v6.85h-1.25zm0 0h2.8c1.3 0 2 .85 2 2.05 0 1.3-.9 2.35-2.3 2.35h-2.5zM2.75 9.3v2h1.25c.6 0 1-.4 1-1 0-.5-.3-1-1-1zM3.9 12.5h1.7l1.6 2.6h-1.8zm3.35-.15a2.6 2.9 0 1 1 5.2 0a2.6 2.9 0 1 1-5.2 0zm1.45.1a1.3 1.6 0 1 0 2.6 0a1.3 1.6 0 1 0-2.6 0zM13 9.5h1.5v5.75h-1.5zm.9 3.6l2.6-3.6h1.75l-2.65 3.6zm.8-.5h1.7l1.8 2.65h-1.8zm4.85-3.1v3.4c0 1 .25 1.05.85 1.05h0c.9 0 1.2-.25 1.2-1.05h0v-3.4h1.3v3.4c0 1.4-1.2 2.35-2.5 2.35h0c-.8 0-2.15-.35-2.15-2.35h0v-3.4zm1.95 0h1.5v5.75h-1.5z",
+  // Fire TV
+  15: "M2 14.5v-5.1c0-1.1.8-1.85 1.8-1.85h0 .45v1h-.45c-.6 0-.8.15-.8.85h0v5.1zM1.25 10h3v1h-3zM5 8.2h.8v.9h-.8zm0 2.05h.8v4.25h-.8zM7 10h.95v4.5h-.95zm.5 0h2v.85h-2.5v-.35a.5.5 0 0 1 .5-.5zm5.1 2.1c0-.9-.4-1.4-1.1-1.4h0c-.7 0-1.05.5-1.05 1.4h0c0 .95.4 1.5 1.15 1.5h0c.5 0 .8-.1 1.16-.44l.68.68c-.44.46-1.14.76-1.84.76h0c-1.25 0-2.1-1.25-2.1-2.5h0c0-1.3.9-2.35 2-2.35h0c1.1 0 2 1.05 2 2.35zm-3-.35h4.1v.75h-4.1zm6.9-3v4.45c0 .4.14.5.5.5h0 .75v1h-.75c-.64 0-1.5-.5-1.5-1.5h0v-4.45zM14.75 10h2.75v.75h-2.75zm3.5 0h1l1.2 3.4 1.3-3.4h.85l-1.7 4.4h-1z",
+  // Netflix
+  16: "M1.25 9.25h1v5.45h-.6a.4.4 0 0 1-.4-.4zm2 0h1v5.1h-1zm-1.75 0h.75l1.7 5.1h-.75zm3.75 0h2.5v1h-1.7v1h1.2v1h-1.2v1.25h1.7v.75l-2.5.1zm3 0h2.75v1h-.95v4h-.8v-4h-1zm3.5 0h2.5v1h-1.7v1h1.2v1h-1.2v2h-.8zm3 0h1v4.25h1.5v.75h-2.5zm3.25 0h1v5.05h-1zm1.75 0h1.1l2 5.35h-1.1zm2.15 0h1.1l-2.2 5.05h-1.1z",
+  // Media player
+  17: "M3.6 3.9h16.8a.6.6 0 0 1 .6.6v11.8a.6.6 0 0 1-.6.6h-16.8a.6.6 0 0 1-.6-.6v-11.8a.6.6 0 0 1 .6-.6zM8 18.4h8a1 1 0 0 1 1 1h0a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1h0a1 1 0 0 1 1-1zM10 8.1v4.5l4.3-2.25z",
+  // Curved TV
+  18: "M3 3.7q9 .9 18.1 0a.8.8 0 0 1 .8.8v11.3a.8.8 0 0 1-.8.8q-9.1-1-18.2 0a.8.8 0 0 1-.7-.8v-11.3a.8.8 0 0 1 .8-.8zM11.4 16h1.6v2.4h-1.6zM6.5 18.8a19.9 19.9 0 0 1 11.4 0a.6.6 0 0 1-.36 1.2a18.7 18.7 0 0 0-10.68 0a.6.6 0 0 1-.36-1.2zM6.75 7.4l-.4 1.4h1.85l-1 4h1.3l1.1-4h1.35l.4-1.4zm5.85 0l1 5.4h1l3.2-5.4h-1.4l-1.8 3.6-.65-3.6z",
+  // Download
+  19: "M6.5 3h11a1.5 1.5 0 0 1 1.5 1.5v8.9l.5.2v3.3q-7.5-.9-15 0v-3.3l.5-.2v-8.9a1.5 1.5 0 0 1 1.5-1.5zM6 17.4h12a1.5 1.5 0 0 1 1.5 1.5v.4a1.5 1.5 0 0 1-1.5 1.5h-12a1.5 1.5 0 0 1-1.5-1.5v-.4a1.5 1.5 0 0 1 1.5-1.5zM11.05 6.6v4.16l-1.65-1.66a.7.7 0 0 0-1 1l2.85 2.85a.7.7 0 0 0 1 0l2.85-2.85a.7.7 0 0 0-1-1l-1.65 1.66v-4.16a.7.7 0 0 0-1.4 0z",
+  // Satellite dish
+  20: "M12.9 7a.7.7 0 0 1-.9 1c-.8-.9-1.7-1.7-2.8-2-1-.2-2 .6-1.6 2 .7 2.5 3.9 5.1 5.6 6.6 1 .5 2.2.4 2.3-.6.1-1.2-.3-2.2-.9-3.1a.94.94 0 0 1 1.7-.8c.7.5 1.2 1.6 1.2 3.1 0 1.4-.7 2.9-2.2 3.6-1.8.8-4.3.8-6.1.2-2.7-1-4.3-4-4.25-7.5.05-2.9 1.35-4.6 3.55-4.65 1.8-.05 3.5.75 4.4 2.15zM9 16.5h1.5v3.5h-1.5zM7.1 19.4h7.8a.6.6 0 0 1 .6.6v.3a.6.6 0 0 1-.6.6h-7.8a.6.6 0 0 1-.6-.6v-.3a.6.6 0 0 1 .6-.6zm5.3-7.9a.7.7 0 0 1-1-1l2.1-2.1a.7.7 0 0 1 1 1zm2.3-3.95a.8.8 0 1 1 1.6 0a.8.8 0 1 1-1.6 0zm1-3.19a4 4 0 0 1 3.25 3.58a.65.65 0 0 1-1.29.12a2.7 2.7 0 0 0-2.16-2.46a.65.65 0 0 1 .2-1.24zm0-2.6a6.5 6.5 0 0 1 5.26 6.14a.65.65 0 0 1-1.3 0a5.2 5.2 0 0 0-4.16-4.86a.65.65 0 0 1 .2-1.28z",
+  // Disc
+  21: "M2.4 11.85a9.55 9.55 0 1 1 19.1 0a9.55 9.55 0 1 1-19.1 0zm6.6.1a3.1 3.1 0 1 0 6.2 0a3.1 3.1 0 1 0-6.2 0zM6.05 17.8a.45.45 0 0 0 .65-.6a7.45 7.45 0 0 1 5.6-12.74a.45.45 0 0 0 0-.9a8.35 8.35 0 0 0-6.25 14.24z",
+  // Set-top box
+  22: "M5.6 4.9h12.8q1 0 1.3.9c.9 1.2 1.9 4.2 2.3 7.2h-20c.4-3 1.4-6 2.3-7.2q.3-.9 1.3-.9zm-2.3 9h16.9a1.8 1.8 0 0 1 1.8 1.8v2.2a1.8 1.8 0 0 1-1.8 1.8h-16.9a1.8 1.8 0 0 1-1.8-1.8v-2.2a1.8 1.8 0 0 1 1.8-1.8zm1.65 2.4a.45.45 0 0 0-.45.45h0a.45.45 0 0 0 .45.45h3.1a.45.45 0 0 0 .45-.45h0a.45.45 0 0 0-.45-.45zm12.3.45a.45.45 0 1 0 .9 0a.45.45 0 1 0-.9 0zm1.3 0a.45.45 0 1 0 .9 0a.45.45 0 1 0-.9 0z",
+  // Cassette deck
+  23: "M2.6 6.4h18.8a.6.6 0 0 1 .6.6v9.8a.6.6 0 0 1-.6.6h-18.8a.6.6 0 0 1-.6-.6v-9.8a.6.6 0 0 1 .6-.6zM5 12.25a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0zm5-.5a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h2.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zm4.45.4a2.3 2.3 0 1 0 4.6 0a2.3 2.3 0 1 0-4.6 0z",
+  // Projector, front
+  24: "M3.3 6.4q8.7-.5 17.3 0a1.8 1.8 0 0 1 1.8 1.8v5.2a2.5 2.5 0 0 1-2.5 2.5h-15.9a2.5 2.5 0 0 1-2.5-2.5v-5.2a1.8 1.8 0 0 1 1.8-1.8zM4 15.5h2.5l.5 3.1q0 .3-.3.3h-1.9q-.3 0-.3-.3zm13.5 0h2.5l-.5 3.1q0 .3-.3.3h-1.9q-.3 0-.3-.3zM4.5 9.4a.5.5 0 0 0-.5.5v2.1a.5.5 0 0 0 .5.5h0a.5.5 0 0 0 .5-.5v-2.1a.5.5 0 0 0-.5-.5zm2 0a.5.5 0 0 0-.5.5v2.1a.5.5 0 0 0 .5.5h0a.5.5 0 0 0 .5-.5v-2.1a.5.5 0 0 0-.5-.5zm2 0a.5.5 0 0 0-.5.5v2.1a.5.5 0 0 0 .5.5h0a.5.5 0 0 0 .5-.5v-2.1a.5.5 0 0 0-.5-.5zm5.45 1.5a3.3 3.3 0 1 0 6.6 0a3.3 3.3 0 1 0-6.6 0zm.6-.05a2.45 2.45 0 1 1 4.9 0a2.45 2.45 0 1 1-4.9 0z",
+  // Smart speaker
+  25: "M9 4.3a3.2 1 0 1 1 6.4 0a3.2 1 0 1 1-6.4 0zm-2.75 1a6 1.7 0 0 0 12 0q.75 0 .75 1.2v8.5c0 3-2 4.85-6.75 4.85-4.75 0-6.75-1.85-6.75-4.85v-8.5q0-1.2.75-1.2z",
+  // Air conditioner
+  26: "M3 4.9h18a1 1 0 0 1 1 1v8.2a.8.8 0 0 1-.8.8h-1.2v-2.5h-16v2.5h-1.2a.8.8 0 0 1-.8-.8v-8.2a1 1 0 0 1 1-1zm2 9.05h14v.95h-14zm1.05 2.4a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0zm3 0a.45.45 0 0 1 .9 0v3.1a.45.45 0 0 1-.9 0z",
+  // Desk fan
+  27: "M3.5 9.7a8.25 8.25 0 1 1 16.5 0a8.25 8.25 0 1 1-16.5 0zm7.1-.8l.5.2c.4-.5.9-.7 1.8-.8 1.3-.1 2.7-.7 2.7-2.1 0-1.4-1.6-2.3-3.2-2.4-1.2-.1-2.7.2-3.2 1.5-.4 1.3.1 2.7 1.4 3.6zm2.3-.14l-.4.34c.2.6.15 1.1-.2 1.95-.6 1.15-.75 2.69.46 3.39 1.24.7 2.79-.24 3.68-1.54.66-1 1.16-2.5.3-3.55-.94-1-2.39-1.25-3.84-.59zm-1 2.08l-.1-.54c-.6-.1-1.05-.4-1.6-1.15-.7-1.05-1.95-1.99-3.16-1.29-1.24.7-1.19 2.54-.48 3.94.54 1.1 1.54 2.3 2.9 2.05 1.34-.3 2.29-1.45 2.44-3.01zM10.75 9.55a1.1 1.1 0 1 1 2.2 0a1.1 1.1 0 1 1-2.2 0zm0 10.45a1 1 0 1 1 2 0a1 1 0 1 1-2 0zM8.3 19.85h7.4a.8.8 0 0 1 .8.8h0a.8.8 0 0 1-.8.8h-7.4a.8.8 0 0 1-.8-.8h0a.8.8 0 0 1 .8-.8z",
+  // Ceiling fan
+  28: "M9.6 10.14c-.8-.94-3.8-1.74-4.1-4.14-.3-2.4 1.3-4 2.9-4 2.5 0 4.2 2.3 4.5 4.8l-.1 3.5a2.7 2.7 0 0 0-3.2-.16zm5 2.26c1.25-.2 3.44-2.4 5.7-1.5 2.2.96 2.8 3.15 2 4.5-1.3 2.2-4.1 2.5-6.4 1.5l-3-1.8a2.7 2.7 120 0 0 1.7-2.7zm-3.9 2.8c-.4 1.2.4 4.2-1.5 5.7-1.95 1.44-4.1.85-4.9-.5-1.3-2.2-.14-4.8 1.9-6.3l3.06-1.7a2.7 2.7 240 0 0 1.44 2.8zM10 12.4a1.5 1.5 0 1 1 3 0a1.5 1.5 0 1 1-3 0z",
+  // Table lamp
+  29: "M7.4 3.4h9.2q.4 0 .5.4l1.9 9.1q.1.5-.4.5h-13.2q-.5 0-.4-.5l1.9-9.1q.1-.4.5-.4zM11 13h1.5v5.2h-1.5zm4.5 0h1.5v2.2a.7.7 0 0 1-.7.7h-.1a.7.7 0 0 1-.7-.7zM8.4 17.9h7.2a.9.9 0 0 1 .9.9v.1a.9.9 0 0 1-.9.9h-7.2a.9.9 0 0 1-.9-.9v-.1a.9.9 0 0 1 .9-.9z",
+  // Power outlet
+  30: "M4.5 3.4h15a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zm5.6 4a3.6 3.6 0 0 0-3.6 3.6v1.4a3.6 3.6 0 0 0 3.6 3.6h3.8a3.6 3.6 0 0 0 3.6-3.6v-1.4a3.6 3.6 0 0 0-3.6-3.6zm.05 2.5h.3a.2.2 0 0 1 .2.2v1.6a.2.2 0 0 1-.2.2h-.3a.2.2 0 0 1-.2-.2v-1.6a.2.2 0 0 1 .2-.2zm3.05 0h.55a.2.2 0 0 1 .2.2v1.6a.2.2 0 0 1-.2.2h-.55a.2.2 0 0 1-.2-.2v-1.6a.2.2 0 0 1 .2-.2zm-2.05 3.7a.75.75 0 1 1 1.5 0a.75.75 0 1 1-1.5 0z",
+  // Wall switch
+  31: "M4.5 3.4h15a1 1 0 0 1 1 1v15a1 1 0 0 1-1 1h-15a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1zm5.5 2a1.5 1.5 0 0 0-1.5 1.5v10a1.5 1.5 0 0 0 1.5 1.5h4a1.5 1.5 0 0 0 1.5-1.5v-10a1.5 1.5 0 0 0-1.5-1.5zm.3 7h3.9a.8.8 0 0 1 .8.8v3.9a.8.8 0 0 1-.8.8h-3.9a.8.8 0 0 1-.8-.8v-3.9a.8.8 0 0 1 .8-.8z",
+  // Presentation screen
+  32: "M3.4 4h17.2a.9.9 0 0 1 .9.9h0a.9.9 0 0 1-.9.9h-17.2a.9.9 0 0 1-.9-.9h0a.9.9 0 0 1 .9-.9zM4 5.5h16v11a.6.6 0 0 1-.6.6h-14.8a.6.6 0 0 1-.6-.6zM9.66 16.34a.85.85 0 0 1 1.28 1.12l-3.1 3.5a.85.85 0 0 1-1.28-1.12zm3.39 1.1a.85.85 0 0 1 1.3-1.08l2.9 3.5a.85.85 0 0 1-1.3 1.08zM10 8.4v4.9l4.9-2.45z",
+  // Party
+  33: "M5.8 9.6l.5-1.1 1-.4 7.3 5.2.5.7-.2.7-4.2 2.7-.7-.1zM5 13l.6-.2 3.1 4.7-.2.7-2.5 1.6-1.5.2-.5-.5v-2.5zM8.05 6.5c-1.05-.8-1.25-4.1 1.15-4.2h0c1.7-.1 2.35 1.44 2.35 2.3h0v1.7c0 1.1-.75 1.94-1.25 2.4a.75.75 0 0 1-1-1.2c.5-.34.75-.7.75-1.2h0v-1.7c0-.54-.15-.8-.85-.8h0c-.8 0-.8 1.1-.25 1.5a.75.75 0 0 1-.9 1.2zM12.5 4.75a1.25 1.25 0 1 1 2.5 0a1.25 1.25 0 1 1-2.5 0zm1.7 3.69a.65.65 0 0 1-.9-.98l3.4-2.96a.65.65 0 0 1 .9 1zm-.7 2.66c.96-1.35 2.8-3.16 4.9-3.1h0c2.1 0 3.55 1.4 3.55 3h0c0 1.5-1.35 2.3-2.45 2.3h0c-.9 0-1.8-.5-2.1-1.1a.7.7 0 0 1 1.2-.6c.1.2.4.3.9.3h0c.7 0 1.05-.2 1.05-.9h0c0-1-.65-1.6-2.15-1.6h0c-1.5-.04-2.86 1.25-3.7 2.5a.7.7 0 0 1-1.2-.8z",
+  // Sleep
+  34: "M11.5 4a6 6 0 0 0 8.4 8.5a8 8 0 1 1-8.4-8.5zm3 .4h4.3l.5.5v.7l-2.8 2.8h2.3l.4.5v.6l-.4.45h-4.4l-.4-.45v-.8l2.8-2.75h-2.3l-.4-.45v-.7z",
+  // DAZN
+  35: "M5.75 3.75h2.85c1.5 0 2.4 1.15 2.4 2.65v1.7c0 1.5-1 2.65-2.6 2.65h-2.65zM7.25 5v4.5h1.15c.7 0 1.1-.6 1.1-1.4v-1.8c0-.7-.3-1.3-1-1.3zm7.5-1.25h2.1l2.05 7h-1.7l-.4-1.5h-2.4l-.5 1.5h-1.6zM15.7 5.6l-.84 2.4h1.54zM5.75 13h5v1.3l-3.3 4.45h3.55v1.25h-5.25v-1.4l3.25-4.3h-3.25zM13 13h1.6l2.15 4.3v-4.3h1.5v7h-1.65l-2.1-4.1v4.1h-1.5z",
+  // DIRECTV
+  36: "M5.45 9.2h.9c1.05 0 1.1.9 1.1 1.4 0 .8-.35 1.4-1.1 1.4h-.9zm.45.45v1.9h.45c.4 0 .65-.45.65-.95 0-.5-.2-.95-.65-.95zM8.75 9.2h.5v2.8h-.5zm1.75 0h.5v2.8h-.5zm0 0h1.1c.7 0 .95.4.95.8 0 .4-.25.75-.95.75h-1.1zm.5.45v.65h.6c.35 0 .5-.1.5-.3 0-.2-.15-.35-.5-.35zm.45.95h.5l.65 1.4h-.5zm2.3-1.4h2v.45h-1.5v.75h1.25v.45h-1.25v.7h1.5v.45h-2zm4.95.7c-.2-.24-.36-.25-.7-.25h0c-.4 0-.55.35-.55.95h0c0 .6.15.96.55.96h0c.34 0 .5-.02.7-.26l.3.3c-.3.36-.64.4-1 .4h0c-.8 0-1-.8-1-1.4h0c0-.6.2-1.4 1-1.4h0c.36 0 .7.04 1 .4zM9.25 13h2v.65h-2zM10 13h.5v2.95h-.5zm2.25 0h.75l.5 1.8.5-1.8h.6l-.8 2.95h-.6z",
+  // Disney
+  37: "M1.75 9.75h1.85c1.3 0 2.15.85 2.15 2.15 0 1.4-.85 2.35-2.25 2.35h-1.75zM3 10.8v2.4h.4c.7 0 1.1-.5 1.1-1.25 0-.75-.4-1.15-1.1-1.15zm3.25-.9a.5.5 0 1 1 1 0a.5.5 0 1 1-1 0zm0 1.1h1v3.25h-1zm4.15 1c-.2-.2-.75-.26-1.3-.2h0c-.5.1-.56.15-.56.16h0c.06.14.36.24.96.24h0c.7 0 1.5.3 1.7.75h0c.2.55-.46 1.09-1.2 1.21h0c-.65.14-1.5-.06-1.9-.36l.5-.6c.2.2.75.26 1.3.2h0c.5-.1.56-.15.56-.16h0c-.06-.14-.36-.24-.96-.24h0c-.7 0-1.5-.3-1.7-.75h0c-.2-.55.46-1.09 1.2-1.21h0c.65-.14 1.5.06 1.9.36zm1.35-1h1v.4c.35-.3.75-.4 1.15-.4.7 0 1.1.4 1.1 1.3v1.95h-1.25v-1.75c0-.35-.15-.55-.45-.55-.35 0-.55.25-.55.65v1.65h-1zm6.99 1.7l-1.94.05v.7h.75v-.3h1.09a1.6 1.6 0 1 1 .1-.45zM17 11.65a.3.3 0 0 0-.3.25h0a.3.3 0 0 0 .3.3h.3a.3.3 0 0 0 .3-.3h0a.3.3 0 0 0-.3-.25zM19 11h1.25l.9 2.5-1.1.4zm2.35 0h1.2l-1.45 3.6q-.3.8-1.15.8h-.75v-.85h.55q.25 0 .35-.35z",
+  // Hulu
+  38: "M2 8.5h1.5v6.5h-1.5zm0 2h2.6c1.4 0 2.15.7 2.15 1.7v2.8h-1.5v-2.6c0-.3-.2-.4-.55-.4h-1.2zm6 0h1.5v2.4c0 .55.4.75.85.75.65 0 1.15-.25 1.15-.95v-2.2h1.5v2.8c0 1.1-1 1.7-2.5 1.7-1.5 0-2.5-.6-2.5-1.7zm6.25-2h1.5v6.5h-1.5zm3 2h1.5v2.4c0 .55.4.75.85.75.15 0 .65-.25.65-.95v-2.2h1.75v2.8c0 1.1-1 1.7-2.4 1.7-1.35 0-2.35-.6-2.35-1.7z",
+  // NVIDIA
+  39: "M1.25 10h2.65c.85 0 1.35.6 1.35 1.4v2.6h-1v-2.5c0-.35-.25-.55-.65-.55h-1.35v3.05h-1zM5.5 10h1.25l.85 2.9.9-2.9h1l-1.2 4h-1.55zm4.75 0h1v4h-1zM12 10h2.2c1 0 1.55.7 1.55 1.6v.8c0 1-.55 1.6-1.55 1.6h-2.2zm1.25.95v2.05h.75c.5 0 .75-.3.75-.8v-.4c0-.5-.25-.85-.75-.85zM16.5 10h1v4h-1zm3 0h1.55l1.75 4h-1.2l-.25-.7h-1.7l-.2.7h-1.15zm.8 1l-.6 1.7h1.25z",
+  // Prime Video
+  40: "M3.5 8.25h1v4.75h-1zM3.7 9.8a1.65 1.6 0 1 1 3.3 0a1.65 1.6 0 1 1-3.3 0zm.8-.05a.7 1 0 1 0 1.4 0a.7 1 0 1 0-1.4 0zm3.25-1.5h.8v3h-.8zM8.1 8.2h1.45a.2.2 0 0 1 .2.2v.55h-2v-.4a.35.35 0 0 1 .35-.35zm2.1-1.05a.55.35 0 1 1 1.1 0a.55.35 0 1 1-1.1 0zm.3 1.1h.75v3h-.75zm1.8 0h.9v3h-.9zm0 1.75c0-1 .7-2 1.6-2h0c.84 0 1.6 1 1.6 2h0v1.25h-1v-1.25c0-.7-.25-1.1-.6-1.1h0c-.4 0-.7.4-.7 1.1zm2.2 0c0-1 .76-2 1.6-2h0c.9 0 1.6 1 1.6 2h0v1.25h-.9v-1.25c0-.7-.3-1.1-.7-1.1h0c-.35 0-.6.4-.6 1.1zm5.85-.25c0-.45-.15-.75-.5-.85h0c-.3-.06-.5.1-.65.5h0c-.14.44-.05.8.25 1.1h0c.25.2.45.2.69-.1l.7.55c-.44.55-1.39.7-1.94.25h0c-.55-.46-.8-1.4-.55-2.1h0c.25-.7 1.05-1.2 1.71-1.06h0c.64.16 1.19.96 1.19 1.71zm-2.1-.3h3v.6h-3zM4 14h1l.65 2.1.6-2.1h1l-1.15 3.1h-.95zm3.75-1.4a.5.4 0 1 1 1 0a.5.4 0 1 1-1 0zm0 1.4h1v3h-1zm4-1.75h1v4.85h-1zM9.5 15.5a1.6 1.7 0 1 1 3.2 0a1.6 1.7 0 1 1-3.2 0zm.95 0a.65 1 0 1 0 1.3 0a.65 1 0 1 0-1.3 0zm5.4 0c0-.5-.15-.76-.5-.84h0c-.3-.06-.5.04-.65.49h0c-.14.45-.05.85.25 1.05h0c.25.26.45.2.69-.06l.7.56c-.44.6-1.39.7-1.94.2h0c-.55-.4-.8-1.34-.55-2.04h0c.25-.72 1.05-1.26 1.71-1.06h0c.64.15 1.19.94 1.19 1.7zm-2.1-.3h3v.6h-3zm3.5.3a1.65 1.75 0 1 1 3.3 0a1.65 1.75 0 1 1-3.3 0zm.9 0a.75 1.05 0 1 0 1.5 0a.75 1.05 0 1 0-1.5 0z",
+  // PS
+  41: "M5.9 6h1.6v12h-1.6zm0 0h3.7c1.4 0 2.15 1.2 2.15 2.8v1.2c0 2-1.05 3.3-2.75 3.3h-3.1zM7.5 8v3.3h1.7c.6 0 1.05-.5 1.05-1.3v-.8c0-.7-.35-1.2-.95-1.2zm8.5.4c-.4-.7-.75-.84-1.3-.54h0c-.6.34-.9 1.04-.7 1.94h0c.1.94.5 1.3 1.1 1.3h0c1.3 0 2.6 1.34 2.85 2.8h0c.25 1.44-.45 3.15-1.65 3.8h0c-1.2.65-2.9.04-3.6-1.24l1.5-.86c.4.7.75.84 1.3.55h0c.6-.35.9-1.05.7-1.95h0c-.1-.9-.5-1.3-1.1-1.3h0c-1.3 0-2.6-1.34-2.85-2.8h0c-.25-1.44.45-3.15 1.65-3.8h0c1.2-.65 2.9-.04 3.6 1.25z",
+  // R
+  42: "M7.5 6h2.5v11.75h-2.5zm0 0h5.7c2.1 0 3.3 1.4 3.3 3.4 0 2.3-1.4 3.9-3.5 3.9h-5.5zM10 7.4v3.75h2.6c.9 0 1.45-.75 1.45-1.9 0-1.05-.45-1.85-1.25-1.85zm1.9 5.9h2.85l3.05 4.45h-3.1z",
+  // SAM
+  43: "M2 10.3q0-1.3 1.3-1.3h2.1q1.2 0 1.2 1.2v.65h-1.85v-.85h-1v.85l1.25.65.75.5.75.75.25.5v1.05q0 1.3-1.35 1.3h-2.1q-1.3 0-1.3-1.3v-.8h1.75v1.05h1.25v-1.25l-1.5-.8-.75-.5-.75-1zM9 9h3.05l1.25 6.6h-1.75l-.95-5.6-.9 5.6h-1.8zm5.75 0h1.95l1.7 4.9 1.65-4.9h1.95v6.6h-1.5v-3.6l-1.2 3.6h-1.85l-1.2-3.6v3.6h-1.5z",
+  // Xbox
+  44: "M3 9.4h1.5l.75 1.3.75-1.3h1.5l-1.3 2.3 1.55 2.7h-1.65l-.85-1.4-.85 1.4h-1.65l1.5-2.7zm5.5.1h1.3v4.85h-1.3zm0 1.3h2.1c1.2 0 1.9.8 1.9 1.75 0 1.05-.7 1.8-1.9 1.8h-2.1zm1.3 1.65a.65.85 0 1 0 1.3 0a.65.85 0 1 0-1.3 0zm3.2.1a1.85 1.8 0 1 1 3.7 0a1.85 1.8 0 1 1-3.7 0zm1.2-.05a.65.9 0 1 0 1.3 0a.65.9 0 1 0-1.3 0zm3.55-1.75h1.25l2 3.6h-1.25zm2.45 0h1.1l-2.8 3.6h-1.25z",
+  // YouTube
+  45: "M2 9h.9l.6 1.85.6-1.85h.9l-1 2.75v3.2h-1v-3.2zm4.26 1.4a1.2 1.2 0 0 1 1.24 1.2v2.2a1.2 1.2 0 0 1-1.24 1.2h0a1.2 1.2 0 0 1-1.26-1.2v-2.2a1.2 1.2 0 0 1 1.26-1.2zm0 .75a.4.4 0 0 0-.36.35v2.4a.4.4 0 0 0 .36.35h0a.4.4 0 0 0 .34-.35v-2.4a.4.4 0 0 0-.34-.35zM9 10.5v2.8c0 .6.2.85.4.85h0c.2 0 .35-.25.35-.85h.85c0 .8-.55 1.7-1.2 1.7h0c-.7 0-1.25-.9-1.25-1.7h0v-2.8zm.75 0h.85v4.45h-.85zm1-1.5h3v.75h-3zm1 0h1v5.95h-1zm3 1.5v2.8c0 .6.15.85.35.85h0c.2 0 .4-.25.4-.85h.85c0 .8-.55 1.7-1.25 1.7h0c-.65 0-1.2-.9-1.2-1.7h0v-2.8zm.75 0h.85v4.45h-.85zM17.15 9h.85v5.95h-.85zm0 1.4h1.25a1.2 1.2 0 0 1 1.2 1.2v2.2a1.2 1.2 0 0 1-1.2 1.2h-1.25zm1.25.75a.4.4 0 0 0-.4.35v2.4a.4.4 0 0 0 .4.35h0a.4.4 0 0 0 .35-.35v-2.4a.4.4 0 0 0-.35-.35zm4.3 1.8h-1.6v.85h1.6a1.2 1.2 0 0 1-2.4 0v-2.2a1.2 1.2 0 0 1 2.4 0zm-1.2-1.8a.4.4 0 0 0-.4.35v.4a.4.4 0 0 0 .4.4h0a.4.4 0 0 0 .4-.4v-.4a.4.4 0 0 0-.4-.35z"
+};
+var X2_ICON_NAMES = {
+  1: "Monitor",
+  2: "Picture",
+  3: "Music",
+  4: "Film reel",
+  5: "TV",
+  6: "Gamepad",
+  7: "Game controller",
+  8: "Router",
+  9: "Wifi router",
+  10: "Projector",
+  11: "Receiver",
+  12: "Pendant lamp",
+  13: "Apple TV",
+  14: "Roku",
+  15: "Fire TV",
+  16: "Netflix",
+  17: "Media player",
+  18: "Curved TV",
+  19: "Download",
+  20: "Satellite dish",
+  21: "Disc",
+  22: "Set-top box",
+  23: "Cassette deck",
+  24: "Projector, front",
+  25: "Smart speaker",
+  26: "Air conditioner",
+  27: "Desk fan",
+  28: "Ceiling fan",
+  29: "Table lamp",
+  30: "Power outlet",
+  31: "Wall switch",
+  32: "Presentation screen",
+  33: "Party",
+  34: "Sleep",
+  35: "DAZN",
+  36: "DIRECTV",
+  37: "Disney",
+  38: "Hulu",
+  39: "NVIDIA",
+  40: "Prime Video",
+  41: "PS",
+  42: "R",
+  43: "SAM",
+  44: "Xbox",
+  45: "YouTube"
+};
+var X1_ICON_PATHS = {
+  // 3D glasses
+  6: "M2.4 8.5h19.2a.5.5 0 0 1 .5.5v.8a.5.5 0 0 1-.5.5h-19.2a.5.5 0 0 1-.5-.5v-.8a.5.5 0 0 1 .5-.5zm0 1.4h8.55l-.55 5.2q-.1 1.2-1.2 1.2h-4.6q-1.1 0-1.2-1.2zm1.45 1.3l.1 1h5.55l.1-1zM21.6 9.9l-1 5.2q-.1 1.2-1.2 1.2h-4.6q-1.1 0-1.2-1.2l-.55-5.2zm-1.45 1.3h-5.75l.1 1h5.55zM3.34 9.2a.65.65 0 0 1-1.28.2l-.96-4.9a.65.65 0 0 1 1.3-.2zm18.6.2a.65.65 0 0 1-1.28-.2l.94-4.9a.65.65 0 0 1 1.3.2z",
+  // TV with menu
+  7: "M4 3.9h15.8a1.2 1.2 0 0 1 1.2 1.2v9.7a1.2 1.2 0 0 1-1.2 1.2h-15.8a1.2 1.2 0 0 1-1.2-1.2v-9.7a1.2 1.2 0 0 1 1.2-1.2zm7.5 11.6h1v3.2h-1zM6.95 18.3h10.3a.75.75 0 0 1 .75.75h0a.75.75 0 0 1-.75.75h-10.3a.75.75 0 0 1-.75-.75h0a.75.75 0 0 1 .75-.75zM5 5.5v1.4h1.4v-1.4zm2.8.2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h10.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zM5 8.3v1.4h1.4v-1.4zm2.8.2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h8.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zM5 11.1v1.4h1.4v-1.4zm2.8.2a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h6.6a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5z",
+  // Clapperboard
+  8: "M3.5 9.4h17a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-17a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm6.7 2.85v5.3l4.55-2.65zM3.5 4.3h17a1 1 0 0 1 1 1v3h-19v-3a1 1 0 0 1 1-1zm1.6 0l-1.5 4h1.6l1.5-4zm4.3 0l-1.5 4h1.6l1.5-4zm4.3 0l-1.5 4h1.6l1.5-4zm4.3 0l-1.5 4h1.6l1.5-4z",
+  // Handheld console
+  10: "M4.7 6.2h14.6a3.2 3.2 0 0 1 3.2 3.2v5.2a3.2 3.2 0 0 1-3.2 3.2h-14.6a3.2 3.2 0 0 1-3.2-3.2v-5.2a3.2 3.2 0 0 1 3.2-3.2zM7.5 7.8a.6.6 0 0 0-.6.6v7.2a.6.6 0 0 0 .6.6h9a.6.6 0 0 0 .6-.6v-7.2a.6.6 0 0 0-.6-.6zM3.75 11.85v1.05h-1.05v.9h0 1.05v1.05h.9 0v-1.05h1.05v-.9h0-1.05v-1.05h-.9zm-.4-2.6a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zm15.6 0a.85.85 0 1 0 1.7 0a.85.85 0 1 0-1.7 0zM18.4 14a.65.65 0 1 0 1.3 0a.65.65 0 1 0-1.3 0zm1.5-1.3a.65.65 0 1 0 1.3 0a.65.65 0 1 0-1.3 0z",
+  // Retro console
+  12: "M8.3 3.6h7.4a3.8 3.8 0 0 1 3.8 3.8h0a3.8 3.8 0 0 1-3.8 3.8h-7.4a3.8 3.8 0 0 1-3.8-3.8h0a3.8 3.8 0 0 1 3.8-3.8zM7.85 5.75v1.15h-1.15v1h0 1.15v1.15h1 0v-1.15h1.15v-1h0-1.15v-1.15h-1zM14.4 8.2a.75.75 0 1 0 1.5 0a.75.75 0 1 0-1.5 0zm1.7-1.6a.75.75 0 1 0 1.5 0a.75.75 0 1 0-1.5 0zm-4.65 4.2h1.1v2.6h-1.1zM3.2 13h17.6a1.2 1.2 0 0 1 1.2 1.2v4.8a1.2 1.2 0 0 1-1.2 1.2h-17.6a1.2 1.2 0 0 1-1.2-1.2v-4.8a1.2 1.2 0 0 1 1.2-1.2zm1.5 1.85a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h2a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zm0 2.4a.5.5 0 0 0-.5.5h0a.5.5 0 0 0 .5.5h2a.5.5 0 0 0 .5-.5h0a.5.5 0 0 0-.5-.5zM10.2 16a.6.6 0 0 0-.6.6h0a.6.6 0 0 0 .6.6h9a.6.6 0 0 0 .6-.6h0a.6.6 0 0 0-.6-.6z",
+  // VUDU
+  14: "M2.2 9h1.5l1.25 4.1 1.25-4.1h1.5l-1.95 6h-1.6zM9.7 9v3.6c0 .7.3 1.05.7 1.05h0c.4 0 .7-.35.7-1.05h0v-3.6h1.35v3.6c0 1.2-.95 2.4-2.05 2.4h0c-1.1 0-2.05-1.2-2.05-2.4h0v-3.6zm3.4 0h1.7c1.75 0 2.6 1.35 2.6 3 0 1.65-.85 3-2.6 3h-1.7zm1.35 1.25v3.5h.3c.85 0 1.3-.7 1.3-1.75 0-1.05-.45-1.75-1.3-1.75zM19.4 9v3.6c0 .7.3 1.05.7 1.05h0c.4 0 .7-.35.7-1.05h0v-3.6h1.35v3.6c0 1.2-.95 2.4-2.05 2.4h0c-1.1 0-2.05-1.2-2.05-2.4h0v-3.6z",
+  // Home
+  17: "M12 2.9l9.9 8.8h-2.5v8.9h-5.1v-4.5a2.3 2.3 0 0 0-4.6 0v4.5h-5.1v-8.9h-2.5z",
+  // Computer
+  18: "M4 3.9h15.8a1.2 1.2 0 0 1 1.2 1.2v9.7a1.2 1.2 0 0 1-1.2 1.2h-15.8a1.2 1.2 0 0 1-1.2-1.2v-9.7a1.2 1.2 0 0 1 1.2-1.2zm.6 1.5a.3.3 0 0 0-.3.3v8.5a.3.3 0 0 0 .3.3h14.6a.3.3 0 0 0 .3-.3v-8.5a.3.3 0 0 0-.3-.3zm6.9 10.1h1v3.2h-1zM6.95 18.3h10.3a.75.75 0 0 1 .75.75h0a.75.75 0 0 1-.75.75h-10.3a.75.75 0 0 1-.75-.75h0a.75.75 0 0 1 .75-.75zm3.15-12l4.95 4.3-2.2.1 1.2 2.5-1.1.5-1.2-2.5-1.65 1.55z",
+  // AV receiver
+  22: "M2.7 6.4h18.6a1.2 1.2 0 0 1 1.2 1.2v8.2a1.2 1.2 0 0 1-1.2 1.2h-18.6a1.2 1.2 0 0 1-1.2-1.2v-8.2a1.2 1.2 0 0 1 1.2-1.2zM3.8 16.5h3v1.5a.7.7 0 0 1-.7.7h-1.6a.7.7 0 0 1-.7-.7zm13.4 0h3v1.5a.7.7 0 0 1-.7.7h-1.6a.7.7 0 0 1-.7-.7zM3.9 11.7a3 3 0 1 0 6 0a3 3 0 1 0-6 0zm1.25 0a1.75 1.75 0 1 1 3.5 0a1.75 1.75 0 1 1-3.5 0zm9.7-3a.95.95 0 0 0-.95.95v4.1a.95.95 0 0 0 .95.95h0a.95.95 0 0 0 .95-.95v-4.1a.95.95 0 0 0-.95-.95zm3.4 0a.95.95 0 0 0-.95.95v4.1a.95.95 0 0 0 .95.95h0a.95.95 0 0 0 .95-.95v-4.1a.95.95 0 0 0-.95-.95z",
+  // amazon
+  25: "M1.5 9.6c.36-.6 1-.8 1.4-.8h0c.84 0 1.5.66 1.5 1.6h0v2.8h-.9v-2.8c0-.56-.14-.7-.6-.7h0c-.3 0-.46.1-.7.4zm-.1 2.3a1.35 1.3 0 1 1 2.7 0a1.35 1.3 0 1 1-2.7 0zm.85.05a.55.5 0 1 0 1.1 0a.55.5 0 1 0-1.1 0zm2.6 1.25v-2.9c0-.7.49-1.5 1.1-1.5h0c.61 0 1.1.8 1.1 1.5h0v2.9h-.9v-2.9c0-.45-.09-.6-.2-.6h0c-.11 0-.2.15-.2.6h0v2.9zm1.3 0v-2.9c0-.7.49-1.5 1.1-1.5h0c.61 0 1.1.8 1.1 1.5h0v2.9h-.9v-2.9c0-.45-.09-.6-.2-.6h0c-.11 0-.2.15-.2.6h0v2.9zM4.85 8.8h.9v4.4h-.9zm4.25.8c.4-.6 1-.8 1.45-.8h0c.85 0 1.5.66 1.5 1.6h0v2.8h-.9v-2.8c0-.56-.15-.7-.6-.7h0c-.25 0-.45.1-.65.4zm-.05 2.3a1.35 1.3 0 1 1 2.7 0a1.35 1.3 0 1 1-2.7 0zm.85.05a.55.5 0 1 0 1.1 0a.55.5 0 1 0-1.1 0zM12.2 8.8h2.6v.8l-1.45 2.8h1.5v.8h-2.65v-.8l1.45-2.8h-1.45zM15.6 11a1.65 2.2 0 1 1 3.3 0a1.65 2.2 0 1 1-3.3 0zm.9 0a.75 1.3 0 1 0 1.5 0a.75 1.3 0 1 0-1.5 0zm2.9 2.2v-2.9c0-.76.7-1.5 1.4-1.5h0c.76 0 1.45.74 1.45 1.5h0v2.9h-.9v-2.9c0-.4-.15-.6-.55-.6h0c-.3 0-.5.2-.5.6h0v2.9zm0-4.4h.9v4.4h-.9zM2.6 14.7q6.9 2.5 13.7.5-6.8 3.4-13.7-.5zm12.3-.15l2.4-.25-.55 2.25-.5-.6-.45-.6z"
+};
+
+// remote-card/src/entity-icons/entity-icons.ts
+var ENTITY_ICON_COUNT = { X1: 25, X1S: 16, X2: 45 };
+var X1_ICON_AS_X2 = {
+  1: 1,
+  2: 18,
+  3: 32,
+  4: 2,
+  5: 3,
+  9: 7,
+  11: 6,
+  13: 13,
+  15: 14,
+  16: 16,
+  19: 25,
+  20: 9,
+  21: 12,
+  23: 10,
+  24: 22
+};
+var X1S_ICON_AS_X1 = { 4: 6, 5: 8, 6: 10, 9: 22, 15: 25 };
+var X1_ICON_NAMES = {
+  1: "TV",
+  2: "HD TV",
+  3: "TV on a stand",
+  4: "Picture",
+  5: "Music",
+  6: "3D glasses",
+  7: "TV with menu",
+  8: "Clapperboard",
+  9: "Gamepad",
+  10: "Handheld console",
+  11: "Gamepad",
+  12: "Retro console",
+  13: "Apple",
+  14: "VUDU",
+  15: "Roku",
+  16: "Netflix",
+  17: "Home",
+  18: "Computer",
+  19: "Speaker",
+  20: "Set-top box",
+  21: "Bulb",
+  22: "AV receiver",
+  23: "Projector",
+  24: "Disc player",
+  25: "amazon"
+};
+var SERVICE_ICON_IDS = {
+  X1: [13, 14, 15, 16, 25],
+  X1S: [13, 14, 15, 16],
+  X2: [13, 14, 15, 16, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]
+};
+function iconHubLine(hubVersion) {
+  const version = String(hubVersion ?? "").trim().toUpperCase();
+  if (version.includes("X1S")) return "X1S";
+  if (version.includes("X2")) return "X2";
+  if (version.includes("X1")) return "X1";
+  return null;
+}
+function entityIconIds(hubVersion) {
+  const line = iconHubLine(hubVersion);
+  return line ? Array.from({ length: ENTITY_ICON_COUNT[line] }, (_2, i8) => i8 + 1) : [];
+}
+function entityIconGroups(hubVersion) {
+  const line = iconHubLine(hubVersion);
+  if (!line) return { pictures: [], services: [] };
+  const services = new Set(SERVICE_ICON_IDS[line]);
+  const ids = entityIconIds(hubVersion);
+  return { pictures: ids.filter((id) => !services.has(id)), services: ids.filter((id) => services.has(id)) };
+}
+function lineIconId(line, iconId) {
+  return Number.isInteger(iconId) && iconId >= 1 && iconId <= ENTITY_ICON_COUNT[line] ? iconId : 1;
+}
+function entityIconPath(hubVersion, iconId) {
+  const line = iconHubLine(hubVersion);
+  if (!line) return null;
+  const id = lineIconId(line, iconId);
+  if (line === "X1") return X1_ICON_PATHS[id] ?? X2_ICON_PATHS[X1_ICON_AS_X2[id]];
+  if (line === "X1S" && X1S_ICON_AS_X1[id]) return X1_ICON_PATHS[X1S_ICON_AS_X1[id]];
+  return X2_ICON_PATHS[id];
+}
+function entityIconName(hubVersion, iconId) {
+  const line = iconHubLine(hubVersion);
+  if (!line) return "";
+  const id = lineIconId(line, iconId);
+  if (line === "X1") return X1_ICON_NAMES[id];
+  if (line === "X1S" && X1S_ICON_AS_X1[id]) return X1_ICON_NAMES[X1S_ICON_AS_X1[id]];
+  return X2_ICON_NAMES[id];
+}
+
+// remote-card/src/entity-icons/entity-colors.ts
+var PALETTE = {
+  1: "#7F7F7F",
+  2: "#F16161",
+  3: "#2E385E",
+  4: "#8171B4",
+  5: "#64BB80",
+  6: "#E39E89",
+  7: "#00A8E0",
+  8: "#717FB4",
+  9: "#56CBCB",
+  10: "#BCAD90",
+  11: "#6EACEB",
+  12: "#97A5DB"
+};
+var ENTITY_COLOR_IDS = Object.keys(PALETTE).map(Number);
+function entityColorsSupported(hubVersion) {
+  return iconHubLine(hubVersion) === "X2";
+}
+function entityColorHex(colorId) {
+  return PALETTE[Number(colorId)] ?? PALETTE[1];
+}
+function entityColor(hubVersion, colorId) {
+  return entityColorsSupported(hubVersion) ? entityColorHex(colorId) : null;
+}
+
+// remote-card/src/entity-icons/entity-tile.ts
+function entityTile(hubVersion, icon7, colorId) {
+  if (typeof icon7 !== "number") return null;
+  const path = entityIconPath(hubVersion, icon7);
+  if (!path) return null;
+  return { path, color: entityColor(hubVersion, colorId), name: entityIconName(hubVersion, icon7) };
+}
+var BADGE_IR = { icon: "mdi:led-outline", path: mdiLedOutline, nudge: [0, -2.5] };
+var BADGE_BLUETOOTH = { icon: "mdi:bluetooth", path: mdiBluetooth, nudge: [0.65, 0] };
+var BADGE_WIFI = { icon: "mdi:wifi", path: mdiWifi, nudge: [0, 0] };
+var BADGE_RF = { icon: "mdi:radio-tower", path: mdiRadioTower, nudge: [0, 0] };
+function entityTileBadge(deviceClass) {
+  const cls = String(deviceClass ?? "").toLowerCase();
+  if (cls === "ir") return BADGE_IR;
+  if (cls.includes("bluetooth")) return BADGE_BLUETOOTH;
+  if (cls.includes("wifi")) return BADGE_WIFI;
+  if (cls.startsWith("rf")) return BADGE_RF;
+  return null;
+}
+function renderBadge(badge2) {
+  const [dx, dy] = badge2.nudge;
+  return b2`<span class="entity-tile__badge"
+    ><svg viewBox="0 0 24 24" focusable="false"><path transform=${`translate(${dx} ${dy})`} d=${badge2.path}></path></svg
+  ></span>`;
+}
+function renderEntityTile(tile, options = {}) {
+  const classes = ["entity-tile", tile.color ? "" : "entity-tile--neutral", options.className ?? ""].filter(Boolean).join(" ");
+  return b2`<span class=${classes} style=${tile.color ? `--entity-tile-color: ${tile.color}` : ""} aria-hidden="true"
+    ><svg viewBox="0 0 24 24" focusable="false"><path d=${tile.path}></path></svg
+    >${options.badge ? renderBadge(options.badge) : A}</span
+  >`;
+}
+var entityTileStyles = i`
+  .entity-tile {
+    --_entity-tile-size: var(--entity-tile-size, 30px);
+    position: relative;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: var(--_entity-tile-size);
+    height: var(--_entity-tile-size);
+    border-radius: calc(var(--_entity-tile-size) * 0.3);
+    background: var(--entity-tile-color, #7f7f7f);
+    color: #fff;
+  }
+  .entity-tile > svg {
+    width: calc(var(--_entity-tile-size) * 0.64);
+    height: calc(var(--_entity-tile-size) * 0.64);
+    fill: currentColor;
+  }
+  .entity-tile--neutral {
+    background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+    color: var(--primary-text-color);
+  }
+  .entity-tile__badge {
+    position: absolute;
+    inset-inline-end: -5px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--card-background-color, #fff);
+    color: var(--secondary-text-color);
+    box-shadow: 0 0 0 2px var(--entity-tile-ring, var(--card-background-color, #fff));
+  }
+  .entity-tile__badge > svg {
+    display: block;
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+  }
+`;
+
+// remote-card/src/entity-icons/entity-picker.ts
+var CHECK_PATH = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
+function renderEntityIconPicker(params) {
+  const { pictures, services } = entityIconGroups(params.hubVersion);
+  const button = (id) => {
+    const selected = id === params.icon;
+    const name = entityIconName(params.hubVersion, id);
+    const classes = [
+      "entity-picker-icon",
+      selected ? "entity-picker-icon--selected" : "",
+      selected && !params.color ? "entity-picker-icon--neutral" : ""
+    ].filter(Boolean).join(" ");
+    return b2`<button
+      type="button"
+      class=${classes}
+      style=${selected && params.color ? `--entity-tile-color: ${params.color}` : ""}
+      title=${name}
+      aria-label=${name}
+      aria-pressed=${selected ? "true" : "false"}
+      @click=${() => params.onPick(id)}
+    ><svg viewBox="0 0 24 24" aria-hidden="true"><path d=${entityIconPath(params.hubVersion, id) ?? ""}></path></svg></button>`;
+  };
+  return b2`
+    <div class="entity-picker-grid">${pictures.map(button)}</div>
+    ${services.length ? b2`<div class="entity-picker-sub">${params.servicesLabel}</div><div class="entity-picker-grid">${services.map(button)}</div>` : A}
+  `;
+}
+function renderEntityColorPicker(params) {
+  const current = params.colorId >= 1 ? params.colorId : 1;
+  return b2`<div class="entity-picker-swatches" role="radiogroup">
+    ${ENTITY_COLOR_IDS.map((id) => {
+    const selected = id === current;
+    return b2`<button
+        type="button"
+        role="radio"
+        class=${["entity-picker-swatch", selected ? "entity-picker-swatch--selected" : ""].filter(Boolean).join(" ")}
+        style=${`--entity-swatch: ${entityColorHex(id)}`}
+        title=${params.colorName(id)}
+        aria-label=${params.colorName(id)}
+        aria-checked=${selected ? "true" : "false"}
+        @click=${() => params.onPick(id)}
+      ><svg viewBox="0 0 24 24" aria-hidden="true"><path d=${CHECK_PATH}></path></svg></button>`;
+  })}
+  </div>`;
+}
+var entityPickerStyles = i`
+  .entity-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+    gap: 6px;
+  }
+  .entity-picker-icon {
+    aspect-ratio: 1;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+    color: color-mix(in srgb, var(--primary-text-color) 82%, transparent);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: background 90ms ease;
+  }
+  .entity-picker-icon svg {
+    width: 24px;
+    height: 24px;
+    fill: currentColor;
+  }
+  .entity-picker-icon:hover {
+    background: color-mix(in srgb, var(--primary-text-color) 12%, transparent);
+  }
+  .entity-picker-icon:focus-visible,
+  .entity-picker-swatch:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+  }
+  .entity-picker-icon--selected,
+  .entity-picker-icon--selected:hover {
+    background: var(--entity-tile-color, #7f7f7f);
+    color: #fff;
+    box-shadow: 0 0 0 2px var(--card-background-color, #fff), 0 0 0 4px var(--entity-tile-color, #7f7f7f);
+  }
+  .entity-picker-icon--neutral,
+  .entity-picker-icon--neutral:hover {
+    background: color-mix(in srgb, var(--primary-color) 22%, transparent);
+    color: color-mix(in srgb, var(--primary-color) 45%, var(--primary-text-color));
+    box-shadow: 0 0 0 2px var(--primary-color);
+  }
+  .entity-picker-sub {
+    margin: 12px 0 6px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .entity-picker-swatches {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(28px, 1fr));
+    gap: 8px;
+  }
+  .entity-picker-swatch {
+    aspect-ratio: 1;
+    max-width: 34px;
+    border: 0;
+    padding: 0;
+    border-radius: 50%;
+    background: var(--entity-swatch);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+  .entity-picker-swatch svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    opacity: 0;
+  }
+  .entity-picker-swatch--selected {
+    box-shadow: 0 0 0 2px var(--card-background-color, #fff), 0 0 0 4px var(--entity-swatch);
+  }
+  .entity-picker-swatch--selected svg {
+    opacity: 1;
+  }
+`;
+
+// remote-card/src/entity-icons/appearance-editor.ts
+function appearanceLabelsFrom(strings) {
+  return {
+    changeIcon: strings.changeIcon,
+    changeIconAndColor: strings.changeIconAndColor,
+    icon: strings.appearanceIcon,
+    services: strings.appearanceServices,
+    colorName: (colorId) => strings.entityColorName(colorId)
+  };
+}
+function renderPane(params) {
+  return params.tab === "icon" ? renderEntityIconPicker({
+    hubVersion: params.hubVersion,
+    icon: params.icon,
+    color: entityColor(params.hubVersion, params.colorId),
+    servicesLabel: params.labels.services,
+    onPick: (picked) => params.onPick({ icon: picked })
+  }) : renderEntityColorPicker({
+    colorId: params.colorId,
+    colorName: params.labels.colorName,
+    onPick: (picked) => params.onPick({ colorId: picked })
+  });
+}
+function renderAppearanceEditor(params) {
+  const { labels } = params;
+  const version = params.hubVersion;
+  const colors = entityColorsSupported(version);
+  const draft = params.draft;
+  const icon7 = draft.icon ?? 1;
+  const colorId = draft.colorId ?? 0;
+  const tile = entityTile(version, icon7, colorId);
+  const changeLabel = colors ? labels.changeIconAndColor : labels.changeIcon;
+  const tab = colors ? params.tab : "icon";
+  return b2`
+    <div class="appearance-ident">
+      <button class="appearance-trigger" type="button" title=${changeLabel} aria-label=${changeLabel} aria-expanded=${params.open ? "true" : "false"} @click=${params.onToggle}>
+        ${tile ? renderEntityTile(tile) : A}
+        <span class="appearance-trigger-edit" aria-hidden="true"><ha-icon icon="mdi:pencil"></ha-icon></span>
+      </button>
+      <div class="appearance-name">${params.nameField}</div>
+    </div>
+    ${params.open ? b2`
+          ${colors ? b2`<div class="appearance-tabs" role="tablist">
+                <button role="tab" type="button" class="appearance-tab${tab === "icon" ? " active" : ""}" aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => params.onTab("icon")}>
+                  <ha-icon icon="mdi:shape-outline"></ha-icon><span>${labels.icon}</span>
+                </button>
+                <button role="tab" type="button" class="appearance-tab${tab === "color" ? " active" : ""}" aria-selected=${tab === "color" ? "true" : "false"} @click=${() => params.onTab("color")}>
+                  <span class="appearance-dot" style=${`--entity-swatch: ${entityColorHex(colorId)}`}></span><span>${labels.colorName(colorId >= 1 ? colorId : 1)}</span>
+                </button>
+              </div>` : A}
+          <div class="appearance-pane">
+            ${renderPane({ hubVersion: version, icon: icon7, colorId, tab, labels, onPick: (picked) => params.onPick({ ...draft, ...picked }) })}
+          </div>
+        ` : b2`<button class="appearance-reveal" type="button" aria-expanded="false" @click=${params.onToggle}>
+          <ha-icon icon=${colors ? "mdi:palette-outline" : "mdi:shape-outline"}></ha-icon><span>${changeLabel}</span><ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>`}
+  `;
+}
+function renderAppearanceToggle(params) {
+  const { labels, state } = params;
+  const version = params.hubVersion;
+  const colors = entityColorsSupported(version);
+  const icon7 = state.icon ?? 1;
+  const colorId = state.colorId ?? 0;
+  const tile = entityTile(version, icon7, colorId);
+  if (!tile) return A;
+  const tab = colors ? state.tab : "icon";
+  const set = (patch) => params.onChange({ ...state, ...patch });
+  return b2`
+    <div class="cache-dialog-appearance">
+      <button class="cache-dialog-appearance-toggle" type="button" aria-expanded=${state.open ? "true" : "false"} ?disabled=${params.disabled ?? false} @click=${() => set({ open: !state.open })}>
+        ${renderEntityTile(tile)}
+        <span>${colors ? labels.changeIconAndColor : labels.changeIcon}</span>
+        <ha-icon icon=${state.open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>
+      </button>
+      ${state.open ? b2`
+            ${colors ? b2`<div class="cache-dialog-appearance-tabs" role="tablist">
+                  <button role="tab" type="button" class=${tab === "icon" ? "active" : ""} aria-selected=${tab === "icon" ? "true" : "false"} @click=${() => set({ tab: "icon" })}>${labels.icon}</button>
+                  <button role="tab" type="button" class=${tab === "color" ? "active" : ""} aria-selected=${tab === "color" ? "true" : "false"} @click=${() => set({ tab: "color" })}>${labels.colorName(colorId >= 1 ? colorId : 1)}</button>
+                </div>` : A}
+            <div class="cache-dialog-appearance-pane">
+              ${renderPane({ hubVersion: version, icon: icon7, colorId, tab, labels, onPick: (picked) => set(picked) })}
+            </div>
+          ` : A}
+    </div>
+  `;
+}
+function renderDetailEntityTile(tile, params) {
+  return b2`<button class="detail-entity-tile" type="button" title=${params.label} aria-label=${params.label} ?disabled=${params.disabled ?? false} @click=${params.onClick}>
+    ${renderEntityTile(tile)}
+  </button>`;
+}
+var appearanceEditorStyles = i`
+  .detail-entity-tile {
+    flex: 0 0 auto;
+    display: inline-flex;
+    border: 0;
+    padding: 0;
+    background: none;
+    border-radius: 11px;
+    cursor: pointer;
+    --entity-tile-size: 36px;
+  }
+  .detail-entity-tile:disabled { cursor: default; }
+  .detail-entity-tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .detail-entity-tile:hover:not(:disabled) .entity-tile { box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 35%, transparent); }
+  .appearance-ident { display: flex; align-items: center; gap: 14px; }
+  .appearance-name { flex: 1; min-width: 0; }
+  .appearance-name > ha-input, .appearance-name > ha-textfield { display: block; width: 100%; }
+  .appearance-trigger {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    border: 0;
+    padding: 0;
+    background: none;
+    border-radius: 15px;
+    cursor: pointer;
+    --entity-tile-size: 50px;
+  }
+  .appearance-trigger:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .appearance-trigger-edit {
+    position: absolute;
+    inset-inline-end: -6px;
+    bottom: -6px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--ha-card-background, var(--card-background-color));
+    color: var(--secondary-text-color);
+    box-shadow: 0 0 0 1px var(--divider-color);
+    --mdc-icon-size: 13px;
+  }
+  .appearance-reveal {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 0;
+    background: none;
+    padding: 4px 2px;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color));
+    cursor: pointer;
+    --mdc-icon-size: 18px;
+  }
+  .appearance-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    padding: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-text-color) 7%, transparent);
+  }
+  .appearance-tab {
+    height: 32px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--secondary-text-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    cursor: pointer;
+    --mdc-icon-size: 16px;
+  }
+  .appearance-tab.active {
+    background: var(--ha-card-background, var(--card-background-color));
+    color: var(--primary-text-color);
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+  .appearance-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--entity-swatch); }
+  .appearance-pane { max-height: 232px; overflow-y: auto; padding: 5px; margin: -5px; }
+`;
+var appearanceToggleStyles = i`
+  .cache-dialog-appearance { display: flex; flex-direction: column; gap: 10px; }
+  .cache-dialog-appearance-toggle {
+    align-self: flex-start; display: inline-flex; align-items: center; gap: 10px;
+    border: 0; background: none; padding: 2px 0; font: inherit; font-size: 13px; font-weight: 600;
+    color: color-mix(in srgb, var(--primary-color) 70%, var(--primary-text-color)); cursor: pointer;
+    --entity-tile-size: 32px; --mdc-icon-size: 18px;
+  }
+  .cache-dialog-appearance-toggle:disabled { cursor: default; opacity: 0.6; }
+  .cache-dialog-appearance-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--primary-text-color) 7%, transparent); }
+  .cache-dialog-appearance-tabs button { height: 30px; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
+  .cache-dialog-appearance-tabs button.active { background: var(--card-background-color, #fff); color: var(--primary-text-color); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .cache-dialog-appearance-pane { max-height: 200px; overflow-y: auto; padding: 5px; margin: -5px; }
+`;
+
 // server-panel/src/views/catalog-view.ts
 var S4 = TOOLS_CARD_STRINGS.cache;
 var CATALOG_VIEW_TAG = "sb-panel-catalog";
@@ -20819,7 +21530,8 @@ var SbPanelCatalog = class extends i4 {
         if (this._loadedFor === hubId) this._add = { ...dialog, busy: false, error };
       };
       try {
-        const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass) : await this.api.addActivity(hubId, name);
+        const appearance = { icon: dialog.appearance.icon, colorId: dialog.appearance.colorId };
+        const started = dialog.kind === "device" ? await this.api.addDevice(hubId, name, dialog.deviceClass, appearance) : await this.api.addActivity(hubId, name, appearance);
         if (started.status !== 202 || !started.body) return fail(problemText(started));
         const job = await this.api.followJob(hubId, started.body.job_id);
         if (job) this._lastJobId = job.job_id;
@@ -21074,7 +21786,14 @@ var SbPanelCatalog = class extends i4 {
   // -- add activity / add device ------------------------------------------------------------------
   _openAdd(kind) {
     if (this._locked) return;
-    this._add = { kind, name: "", deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "", busy: false, error: null };
+    this._add = {
+      kind,
+      name: "",
+      deviceClass: creatableDeviceClasses(this._hubVersion)[0] ?? "",
+      appearance: { icon: null, colorId: null, open: false, tab: "icon" },
+      busy: false,
+      error: null
+    };
   }
   // -- render -------------------------------------------------------------------------------
   render() {
@@ -21138,7 +21857,7 @@ var SbPanelCatalog = class extends i4 {
       this._toggle(e6);
     }}>
         <span class="entity-name">
-          <span class="entity-name-icon">${icon3(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>
+          ${this._renderEntryIcon(e6)}
           <span class="entity-name-copy">
             <span class="entity-name-label">${e6.name}</span>
             <span class="entity-count">${count}</span>
@@ -21159,6 +21878,16 @@ var SbPanelCatalog = class extends i4 {
       </div>
       ${isOpen ? b2`<div class="entity-body">${this._renderBody(e6, key)}</div>` : A}
     </div>`;
+  }
+  /** The hub's own icon on its tile once the record is cached (the class glyph moves to a
+   *  corner badge on devices); the card's glyph before that. */
+  _renderEntryIcon(e6) {
+    const row = e6.kind === "device" ? e6.device : e6.activity;
+    const tile = entityTile(this._hubVersion, row?.icon, row?.color_id);
+    if (tile) {
+      return b2`<span class="entity-name-icon entity-name-icon--tile">${renderEntityTile(tile, { badge: e6.kind === "device" ? entityTileBadge(e6.device?.device_class) : null })}</span>`;
+    }
+    return b2`<span class="entity-name-icon">${icon3(e6.kind === "device" ? deviceClassIconPath(e6.device?.device_class) : mdiPlayCircleOutline)}</span>`;
   }
   /** A row in reorder mode: the whole row drags (as on the card), the arrow keys move it for keyboards. */
   _renderReorderEntry(e6, position) {
@@ -21254,6 +21983,13 @@ var SbPanelCatalog = class extends i4 {
                   ${classes.map((deviceClass) => b2`<option value=${deviceClass} ?selected=${deviceClass === dialog.deviceClass}>${S4.deviceClassLabels[deviceClass] ?? deviceClass}</option>`)}
                 </select>
               </label>` : A}
+          ${renderAppearanceToggle({
+      hubVersion: this._hubVersion,
+      state: dialog.appearance,
+      labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
+      disabled: dialog.busy,
+      onChange: (appearance) => set({ appearance })
+    })}
           <div class="cache-dialog-actions">
             <button class="cache-footer-btn" type="button" ?disabled=${dialog.busy} @click=${this._closeAdd}>${isDevice ? S4.addDeviceCancel : S4.addActivityCancel}</button>
             <button class="cache-footer-btn cache-footer-btn--primary" id="add-confirm" type="button" ?disabled=${dialog.busy} @click=${() => void this._confirmAdd()}>${dialog.busy ? S4.addActivityCreating : isDevice ? S4.addDeviceConfirm : S4.addActivityConfirm}</button>
@@ -21302,6 +22038,9 @@ SbPanelCatalog.properties = {
 };
 SbPanelCatalog.styles = [
   PANEL_BASE_CSS,
+  entityTileStyles,
+  entityPickerStyles,
+  appearanceToggleStyles,
   i`
       :host { display: block; container-type: inline-size; }
       /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
@@ -21332,7 +22071,10 @@ SbPanelCatalog.styles = [
          here the page scrolls under the shell's sticky top dock, so the
          header pins just under it (the shell measures the dock's height). */
       .entity-block.open > .entity-summary { position: sticky; top: var(--top-dock-height, 0px); z-index: 2; background: var(--sbp-panel-2); border-bottom: 1px solid var(--sbp-line); border-radius: 12px 12px 0 0; }
-      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; color: var(--sbp-text); }
+      /* Clipped sideways only: a device tile's class badge hangs below the tile. */
+      .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow-x: clip; color: var(--sbp-text); }
+      /* The hub's own icon on its tile (row height unchanged: 30px like the buttons). */
+      .entity-name-icon--tile { --entity-tile-size: 30px; --entity-tile-ring: var(--sbp-panel-2); }
       .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sbp-muted); flex-shrink: 0; }
       .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
       .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -21520,6 +22262,10 @@ var EDITOR_CSS = i`
     }
     .mdi { width: 16px; height: 16px; flex: 0 0 auto; }
     button { border: 0; background: transparent; padding: 0; }
+    /* A narrow editor gives the room to the title; the pencil opens the same dialog. */
+    @container (max-width: 420px) {
+      .detail-entity-tile { display: none; }
+    }
     /* The panel's base keeps buttons on one line; the card's two-line rows wrap. */
     .power-control-trigger, .power-control-option, .edit-selection-row { white-space: normal; min-width: 0; }
     .quick-access-section, .detail-scroll, .power-control { min-width: 0; }
@@ -22491,6 +23237,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     super(...arguments);
     this.activityId = null;
     this.entityKind = "activity";
+    /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
     this._rename = null;
     this._deleteConfirm = null;
     /** The open sequence or macro (the card's macro step editor sub-view). */
@@ -22559,7 +23306,12 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         return;
       }
       if (dialog.target.kind === "activity") {
-        this._commit(renameBundleActivity(this._working, activityId, next));
+        const base = bundleEntityAppearance(this._working, "activity", activityId);
+        const picked = dialog.appearance ?? base;
+        this._commit(setBundleEntityAppearance(renameBundleActivity(this._working, activityId, next), "activity", activityId, {
+          icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+          colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null
+        }));
       } else if (dialog.target.kind === "favorite") {
         this._commit(renameBundleActivityFavorite(this._working, activityId, dialog.target.buttonId, next));
       } else {
@@ -22883,9 +23635,20 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
     void this.updateComplete.then(() => window.scrollTo({ top }));
   }
   // -- rename (activity, macro) ----------------------------------------------------------------------------
-  _openRename(target) {
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
+  _openRename(target, pickerOpen = false) {
     const draft = target.kind === "activity" ? this._title : target.kind === "favorite" ? target.label : this._macroName(target.buttonId) || this._macroEditor?.name || "";
-    this._rename = { target, draft, error: "" };
+    const activityId = this.activityId;
+    this._rename = target.kind === "activity" && activityId != null && this._working ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "activity", activityId), pickerOpen, tab: "icon" } : { target, draft, error: "" };
+  }
+  /** The activity's hub icon beside the title: the edit dialog with the picker showing. */
+  _renderHeaderTile() {
+    const activityId = this.activityId;
+    if (activityId == null || !this._working) return A;
+    const appearance = bundleEntityAppearance(this._working, "activity", activityId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    if (!tile) return A;
+    return renderDetailEntityTile(tile, { label: B2.editActivity, onClick: () => this._openRename({ kind: "activity" }, true) });
   }
   // -- delete confirm ----------------------------------------------------------------------------------------
   _openDeleteConfirm(target, label) {
@@ -23078,6 +23841,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         <div class="detail-title-row">
           <div class="detail-title-main">
             <button class="back-btn" id=${options.id} type="button" aria-label=${FRAME.back} @click=${options.onBack}>${icon4(mdiArrowLeft)}</button>
+            ${options.lead ?? A}
             <div class="detail-title-stack">
               <div class="detail-crumbs">
                 ${options.crumbs.map((crumb) => b2`<button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button><span class="detail-crumb-sep" aria-hidden="true">›</span>`)}
@@ -23303,6 +24067,7 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
       titleId: "editor-title",
       onBack: this._requestClose,
       crumbs: [{ label: B2.crumbActivities, onClick: this._requestClose }],
+      lead: this._renderHeaderTile(),
       actions: b2`<div class="detail-title-actions">
               <button class="icon-btn" id="editor-rename" type="button" aria-label=${B2.renameKind("activity")} title=${B2.renameKind("activity")} @click=${() => this._openRename({ kind: "activity" })}>${icon4(mdiPencil)}</button>
               <button class="icon-btn icon-btn--danger" id="editor-delete" type="button" aria-label=${B2.deleteActivityAria} title=${B2.deleteActivityAria} ?disabled=${this._deleting || this._hubBusy} @click=${() => this._openDeleteConfirm({ kind: "activity", activityId }, this._title)}>${icon4(mdiTrashCanOutline)}</button>
@@ -23591,8 +24356,9 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
   _renderRenameDialog() {
     const dialog = this._rename;
     if (!dialog) return A;
-    const title = dialog.target.kind === "activity" ? B2.renameActivity : dialog.target.kind === "favorite" ? B2.renameFavorite : B2.renameMacro;
-    return this._dialog("rename-dialog", title, this._closeRename, b2`
+    const appearance = dialog.target.kind === "activity" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B2.editActivity : dialog.target.kind === "activity" ? B2.renameActivity : dialog.target.kind === "favorite" ? B2.renameFavorite : B2.renameMacro;
+    const nameField = b2`
       <label class="decoded-field">
         <span class="decoded-field-label">${B2.name}</span>
         <input class="decoded-field-input" id="rename-input" type="text" maxlength="30" .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
@@ -23601,7 +24367,24 @@ var SbPanelActivityEditor = class extends SbPanelEntityEditor {
         this._applyRename();
       }
     }} />
-      </label>`, b2`
+      </label>`;
+    return this._dialog("rename-dialog", title, this._closeRename, appearance ? renderAppearanceEditor({
+      hubVersion: this._hubVersion,
+      draft: appearance,
+      open: dialog.pickerOpen ?? false,
+      tab: dialog.tab ?? "icon",
+      nameField,
+      labels: appearanceLabelsFrom(B2),
+      onToggle: () => {
+        if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen };
+      },
+      onTab: (tab) => {
+        if (this._rename) this._rename = { ...this._rename, tab };
+      },
+      onPick: (draft) => {
+        if (this._rename) this._rename = { ...this._rename, appearance: draft };
+      }
+    }) : nameField, b2`
       <button class="dialog-btn" type="button" @click=${this._closeRename}>${B2.deleteCancel}</button>
       <button class="dialog-btn dialog-btn-primary" id="rename-save" type="button" @click=${this._applyRename}>${B2.bindingSave}</button>`, dialog.error);
   }
@@ -23767,7 +24550,7 @@ SbPanelActivityEditor.properties = {
   _binding: { state: true },
   _stepDialog: { state: true }
 };
-SbPanelActivityEditor.styles = [PANEL_BASE_CSS, EDITOR_CSS, OPERATION_PROGRESS_CSS];
+SbPanelActivityEditor.styles = [PANEL_BASE_CSS, entityTileStyles, entityPickerStyles, appearanceEditorStyles, EDITOR_CSS, OPERATION_PROGRESS_CSS];
 function defineActivityEditor() {
   if (!customElements.get(ACTIVITY_EDITOR_TAG)) customElements.define(ACTIVITY_EDITOR_TAG, SbPanelActivityEditor);
 }
@@ -23924,6 +24707,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this.entityKind = "device";
     this._activeSection = "power";
     this._powerMenuOpen = false;
+    /** The rename dialog; on the entity itself it also carries the icon / color draft (dialog B). */
     this._rename = null;
     this._deleteConfirm = null;
     this._binding = null;
@@ -24021,8 +24805,14 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._rename = { ...dialog, error: S5.enterName };
         return;
       }
-      if (dialog.target.kind === "device") this._commit(renameBundleDevice(this._working, deviceId, next));
-      else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
+      if (dialog.target.kind === "device") {
+        const base = bundleEntityAppearance(this._working, "device", deviceId);
+        const picked = dialog.appearance ?? base;
+        this._commit(setBundleEntityAppearance(renameBundleDevice(this._working, deviceId, next), "device", deviceId, {
+          icon: picked.icon != null && picked.icon !== base.icon ? picked.icon : null,
+          colorId: picked.colorId != null && picked.colorId !== base.colorId ? picked.colorId : null
+        }));
+      } else this._commit(renameBundleDeviceCommand(this._working, deviceId, dialog.target.commandId, next));
       this._rename = null;
     };
     this._closeDeleteConfirm = () => {
@@ -24387,14 +25177,24 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     return String(this._workingElement?.device?.name ?? "").trim();
   }
   // -- rename dialog --------------------------------------------------------------------------------------
-  _openRename(target) {
+  /** `pickerOpen`: the header tile opens the dialog with the icon picker showing. */
+  _openRename(target, pickerOpen = false) {
     const deviceId = this.deviceId;
     if (deviceId == null || !this._working) return;
     let draft = "";
     if (target.kind === "device") draft = this._title;
     else if (target.kind === "device_ip") draft = deviceIpAddress(this._working, deviceId) || "";
     else draft = deviceCommandItems(this._working, deviceId).find((c7) => c7.commandId === target.commandId)?.label ?? "";
-    this._rename = { target, draft, error: "" };
+    this._rename = target.kind === "device" ? { target, draft, error: "", appearance: bundleEntityAppearance(this._working, "device", deviceId), pickerOpen, tab: "icon" } : { target, draft, error: "" };
+  }
+  /** The device's hub icon beside the title: the edit dialog with the picker showing. */
+  _renderHeaderTile() {
+    const deviceId = this.deviceId;
+    if (deviceId == null || !this._working) return A;
+    const appearance = bundleEntityAppearance(this._working, "device", deviceId);
+    const tile = entityTile(this._hubVersion, appearance.icon, appearance.colorId);
+    if (!tile) return A;
+    return renderDetailEntityTile(tile, { label: B3.editDevice, onClick: () => this._openRename({ kind: "device" }, true) });
   }
   // -- delete confirm ---------------------------------------------------------------------------------------
   _openDeleteConfirm(target, label) {
@@ -24581,6 +25381,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="editor-back" type="button" aria-label=${S5.back} @click=${this._requestClose}>${icon4(mdiArrowLeft)}</button>
+                ${callback ? A : this._renderHeaderTile()}
                 <div class="detail-title-stack">
                   <div class="detail-crumbs">
                     <button class="detail-crumb" type="button" @click=${this._requestClose}>${S5.crumbDevices}</button>
@@ -24747,13 +25548,9 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     const dialog = this._rename;
     if (!dialog) return A;
     const isIp = dialog.target.kind === "device_ip";
-    const title = dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
-    return b2`
-      <div class="modal-backdrop" @click=${this._closeRename}>
-        <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
-          <div class="dialog-body">
-            <label class="decoded-field">
+    const appearance = dialog.target.kind === "device" && dialog.appearance && iconHubLine(this._hubVersion) != null ? dialog.appearance : null;
+    const title = appearance ? B3.editDevice : dialog.target.kind === "device" ? S5.renameDevice : isIp ? S5.editIpAria : S5.renameCommand;
+    const nameField = b2`<label class="decoded-field">
               <span class="decoded-field-label">${isIp ? S5.ipAddress : S5.name}</span>
               <input class="decoded-field-input" id="rename-input" type="text" maxlength=${isIp ? 15 : 30} .value=${dialog.draft} @input=${this._renameInput} @keydown=${(event) => {
       if (event.key === "Enter") {
@@ -24761,7 +25558,29 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
         this._applyRename();
       }
     }} />
-            </label>
+            </label>`;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeRename}>
+        <div class="dialog small" id="rename-dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header"><div class="dialog-title">${title}</div><button class="dialog-close" type="button" aria-label=${S5.cancel} @click=${this._closeRename}>${icon4(mdiClose)}</button></div>
+          <div class="dialog-body">
+            ${appearance ? renderAppearanceEditor({
+      hubVersion: this._hubVersion,
+      draft: appearance,
+      open: dialog.pickerOpen ?? false,
+      tab: dialog.tab ?? "icon",
+      nameField,
+      labels: appearanceLabelsFrom(B3),
+      onToggle: () => {
+        if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen };
+      },
+      onTab: (tab) => {
+        if (this._rename) this._rename = { ...this._rename, tab };
+      },
+      onPick: (draft) => {
+        if (this._rename) this._rename = { ...this._rename, appearance: draft };
+      }
+    }) : nameField}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note" id="rename-error">${dialog.error}</div>
@@ -24884,6 +25703,9 @@ SbPanelDeviceEditor.properties = {
 };
 SbPanelDeviceEditor.styles = [
   PANEL_BASE_CSS,
+  entityTileStyles,
+  entityPickerStyles,
+  appearanceEditorStyles,
   EDITOR_CSS,
   OPERATION_PROGRESS_CSS
 ];
@@ -27818,6 +28640,9 @@ function defaultSlotLabel(slot) {
 function emptySlot(slot) {
   return { label: defaultSlotLabel(slot), longLabel: null, favorite: false, button: null, longPress: false, activities: [], inputActivityId: null };
 }
+function appearanceNumber(value) {
+  return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
 function entityNumber(value) {
   if (value === null || value === void 0 || value === "") return null;
   const n7 = Number(value);
@@ -27854,7 +28679,9 @@ function draftFromSpec(spec) {
     slots,
     powerOn: slotNumber(spec?.power_on_slot),
     powerOff: slotNumber(spec?.power_off_slot),
-    inputs: [...new Set(inputs)].sort((a4, b3) => a4 - b3)
+    inputs: [...new Set(inputs)].sort((a4, b3) => a4 - b3),
+    icon: appearanceNumber(spec?.icon),
+    colorId: appearanceNumber(spec?.color_id)
   };
 }
 function specFromDraft(draft) {
@@ -27875,7 +28702,9 @@ function specFromDraft(draft) {
     }),
     power_on_slot: draft.powerOn,
     power_off_slot: draft.powerOff,
-    input_slots: [...draft.inputs]
+    input_slots: [...draft.inputs],
+    icon: draft.icon,
+    color_id: draft.colorId
   };
 }
 function draftsEqual(a4, b3) {
@@ -28085,6 +28914,7 @@ function pressMatchesSlot(press, device, index) {
 
 // server-panel/src/views/wifi-devices-view.ts
 var S7 = TOOLS_CARD_STRINGS.wifiCommands;
+var B5 = TOOLS_CARD_STRINGS.backup;
 var A4 = TOOLS_CARD_STRINGS.activities;
 var D2 = TOOLS_CARD_STRINGS.wifiDelivery;
 var T2 = {
@@ -28171,7 +29001,10 @@ var SbPanelWifiDevices = class extends i4 {
     this._create = null;
     this._delete = null;
     this._slotEdit = null;
+    /** The Edit device dialog: the name and, on a hub with icons, the icon / X2 color draft. */
     this._rename = null;
+    /** The hub's own icon and color per device id (the catalog rows), for a device whose draft names none. */
+    this._hubAppearance = /* @__PURE__ */ new Map();
     this._powerPicker = null;
     this._confirmClear = null;
     /** The pending move behind the "Unsynced changes" dialog. */
@@ -28297,11 +29130,7 @@ var SbPanelWifiDevices = class extends i4 {
       this._edit(withSlotSaved(draft, state.index, { ...state.edit, label }, { powerInput: this._powerInput }));
       this._slotEdit = null;
     };
-    this._openRename = () => {
-      if (!this._draft || this._locked) return;
-      this._rename = { name: this._draft.name, error: "" };
-      void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-rename")?.select());
-    };
+    this._openRename = () => this._openEdit(false);
     this._saveRename = () => {
       const state = this._rename;
       if (!state || !this._draft) return;
@@ -28311,7 +29140,14 @@ var SbPanelWifiDevices = class extends i4 {
         this._rename = { ...state, error: problem };
         return;
       }
-      this._edit({ ...this._draft, name: name.trim() });
+      const shown = state.shown ?? { icon: null, colorId: null };
+      const picked = state.appearance ?? shown;
+      this._edit({
+        ...this._draft,
+        name: name.trim(),
+        icon: picked.icon !== shown.icon ? picked.icon : this._draft.icon,
+        colorId: picked.colorId !== shown.colorId ? picked.colorId : this._draft.colorId
+      });
       this._rename = null;
     };
     this._sync = async () => {
@@ -28511,7 +29347,7 @@ var SbPanelWifiDevices = class extends i4 {
     this._loadedVersion = versionAsLoaded(this.ctx?.hub?.cache);
     this._loading = this._list === null;
     try {
-      const [list, activities, listener, mqtt] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState()]);
+      const [list, activities, listener, mqtt, devices] = await Promise.all([this.api.wifiDevices(hubId), this.api.activities(hubId), this.api.callbackListener(), this.api.mqttState(), this.api.devices(hubId)]);
       if (this._loadedFor !== hubId || seq !== this._loadSeq) return;
       if (!list.ok || !list.body) {
         this._error = problemText(list);
@@ -28521,6 +29357,7 @@ var SbPanelWifiDevices = class extends i4 {
       const dirty = this.hasUnsyncedChanges();
       this._list = list.body;
       if (activities.ok && activities.body) this._activities = activities.body.map((a4) => ({ id: a4.activity_id, name: a4.name })).filter((a4) => Number.isInteger(a4.id) && a4.name);
+      if (devices.ok && devices.body) this._hubAppearance = new Map(devices.body.map((d5) => [d5.device_id, { icon: d5.icon ?? null, colorId: d5.color_id ?? null }]));
       this._listener = listener.ok ? listener.body : this._listener;
       this._mqtt = mqtt.ok ? mqtt.body : this._mqtt;
       if (!dirty) this._draftFor = null;
@@ -28611,6 +29448,27 @@ var SbPanelWifiDevices = class extends i4 {
   _pickPower(kind, slot) {
     this._powerPicker = null;
     if (this._draft) this._edit(withPowerSlot(this._draft, kind, slot));
+  }
+  /** The header tile opens it with the picker showing. */
+  _openEdit(pickerOpen) {
+    if (!this._draft || this._locked) return;
+    const shown = this._shownAppearance();
+    this._rename = { name: this._draft.name, error: "", shown, appearance: shown, pickerOpen, tab: "icon" };
+    if (!pickerOpen) void this.updateComplete.then(() => this.renderRoot.querySelector("#wifi-rename")?.select());
+  }
+  /** The icon and color the device shows: the draft's pick, else the hub record's. */
+  _shownAppearance() {
+    const draft = this._draft;
+    const id = this._device?.device_id;
+    const hub = id != null ? this._hubAppearance.get(id) : void 0;
+    return { icon: draft?.icon ?? hub?.icon ?? null, colorId: draft?.colorId ?? hub?.colorId ?? null };
+  }
+  /** The device's icon beside its name, as in the editors: the Edit device dialog with the picker showing. */
+  _renderHeaderTile(device) {
+    const shown = this._shownAppearance();
+    const tile = entityTile(this._hubVersion, shown.icon, shown.colorId);
+    if (!tile) return A;
+    return renderDetailEntityTile(tile, { label: B5.editDevice, disabled: this._locked || device.stale, onClick: () => this._openEdit(true) });
   }
   // -- sync, redeploy, leave ----------------------------------------------------------------------------------
   /** One rule for every Sync action (header, leave dialog, _sync): a stale device is
@@ -28801,6 +29659,7 @@ var SbPanelWifiDevices = class extends i4 {
             <div class="detail-title-row">
               <div class="detail-title-main">
                 <button class="back-btn" id="wifi-back" type="button" aria-label="Back to the Wifi Devices" @click=${this._back}>${icon6(mdiArrowLeft)}</button>
+                ${this._renderHeaderTile(device)}
                 <button class="detail-title-btn" id="wifi-rename-open" type="button" title=${T2.renameTitle} ?disabled=${this._locked || device.stale} @click=${this._openRename}><span class="detail-title">${draft.name}</span>${icon6(mdiPencilOutline)}</button>
                 ${this._renderTransportPill(device)}
               </div>
@@ -29010,13 +29869,31 @@ var SbPanelWifiDevices = class extends i4 {
     const close = () => {
       this._rename = null;
     };
+    const appearance = iconHubLine(this._hubVersion) != null ? state.appearance ?? null : null;
+    const nameField = this._nameInput("wifi-rename", state.name, S7.deviceName, false, (name) => {
+      if (this._rename) this._rename = { ...this._rename, name, error: "" };
+    }, this._saveRename);
     return b2`
       <div class="modal-backdrop" @click=${close}>
         <div class="dialog small" id="wifi-rename-dialog" role="dialog" aria-modal="true" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header"><div class="dialog-title">${T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
-          <div class="dialog-body">${this._nameInput("wifi-rename", state.name, S7.deviceName, false, (name) => {
-      this._rename = { name, error: "" };
-    }, this._saveRename)}</div>
+          <div class="dialog-header"><div class="dialog-title">${appearance ? B5.editDevice : T2.renameTitle}</div><button class="dialog-close" type="button" aria-label=${S7.createModalCancel} @click=${close}>${icon6(mdiClose)}</button></div>
+          <div class="dialog-body">${appearance ? renderAppearanceEditor({
+      hubVersion: this._hubVersion,
+      draft: appearance,
+      open: state.pickerOpen ?? false,
+      tab: state.tab ?? "icon",
+      nameField,
+      labels: appearanceLabelsFrom(B5),
+      onToggle: () => {
+        if (this._rename) this._rename = { ...this._rename, pickerOpen: !this._rename.pickerOpen };
+      },
+      onTab: (tab) => {
+        if (this._rename) this._rename = { ...this._rename, tab };
+      },
+      onPick: (draft) => {
+        if (this._rename) this._rename = { ...this._rename, appearance: draft };
+      }
+    }) : nameField}</div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${state.error}</div>
             <div class="dialog-footer-actions">
@@ -29111,6 +29988,9 @@ SbPanelWifiDevices.properties = {
 };
 SbPanelWifiDevices.styles = [
   PANEL_BASE_CSS,
+  entityTileStyles,
+  entityPickerStyles,
+  appearanceEditorStyles,
   EDITOR_CSS,
   FIRMWARE_BLOCK_CSS,
   OPERATION_PROGRESS_CSS,

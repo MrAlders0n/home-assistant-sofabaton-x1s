@@ -110,7 +110,7 @@ import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./ed
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
-import { appearanceEditorStyles, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../components/appearance-editor";
+import { appearanceEditorStyles, appearanceLabelsFrom, renderAppearanceEditor, renderDetailEntityTile, type AppearanceDraft, type AppearanceTab } from "../../../../../remote-card/src/entity-icons/appearance-editor";
 import { entityTile, entityTileStyles } from "../../../../../remote-card/src/entity-icons/entity-tile";
 import { IrLearnController } from "./edit-detail/ir-learn-controller";
 import { PayloadDialogController } from "./edit-detail/payload-dialog-controller";
@@ -1218,6 +1218,7 @@ export class SofabatonEditDetailView extends LitElement {
       open: this._editAppearanceOpen,
       tab: this._editAppearanceTab,
       nameField: this._renderEditRenameField(),
+      labels: appearanceLabelsFrom(TOOLS_CARD_STRINGS.backup),
       onToggle: () => { this._editAppearanceOpen = !this._editAppearanceOpen; },
       onTab: (tab) => { this._editAppearanceTab = tab; },
       onPick: (draft) => { this._editAppearance = draft; },

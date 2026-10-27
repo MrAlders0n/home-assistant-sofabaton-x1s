@@ -16,9 +16,10 @@ import asyncio
 import contextlib
 import contextvars
 import functools
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import inspect
 import logging
+import time
 from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Optional, Sequence
 
 from .config import HubConfig
@@ -35,6 +36,7 @@ from .errors import (
     HubBusyError,
     HubNotConnectedError,
     HubRejectedError,
+    RemoteSyncInProgressError,
     IrLearnError,
     SnapshotIncompleteError,
     SnapshotOutdatedError,
@@ -74,7 +76,7 @@ from .wifi_device import (
     labels_from_spec,
     snapshot_from_spec,
 )
-from .devices import parse_device_record, record_appearance
+from .devices import parse_device_record, record_appearance, validate_appearance
 from .device_class_profiles import supported_create_classes
 from .models import (
     Activity,
@@ -170,6 +172,22 @@ def _catalog_order_key(sort: int, entity_id: int) -> tuple[int, int, int]:
     The same rule orders the HA integration's remote-entity lists."""
 
     return (0, sort, entity_id) if sort else (1, 0, entity_id)
+
+
+def _wifi_create_spec(spec: WifiDeviceSpec) -> WifiDeviceSpec:
+    """What a Wifi Device create writes: ``spec`` without the slot
+    references and without a picked icon or color. The create profiles
+    write the hub's defaults; the deploy's first update applies the rest."""
+
+    bare = spec.without_references() if spec.has_references else spec
+    if bare.icon is None and bare.color_id is None:
+        return bare
+    return replace(bare, icon=None, color_id=None)
+
+
+def _check_wifi_appearance(spec: WifiDeviceSpec, hub_version: str) -> None:
+    if spec.icon is not None or spec.color_id is not None:
+        validate_appearance(hub_version, icon=spec.icon, color_id=spec.color_id)
 
 
 def _appearance(row: Optional[dict], hub_version: Optional[str]) -> tuple[Optional[int], Optional[int]]:
@@ -1586,6 +1604,7 @@ class AsyncXProxy:
             baseline, edited, kind="activity", entity_id=activity_id,
             hub_version=getattr(self._proxy, "hub_version", None),
         )
+        started = time.monotonic()
         async with self._holding_hub("a sync"):
             result = await self._run_draining(
                 self._proxy.sync_activity,
@@ -1601,7 +1620,7 @@ class AsyncXProxy:
         new_id = await self._rebase_after_write(
             result, activity_ids=(act_lo,), reread_activities=() if _sync_succeeded(result) else (act_lo,)
         )
-        return SyncResult.from_engine(result, snapshot_id=new_id)
+        return self._sync_result(result, new_id, started)
 
     async def sync_device(
         self,
@@ -1636,6 +1655,7 @@ class AsyncXProxy:
         )
         # Asked before the write: the cache's references are what the scan reads.
         referencing = await self._activities_referencing(dev_lo)
+        started = time.monotonic()
         async with self._holding_hub("a sync"):
             result = await self._run_draining(
                 self._proxy.sync_device,
@@ -1661,7 +1681,7 @@ class AsyncXProxy:
             reread_devices=() if succeeded else (dev_lo,),
             reread_activities=referencing if records_changed else (),
         )
-        return SyncResult.from_engine(result, snapshot_id=new_id)
+        return self._sync_result(result, new_id, started)
 
     def _engine_progress(self, progress: Optional[Callable]) -> Optional[Callable]:
         """An engine-side progress callback that delivers :class:`WriteProgress`
@@ -2030,21 +2050,57 @@ class AsyncXProxy:
         """Run an engine write: typed refusal before, typed rejection after."""
 
         self._raise_if_cannot_fetch(what)
+        started = time.monotonic()
         async with self._holding_hub(what):
             result = await self._run_draining(func, *args, **kwargs)
         if result is None or result is False:
+            self._raise_if_remote_syncing(what, started)
             raise HubRejectedError(f"the hub did not accept {what}")
         return result
 
-    async def add_device(self, name: str, device_class: str) -> int:
+    def _sync_result(self, result: Any, snapshot_id: Optional[str], started: float) -> SyncResult:
+        sync = SyncResult.from_engine(result, snapshot_id=snapshot_id)
+        if sync.ok or not self._refused_during_remote_sync(started):
+            return sync
+        return replace(
+            sync,
+            reason="remote_syncing",
+            message="the hub refused the write while it was still updating its remote; "
+            "wait until the remote is done, then sync again",
+        )
+
+    def _refused_during_remote_sync(self, started: float) -> bool:
+        check = getattr(self._proxy, "refused_during_remote_sync", None)
+        return bool(check(started)) if callable(check) else False
+
+    def _raise_if_remote_syncing(self, what: str, started: float) -> None:
+        """A write the hub refused while it was updating its remote gets the
+        error that says so (the caller waits and tries again)."""
+
+        if self._refused_during_remote_sync(started):
+            raise RemoteSyncInProgressError(
+                f"the hub refused {what} while it was still updating its remote; "
+                "wait until the remote is done, then try again"
+            )
+
+    async def add_device(
+        self,
+        name: str,
+        device_class: str,
+        *,
+        icon: Optional[int] = None,
+        color_id: Optional[int] = None,
+    ) -> int:
         """Create an empty device of ``device_class`` and return its hub id.
 
         ``device_class`` is one of the library's create classes for this
         hub model (``ir`` on every hub; ``wifi_roku``, ``wifi_hue``,
         ``wifi_sonos``, and on the X1S/X2 the further network classes;
         see ``supported_create_classes``); anything else raises
-        ``ValueError`` before the hub is touched. Commands and bindings
-        come afterwards through :meth:`sync_device`.
+        ``ValueError`` before the hub is touched. ``icon`` and, on an X2,
+        ``color_id`` set the record's icon and tile color (see
+        :func:`validate_appearance`); left out, the hub's defaults. Commands
+        and bindings come afterwards through :meth:`sync_device`.
         """
 
         clean = str(name or "").strip()
@@ -2057,10 +2113,14 @@ class AsyncXProxy:
                 f"device class {device_class!r} cannot be created on a {hub_version}; "
                 f"one of: {', '.join(allowed)}"
             )
+        if icon is not None or color_id is not None:
+            validate_appearance(str(hub_version or ""), icon=icon, color_id=color_id)
         what = f"add_device({clean!r})"
         before = {int(i) & 0xFF for i in await self.run(self._proxy.get_known_device_ids)}
         try:
-            result = await self._write(what, self._proxy.create_device, clean, device_class=device_class)
+            result = await self._write(
+                what, self._proxy.create_device, clean, device_class=device_class, icon=icon, color_id=color_id
+            )
         except HubRejectedError as err:
             result = {"device_id": await self._adopt_landed_create("device", clean, before, what, err)}
         device_id = int(result.get("device_id") or 0) & 0xFF
@@ -2069,16 +2129,27 @@ class AsyncXProxy:
         await self._rebase_after_write(result, reread_devices=(device_id,), force=True)
         return device_id
 
-    async def add_activity(self, name: str) -> int:
-        """Create an empty activity and return its hub id."""
+    async def add_activity(
+        self,
+        name: str,
+        *,
+        icon: Optional[int] = None,
+        color_id: Optional[int] = None,
+    ) -> int:
+        """Create an empty activity and return its hub id. ``icon`` and
+        ``color_id`` as for :meth:`add_device`."""
 
         clean = str(name or "").strip()
         if not clean:
             raise ValueError("an activity needs a name")
+        if icon is not None or color_id is not None:
+            validate_appearance(
+                str(getattr(self._proxy, "hub_version", "") or ""), icon=icon, color_id=color_id
+            )
         what = f"add_activity({clean!r})"
         before = {int(i) & 0xFF for i in await self.run(self._proxy.get_known_activity_ids)}
         try:
-            result = await self._write(what, self._proxy.create_activity, clean)
+            result = await self._write(what, self._proxy.create_activity, clean, icon=icon, color_id=color_id)
         except HubRejectedError as err:
             result = {"activity_id": await self._adopt_landed_create("activity", clean, before, what, err)}
         activity_id = int(result.get("activity_id") or 0) & 0xFF
@@ -2196,13 +2267,16 @@ class AsyncXProxy:
         On the X1 the Roku replay always calls port 8060 (anything else is
         a ``ValueError`` before the hub is touched) and the power and
         input hooks are ignored, since that firmware fires one power and
-        one input callback per transition regardless. Returns the
+        one input callback per         Returns the
         :class:`WifiDeployment` the consumer must keep for
-        :meth:`update_wifi_device`.
+        :meth:`update_wifi_device`. ``spec.icon`` / ``spec.color_id`` are
+        checked against the hub line first (a ``ValueError``) and written
+        by the deploy's first update, as the references are.
         """
 
         normalized = spec.normalized()
         hub_version = str(getattr(self._proxy, "hub_version", "") or "")
+        _check_wifi_appearance(normalized, hub_version)
         if transport == WIFI_TRANSPORT_MQTT:
             return await self._deploy_wifi_mqtt_device(normalized, hub_version)
         if transport != WIFI_TRANSPORT_HTTP:
@@ -2224,9 +2298,11 @@ class AsyncXProxy:
                 "(one power and one input callback per transition regardless)"
             )
         # The create writes the device and its records; where the commands go
-        # (favorites, buttons, input activities) is the in-place planner's
-        # work, so a spec that names any is applied as the first update.
-        bare = normalized.without_references() if normalized.has_references else normalized
+        # (favorites, buttons, input activities) and a picked icon or color
+        # are the in-place planner's work, so a spec that names any is
+        # applied as the first update.
+        bare = _wifi_create_spec(normalized)
+        first_update = bare != normalized
         shape = snapshot_from_spec(bare, device_id=0, hub_version=hub_version, target_host=target.host)
         result = await self._write(
             f"deploy_wifi_device({normalized.name!r})",
@@ -2241,7 +2317,7 @@ class AsyncXProxy:
             # With references the first update keeps writing after the
             # create, so the create's own trigger is skipped and one
             # terminal trigger follows every write (see _finish_wifi_deploy).
-            send_remote_sync=bare is normalized,
+            send_remote_sync=not first_update,
             ip_address=target.host,
         )
         device_id = int(result.get("device_id") or 0) & 0xFF
@@ -2251,7 +2327,7 @@ class AsyncXProxy:
         # it back here (and the catalog, for the hub's own head record).
         await self._rebase_after_write(
             result, device_ids=(device_id,), force=True,
-            reread_devices=(device_id,) if bare is normalized else (), refresh_catalog=True,
+            reread_devices=(device_id,) if not first_update else (), refresh_catalog=True,
         )
         deployment = WifiDeployment(
             device_id=device_id,
@@ -2260,7 +2336,7 @@ class AsyncXProxy:
             labels=labels_from_spec(bare),
             hub_version=hub_version,
         )
-        if bare is normalized:
+        if not first_update:
             return deployment
         return await self._finish_wifi_deploy(deployment, normalized)
 
@@ -2302,7 +2378,8 @@ class AsyncXProxy:
     async def _deploy_wifi_mqtt_device(self, normalized: WifiDeviceSpec, hub_version: str) -> WifiDeployment:
         if hub_version != HUB_VERSION_X2:
             raise ValueError(f"the mqtt transport exists on the X2 only; this hub is {hub_version or 'unknown'}")
-        bare = normalized.without_references() if normalized.has_references else normalized
+        bare = _wifi_create_spec(normalized)
+        first_update = bare != normalized
         shape = snapshot_from_spec(bare, device_id=0, hub_version=hub_version)
         result = await self._write(
             f"deploy_wifi_device({normalized.name!r}, mqtt)",
@@ -2317,7 +2394,7 @@ class AsyncXProxy:
         device_id = int(result.get("device_id") or 0) & 0xFF
         await self._rebase_after_write(
             result, device_ids=(device_id,), force=True,
-            reread_devices=(device_id,) if bare is normalized else (), refresh_catalog=True,
+            reread_devices=(device_id,) if not first_update else (), refresh_catalog=True,
         )
         deployment = WifiDeployment(
             device_id=device_id,
@@ -2327,7 +2404,7 @@ class AsyncXProxy:
             hub_version=hub_version,
             transport=WIFI_TRANSPORT_MQTT,
         )
-        if bare is normalized:
+        if not first_update:
             # The restore pipeline behind the mqtt create sends no trigger
             # of its own.
             await self._sync_remotes_after(
@@ -2470,6 +2547,7 @@ class AsyncXProxy:
         what = f"update_wifi_device({dev_lo})"
         self._raise_if_cannot_fetch(what)
         hub_version = str(getattr(self._proxy, "hub_version", "") or deployment.hub_version or "")
+        _check_wifi_appearance(normalized, hub_version)
 
         def project(label: str) -> str:
             try:
@@ -2549,6 +2627,7 @@ class AsyncXProxy:
 
         # Asked before the write, on the cache the baseline read just filled.
         referencing = await self._activities_referencing(dev_lo)
+        plan_started = time.monotonic()
         async with self._holding_hub("a callback device write"):
             result = await self._run_draining(
                 self._proxy.run_wifi_inplace_plan, plan, progress_callback=self._engine_progress(progress)
@@ -2578,6 +2657,7 @@ class AsyncXProxy:
         )
         if not isinstance(result, dict) or result.get("status") != "success":
             data = result if isinstance(result, dict) else {}
+            self._raise_if_remote_syncing(what, plan_started)
             raise WifiUpdateFailed(
                 str(data.get("failed_at") or "unknown"),
                 completed_steps=int(data.get("completed_steps") or 0),
@@ -3481,6 +3561,10 @@ _R_ITEM_SYNC = (
     "remote syncs composed by the write paths (facade and Home Assistant) "
     "after each write; not a consumer-facing write"
 )
+_R_SYNC_REFUSAL = (
+    "the facade's own classification of a refused write (RemoteSyncInProgressError); "
+    "not a consumer-facing call"
+)
 _R_REMOTE_SYNC_BENCH = (
     "X2 paired-device rows for the targeted remote-sync bench (bench_333); "
     "no facade feature uses them until that form is validated"
@@ -3495,6 +3579,7 @@ ENGINE_ONLY: dict[str, str] = {
     **_reasons(_R_ENTITY_RESTORE, ("restore_device", "restore_activity")),
     **_reasons(_R_REMOTE_SYNC_BENCH, ("x2_paired_devices",)),
     **_reasons(_R_ITEM_SYNC, ("sync_remote_entity", "sync_remotes_after_write")),
+    **_reasons(_R_SYNC_REFUSAL, ("refused_during_remote_sync",)),
     **_reasons(
         _R_TRANSPORT,
         (

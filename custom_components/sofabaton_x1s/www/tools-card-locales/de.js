@@ -901,6 +901,7 @@ var TOOLS_CARD_STRINGS_DE = {
     syncFailedHubMqttNotConnected: "Der Hub ist mit keinem MQTT-Broker verbunden.",
     syncFailedGeneric: "Die Synchronisierung wurde abgebrochen. Synchronisiere erneut.",
     syncFailedNotFound: "Dieses WLAN-Ger\xE4t gibt es nicht mehr. Lade die Karte neu.",
+    syncFailedRemoteSyncing: "Der Hub aktualisiert gerade seine Fernbedienung. Warte, bis die Fernbedienung fertig ist, und synchronisiere dann erneut.",
     deviceDeleting: "Wird gel\xF6scht\u2026",
     deviceSynced: "Synchronisiert",
     actionButtonUnavailable: "Nicht verf\xFCgbar",

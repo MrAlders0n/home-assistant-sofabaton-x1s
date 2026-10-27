@@ -2064,13 +2064,16 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
         activity-driven power/input callback delivery. This is the LAST step of
         an in-place re-sync (the commit marker: an interrupted deploy leaves the
         brand hash unwritten, so the device reads out-of-step and re-offers
-        sync).
+        sync). A payload ``icon`` / ``color_id`` replaces the head's own;
+        without one the head keeps what the hub has.
         """
         dev_lo = int(payload.get("device_id") or 0) & 0xFF
         if not dev_lo:
             return False
         new_name = str(payload.get("name") or "")
         new_brand = payload.get("brand")
+        new_icon = payload.get("icon")
+        new_color = payload.get("color_id")
 
         device = self.state.entities("device").get(dev_lo)
         raw = device.get("raw_body") if isinstance(device, dict) else None
@@ -2110,6 +2113,8 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                     name=new_name,
                     brand=str(new_brand) if new_brand is not None else config.brand,
                     device_id=dev_lo,
+                    icon=int(new_icon) if new_icon is not None else config.icon,
+                    color_id=int(new_color) if new_color is not None else config.color_id,
                 ),
                 hub_version=self.hub_version,
             )
@@ -2141,8 +2146,8 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
             ip_device=ip_device,
             brand_name=str(new_brand) if new_brand is not None else "m3tac0de",
             wifi_power_state=wifi_power_state,
-            icon=config.icon if config is not None else 1,
-            color_id=config.color_id if config is not None else 0,
+            icon=int(new_icon) if new_icon is not None else (config.icon if config is not None else 1),
+            color_id=int(new_color) if new_color is not None else (config.color_id if config is not None else 0),
         )
         self.reset_ack_queues()
         step = self._send_step(

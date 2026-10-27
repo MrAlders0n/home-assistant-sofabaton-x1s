@@ -239,6 +239,19 @@ export function jobOutcomeText(job: JobView | null): string | null {
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** A create's icon and (X2) color; a value left out keeps the hub's default. */
+export interface CreateAppearance {
+  icon?: number | null;
+  colorId?: number | null;
+}
+
+function appearanceBody(appearance: CreateAppearance): { icon?: number; color_id?: number } {
+  return {
+    ...(appearance.icon != null ? { icon: appearance.icon } : {}),
+    ...(appearance.colorId != null ? { color_id: appearance.colorId } : {}),
+  };
+}
+
 export class PanelApi {
   readonly baseUrl: string;
   readonly apiRoot: string;
@@ -526,13 +539,13 @@ export class PanelApi {
   }
 
   /** Create an empty activity (a job); the result carries the hub-assigned `activity_id`. */
-  addActivity(hubId: string, name: string): Promise<ApiResponse<JobView>> {
-    return this.request<JobView>("POST", `${this._hub(hubId)}/activities`, { body: { name } });
+  addActivity(hubId: string, name: string, appearance: CreateAppearance = {}): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/activities`, { body: { name, ...appearanceBody(appearance) } });
   }
 
   /** Create an empty device of a class the hub can create (a job); the result carries the hub-assigned `device_id`. */
-  addDevice(hubId: string, name: string, deviceClass: string): Promise<ApiResponse<JobView>> {
-    return this.request<JobView>("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass } });
+  addDevice(hubId: string, name: string, deviceClass: string, appearance: CreateAppearance = {}): Promise<ApiResponse<JobView>> {
+    return this.request<JobView>("POST", `${this._hub(hubId)}/devices`, { body: { name, device_class: deviceClass, ...appearanceBody(appearance) } });
   }
 
   /** Store the display order of every activity or device, once each (a job). */
