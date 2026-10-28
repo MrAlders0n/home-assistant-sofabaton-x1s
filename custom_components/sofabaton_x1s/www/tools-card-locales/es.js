@@ -428,6 +428,7 @@ var TOOLS_CARD_STRINGS_ES = {
       "Home": "Inicio",
       "Computer": "Ordenador",
       "Speaker": "Altavoz",
+      "Speakers": "Altavoces",
       "Bulb": "Bombilla",
       "AV receiver": "Receptor AV",
       "Disc player": "Reproductor de discos"

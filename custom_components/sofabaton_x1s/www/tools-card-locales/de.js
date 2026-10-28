@@ -429,6 +429,7 @@ var TOOLS_CARD_STRINGS_DE = {
       "Home": "Home",
       "Computer": "Computer",
       "Speaker": "Lautsprecher",
+      "Speakers": "Lautsprecher",
       "Bulb": "Gl\xFChbirne",
       "AV receiver": "AV-Receiver",
       "Disc player": "Disc-Player"

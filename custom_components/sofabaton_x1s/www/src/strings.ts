@@ -900,6 +900,7 @@ export const TOOLS_CARD_STRINGS_EN = {
       "Home": "Home",
       "Computer": "Computer",
       "Speaker": "Speaker",
+      "Speakers": "Speakers",
       "Bulb": "Bulb",
       "AV receiver": "AV receiver",
       "Disc player": "Disc player",

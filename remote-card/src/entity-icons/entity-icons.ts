@@ -4,7 +4,7 @@
 // artwork), the X1 25 icons numbered on their own. The app shows icon 1 (a
 // TV) for an id outside its line's set, and so does entityIconPath.
 
-import { X1_ICON_PATHS, X2_ICON_NAMES, X2_ICON_PATHS } from "./x2-icons";
+import { X1S_ICON_PATHS, X1_ICON_PATHS, X2_ICON_NAMES, X2_ICON_PATHS } from "./x2-icons";
 
 export type IconHubLine = "X1" | "X1S" | "X2";
 
@@ -12,17 +12,21 @@ export type IconHubLine = "X1" | "X1S" | "X2";
 export const ENTITY_ICON_COUNT: Readonly<Record<IconHubLine, number>> = { X1: 25, X1S: 16, X2: 45 };
 
 /** X1 icon ids drawn with an X2 icon: the same object, or the X2's nearest
- *  one (2 HD TV, 3 TV on a stand, 11 gamepad, 19 speaker, 21 bulb, 24 disc
- *  player). The other X1 ids have their own drawings in X1_ICON_PATHS. */
+ *  one (2 HD TV, 3 TV on a stand, 11 gamepad). The other X1 ids have their
+ *  own drawings in X1_ICON_PATHS. */
 const X1_ICON_AS_X2: Readonly<Record<number, number>> = {
-  1: 1, 2: 18, 3: 32, 4: 2, 5: 3, 9: 7, 11: 6, 13: 13, 15: 14, 16: 16, 19: 25, 20: 9, 21: 12, 23: 10, 24: 22,
+  1: 1, 2: 18, 3: 32, 4: 2, 5: 3, 9: 7, 11: 6, 15: 14, 20: 9,
 };
 
 /** X1S ids whose X1S artwork shows another object than the X2 drawing at
  *  the same id (the X2 redrew the set): they take the X1 drawing of that
- *  object, so the X1S shows what its own app shows. 9 is the one that
- *  matters most: an AV receiver on the X1S, a wifi router on the X2. */
-const X1S_ICON_AS_X1: Readonly<Record<number, number>> = { 4: 6, 5: 8, 6: 10, 9: 22, 15: 25 };
+ *  object, so the X1S shows what its own remote shows. 9 is the one that
+ *  matters most: an AV receiver on the X1S, a wifi router on the X2. The
+ *  redrawn objects no X1 drawing shows have their own in X1S_ICON_PATHS. */
+const X1S_ICON_AS_X1: Readonly<Record<number, number>> = { 4: 6, 5: 8, 6: 10, 9: 22, 13: 13, 16: 16 };
+
+/** Names of the X1S icons drawn on their own (X1S_ICON_PATHS). */
+const X1S_ICON_NAMES: Readonly<Record<number, string>> = { 8: "Set-top box", 11: "Speakers", 12: "Bulb", 15: "amazon" };
 
 /** The X1 app's own names for its 25 icons. */
 const X1_ICON_NAMES: Readonly<Record<number, string>> = {
@@ -76,6 +80,7 @@ export function entityIconPath(hubVersion: string | null | undefined, iconId: nu
   if (!line) return null;
   const id = lineIconId(line, iconId);
   if (line === "X1") return X1_ICON_PATHS[id] ?? X2_ICON_PATHS[X1_ICON_AS_X2[id]];
+  if (line === "X1S" && X1S_ICON_PATHS[id]) return X1S_ICON_PATHS[id];
   if (line === "X1S" && X1S_ICON_AS_X1[id]) return X1_ICON_PATHS[X1S_ICON_AS_X1[id]];
   return X2_ICON_PATHS[id];
 }
@@ -87,6 +92,7 @@ export function entityIconName(hubVersion: string | null | undefined, iconId: nu
   if (!line) return "";
   const id = lineIconId(line, iconId);
   if (line === "X1") return X1_ICON_NAMES[id];
+  if (line === "X1S" && X1S_ICON_NAMES[id]) return X1S_ICON_NAMES[id];
   if (line === "X1S" && X1S_ICON_AS_X1[id]) return X1_ICON_NAMES[X1S_ICON_AS_X1[id]];
   return X2_ICON_NAMES[id];
 }

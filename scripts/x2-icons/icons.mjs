@@ -1,7 +1,7 @@
 // Sources for the X2 activity/device icon set, drawn on a 24x24 grid with
 // the helpers in ./geometry.mjs. Keys are the icon ids an X2 entity record
 // stores (1-45); values are [name, draw]. Run `npm run build:x2-icons` to
-// regenerate custom_components/sofabaton_x1s/www/src/shared/x2-icons.ts.
+// regenerate remote-card/src/entity-icons/x2-icons.ts.
 //
 // The originals are flat white glyphs on the app's coloured tiles. Our
 // versions follow their silhouettes closely but are redrawn from primitives;
@@ -32,6 +32,46 @@ function sym(B, half, ox = 12) {
   return B.P(out);
 }
 function endOf(it) { return typeof it[0] === "number" ? it : it.slice(-2); }
+// a point list (lines, C and Q segments) with every point mapped through f
+function mapList(list, f) {
+  return list.map((it) => {
+    if (typeof it[0] === "number") return f(it[0], it[1]);
+    const [t, ...v] = it;
+    const out = [t];
+    for (let i = 0; i < v.length; i += 2) out.push(...f(v[i], v[i + 1]));
+    return out;
+  });
+}
+
+function apple(B, cx, cy, k) {
+  // the Apple TV icon's apple, centred on (cx, cy) and scaled by k
+  const f = (x, y) => [cx + (x - 5.75) * k, cy + (y - 12.2) * k];
+  const body = mapList([[5.6, 9.7], ["C", 6.4, 9.3, 7.9, 8.9, 9.3, 10], ["C", 8.6, 10.6, 8.3, 11.4, 8.4, 12.3], ["C", 8.5, 13.3, 9, 14, 9.75, 14.3],
+    ["C", 9.4, 15.3, 8.7, 16.5, 7.6, 16.6], ["C", 6.9, 16.65, 6.4, 16.3, 5.6, 16.3], ["C", 4.8, 16.3, 4.3, 16.65, 3.7, 16.6],
+    ["C", 2.6, 16.4, 1.7, 14.2, 1.75, 12.2], ["C", 1.8, 10.4, 2.9, 9.3, 4, 9.3], ["C", 4.6, 9.3, 5.1, 9.5, 5.6, 9.7]], f);
+  const [lx, ly] = f(6.8, 7.9);
+  return [B.P(body), B.rot(B.E(lx, ly, 1.35 * k, 0.55 * k), -48, lx, ly)];
+}
+function speaker(B, x, y, w, h, tw, wf) {
+  // cabinet with a tweeter hole and a woofer (cut ring around a cone with a dust cap)
+  const cx = x + w / 2;
+  const ty = y + tw + 1.4 * (w / 9), wy = y + h - wf - 1.3 * (w / 9);
+  return [B.R(x, y, w, h, 1.2), B.H(B.Ci)(cx, ty, tw * 0.62), B.ring(cx, wy, wf, wf * 0.68, true), B.H(B.Ci)(cx, wy, wf * 0.24)];
+}
+function bulb(B, cx, cy, r, neckY, baseW) {
+  // glass: a circle running into a straight neck, a highlight arc cut along
+  // its upper left; a screw base of two bands and a tip below the neck
+  const a0 = 122, a1 = 58;
+  const p0 = [cx + r * Math.cos(a0 * Math.PI / 180), cy + r * Math.sin(a0 * Math.PI / 180)];
+  const p1 = [cx + r * Math.cos(a1 * Math.PI / 180), cy + r * Math.sin(a1 * Math.PI / 180)];
+  const nl = cx - baseW / 2, nr = cx + baseW / 2;
+  const glass = B.P([p0, ["A", r, 1, 1, ...p1], ["C", p1[0] - 0.9, p1[1] + 1, nr, neckY - 1.4, nr, neckY], [nl, neckY],
+    ["C", nl, neckY - 1.4, p0[0] + 0.9, p0[1] + 1, ...p0]]);
+  const g = 0.55, t = 1.05;
+  return [glass, B.arcS(cx, cy, r * 0.62, 195, 255, r * 0.17, "round", true),
+    B.R(nl, neckY + g, baseW, t, t / 2), B.R(nl, neckY + 2 * g + t, baseW, t, t / 2),
+    B.R(nl + baseW * 0.2, neckY + 3 * g + 2 * t, baseW * 0.6, t * 0.9, t * 0.45)];
+}
 
 export const ICONS = {
   1: ["Monitor", (B) => [B.R(2.8, 3.9, 18.2, 12.1, 1.2), B.R(11.5, 15.5, 1, 3.2), B.R(6.2, 18.3, 11.8, 1.5, 0.75)]],
@@ -65,10 +105,7 @@ export const ICONS = {
     B.ring(8.75, 11.95, 2.1, 0.85, true), B.ring(15, 11.95, 2.1, 0.85, true)]],
   12: ["Pendant lamp", (B) => [B.P([[4.4, 12.9], ["E", 7.6, 7.9, 0, 0, 1, 19.6, 12.9]]), B.R(11.45, 3.3, 1.1, 2.5, 0.55), B.band(12, 13.4, 3, 0, 0, 180),
     B.S(12.05, 17.8, 12.05, 19, 0.8, "round"), B.S(9, 16.8, 7.9, 17.9, 0.9, "round"), B.S(15, 16.8, 16.1, 17.9, 0.9, "round")]],
-  13: ["Apple TV", (B) => [B.P([[5.6, 9.7], ["C", 6.4, 9.3, 7.9, 8.9, 9.3, 10], ["C", 8.6, 10.6, 8.3, 11.4, 8.4, 12.3], ["C", 8.5, 13.3, 9, 14, 9.75, 14.3],
-      ["C", 9.4, 15.3, 8.7, 16.5, 7.6, 16.6], ["C", 6.9, 16.65, 6.4, 16.3, 5.6, 16.3], ["C", 4.8, 16.3, 4.3, 16.65, 3.7, 16.6],
-      ["C", 2.6, 16.4, 1.7, 14.2, 1.75, 12.2], ["C", 1.8, 10.4, 2.9, 9.3, 4, 9.3], ["C", 4.6, 9.3, 5.1, 9.5, 5.6, 9.7]]),
-    B.rot(B.E(6.8, 7.9, 1.35, 0.55), -48, 6.8, 7.9),
+  13: ["Apple TV", (B) => [...apple(B, 5.75, 12.2, 1),
     B.SC([[13.4, 8.5], [13.4, 14.6], ["C", 13.4, 15.6, 14, 16.05, 15.25, 16.05]], 1.25, "butt"), B.R(11.5, 10, 3.5, 1),
     B.poly([[16, 10], [17.3, 10], [18.7, 14], [19.4, 15], [20, 14], [21.1, 10], [22.4, 10], [21.1, 14], [20.3, 16.6], [18.7, 16.6], [17.5, 14]])]],
   14: ["Roku", (B) => [B.R(1.5, 8.25, 1.25, 6.85), B.P([[1.5, 8.25], [4.3, 8.25], ["C", 5.6, 8.25, 6.3, 9.1, 6.3, 10.3], ["C", 6.3, 11.6, 5.4, 12.65, 4, 12.65], [1.5, 12.65]]),
@@ -218,11 +255,13 @@ export const ICONS = {
   }],
 };
 
-// X1 icons with no X2 counterpart, keyed by the X1 icon id. The X1 app has
-// its own 25-icon set, thin outlines numbered apart from the X1S/X2 ids;
-// the other 15 show an X2 drawing (see www/src/shared/hub-icons.ts). These
-// are drawn in the X2 style (filled, details cut out) so a mixed list of X1
-// and X2 icons reads as one set.
+// X1 icons drawn on their own, keyed by the X1 icon id. The X1 app has its
+// own 25-icon set, thin outlines numbered apart from the X1S/X2 ids. An id
+// is here when the X2 set has no counterpart, or when the X2 redrew the
+// object (13 the bare apple, 16 the N alone, 21 a bulb, not a pendant lamp);
+// the other 9 show an X2 drawing (see remote-card/src/entity-icons/
+// entity-icons.ts). These are drawn in the X2 style (filled, details cut
+// out) so a mixed list of X1 and X2 icons reads as one set.
 export const X1_ICONS = {
   6: ["3D glasses", (B) => {
     // solid lenses under a thin bar, a highlight band cut along their tops
@@ -244,6 +283,7 @@ export const X1_ICONS = {
     cross(B, 8.35, 7.4, 1.65, 0.5, false, true), B.H(B.Ci)(15.15, 8.2, 0.75), B.H(B.Ci)(16.85, 6.6, 0.75),
     B.R(11.45, 10.8, 1.1, 2.6), B.R(2, 13, 20, 7.2, 1.2),
     B.R(4.2, 14.85, 3, 1, 0.5, true), B.R(4.2, 17.25, 3, 1, 0.5, true), B.R(9.6, 16, 10.2, 1.2, 0.6, true)]],
+  13: ["Apple", (B) => apple(B, 12, 12.3, 2.05)],
   14: ["VUDU", (B) => {
     const w = 1.35, T = 9, Bt = 15;
     const u = (a, W) => B.SC([[a + w / 2, T], [a + w / 2, 12.6], ...B.ellArc(a + W / 2, 12.6, W / 2 - w / 2, Bt - 12.6 - w / 2, 180, 0), [a + W - w / 2, T]], w, "butt");
@@ -251,12 +291,29 @@ export const X1_ICONS = {
       B.P([[a + w, T + 1.25], [a + 1.65, T + 1.25], ["C", a + 2.5, T + 1.25, a + 2.95, 10.95, a + 2.95, 12], ["C", a + 2.95, 13.05, a + 2.5, Bt - 1.25, a + 1.65, Bt - 1.25], [a + w, Bt - 1.25]], true)];
     return [B.poly([[2.2, T], [3.7, T], [4.95, 13.1], [6.2, T], [7.7, T], [5.75, Bt], [4.15, Bt]]), u(8.35, 4.1), ...d(13.1), u(18.05, 4.1)];
   }],
+  16: ["Netflix", (B) => {
+    // the N alone: two stems joined by the ribbon, plain ends
+    const L = 6.4, Rt = 14.6, W = 3, T = 2.8, Bt = 21.2;
+    return [B.R(L, T, W, Bt - T), B.R(Rt, T, W, Bt - T), B.poly([[L, T], [L + W, T], [Rt + W, Bt], [Rt, Bt]])];
+  }],
   17: ["Home", (B) => [B.P([[12, 2.9], [21.9, 11.7], [19.4, 11.7], [19.4, 20.6], [14.3, 20.6], [14.3, 16.1], ["A", 2.3, 0, 0, 9.7, 16.1],
     [9.7, 20.6], [4.6, 20.6], [4.6, 11.7], [2.1, 11.7]])]],
   18: ["Computer", (B) => [B.R(2.8, 3.9, 18.2, 12.1, 1.2), B.R(4.3, 5.4, 15.2, 9.1, 0.3, true), B.R(11.5, 15.5, 1, 3.2), B.R(6.2, 18.3, 11.8, 1.5, 0.75),
     B.poly([[10.1, 6.3], [15.05, 10.6], [12.85, 10.7], [14.05, 13.2], [12.95, 13.7], [11.75, 11.2], [10.1, 12.75]])]],
+  19: ["Speaker", (B) => speaker(B, 5.5, 2.5, 13, 19, 2.3, 4.6)],
+  21: ["Bulb", (B) => {
+    const rays = [135, 180, 225, 270, 315, 0, 45].map((a) => {
+      const c = Math.cos(a * Math.PI / 180), s = Math.sin(a * Math.PI / 180);
+      return B.S(12 + 6.4 * c, 10 + 6.4 * s, 12 + 7.9 * c, 10 + 7.9 * s, 1.25, "round");
+    });
+    return [...bulb(B, 12, 10, 4.5, 16.3, 3.8), ...rays];
+  }],
   22: ["AV receiver", (B) => [B.R(1.5, 6.4, 21, 10.6, 1.2), B.R(3.8, 16.5, 3, 2.2, [0, 0, 0.7, 0.7]), B.R(17.2, 16.5, 3, 2.2, [0, 0, 0.7, 0.7]),
     B.ring(6.9, 11.7, 3, 1.75, true), B.R(13.9, 8.7, 1.9, 6, 0.95, true), B.R(17.3, 8.7, 1.9, 6, 0.95, true)]],
+  23: ["Projector", (B) => [B.R(1.5, 9.4, 21, 10, 1.5), B.Ci(16.6, 7.3, 3.4), B.H(B.Ci)(16.6, 7.3, 1.55),
+    B.ring(5.9, 14.4, 2.3, 1.1, true), B.R(10.2, 13.3, 9.6, 2.2, 1.1, true)]],
+  24: ["Disc player", (B) => [B.R(1.5, 5.6, 21, 10.6, 1.2), B.R(4.6, 8.4, 14.8, 2.4, 1.2, true), B.R(1.5, 13.3, 21, 0.9, 0, true),
+    B.R(4, 15.7, 3.4, 2.2, [0, 0, 1.1, 1.1]), B.R(16.6, 15.7, 3.4, 2.2, [0, 0, 1.1, 1.1])]],
   25: ["amazon", (B) => {
     const w = 0.9, T = 8.8, Bt = 13.2, cy = T + w / 2 + 1.05;
     const arch = (x0, x1) => B.SC([[x0, Bt], [x0, cy], ...B.ellArc((x0 + x1) / 2, cy, (x1 - x0) / 2, 1.05, 180, 360), [x1, Bt]], w, "butt");
@@ -266,5 +323,26 @@ export const X1_ICONS = {
     return [...a(1.4), arch(4.85 + w / 2, 6.6), arch(6.6, 8.35 - w / 2), B.R(4.85, T, w, Bt - T), ...a(9.05), z(12.2),
       B.E(17.25, 11, 1.65, 2.2), B.E(17.25, 11, 0.75, 1.3, true), arch(19.4 + w / 2, 22.25 - w / 2), B.R(19.4, T, w, Bt - T),
       B.P([[2.6, 14.7], ["Q", 9.5, 18.6, 16.3, 15.2], ["Q", 9.5, 17.2, 2.6, 14.7]]), B.poly([[14.9, 14.55], [17.3, 14.3], [16.75, 16.55], [16.25, 15.95], [15.8, 15.35]])];
+  }],
+};
+
+// X1S icons whose X1S artwork shows another object than the X2 drawing at
+// the same id and than any X1 drawing, keyed by the X1S icon id (the X1S
+// shares ids 1-16 with the X2). The X1S ids that show an X1 object take the
+// X1 drawing instead (see entity-icons.ts). Same X2 style.
+export const X1S_ICONS = {
+  8: ["Set-top box", (B) => [B.R(1.5, 11.6, 21, 8.2, 1.6), B.R(4.6, 3.2, 1.6, 9, 0.8), B.R(17.8, 3.2, 1.6, 9, 0.8),
+    B.R(4.4, 14.85, 6.4, 1.9, 0.95, true), B.ring(18.4, 15.8, 1.3, 0.55, true)]],
+  11: ["Speakers", (B) => [...speaker(B, 1.8, 2.4, 10.2, 19.2, 1.75, 3.3), ...speaker(B, 13.8, 8.4, 8.4, 13.2, 1.35, 2.55)]],
+  12: ["Bulb", (B) => bulb(B, 12, 8.7, 6.4, 16.4, 4.6)],
+  15: ["amazon", (B) => {
+    // bold double-storey a over the smile with its arrow head
+    const w = 3, x0 = 6.3, x1 = 16.9, T = 2.9, Bt = 14.6;
+    const sx = x1 - w / 2;
+    const hook = B.SC([[x0 + 0.7, T + 2.5], ["C", x0 + 2, T + w / 2 + 0.2, x0 + 3.6, T + w / 2, x0 + 5.3, T + w / 2],
+      ["C", sx - 0.3, T + w / 2, sx, T + 2.2, sx, T + 4.1], [sx, Bt]], w, "butt");
+    return [hook, B.E(x0 + 4.3, Bt - 3.7, 4.3, 3.7), B.E(x0 + 4.45, Bt - 3.55, 1.85, 1.6, true),
+      B.P([[2.4, 16.4], ["Q", 11.4, 22.6, 19.4, 17.5], ["Q", 11.4, 19.9, 2.4, 16.4]]),
+      B.poly([[17.5, 16.6], [21.2, 15.95], [20.55, 19.6], [19.8, 18.35], [19.05, 17.45]])];
   }],
 };

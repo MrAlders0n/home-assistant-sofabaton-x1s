@@ -429,6 +429,7 @@ var TOOLS_CARD_STRINGS_ZH_HANS = {
       "Home": "\u4E3B\u9875",
       "Computer": "\u7535\u8111",
       "Speaker": "\u626C\u58F0\u5668",
+      "Speakers": "\u97F3\u7BB1\u7EC4",
       "Bulb": "\u706F\u6CE1",
       "AV receiver": "AV \u529F\u653E",
       "Disc player": "\u5149\u76D8\u64AD\u653E\u5668"

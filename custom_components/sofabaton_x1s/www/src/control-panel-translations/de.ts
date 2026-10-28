@@ -228,6 +228,7 @@ export const TOOLS_CARD_STRINGS_DE = {
       "Home": "Home",
       "Computer": "Computer",
       "Speaker": "Lautsprecher",
+      "Speakers": "Lautsprecher",
       "Bulb": "Glühbirne",
       "AV receiver": "AV-Receiver",
       "Disc player": "Disc-Player",

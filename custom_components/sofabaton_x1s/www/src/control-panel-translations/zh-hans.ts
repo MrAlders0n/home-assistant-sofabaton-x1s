@@ -258,6 +258,7 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
       "Home": "主页",
       "Computer": "电脑",
       "Speaker": "扬声器",
+      "Speakers": "音箱组",
       "Bulb": "灯泡",
       "AV receiver": "AV 功放",
       "Disc player": "光盘播放器",

@@ -14,7 +14,7 @@ import {
   entityColorsSupported,
 } from "../../remote-card/src/entity-icons/entity-colors";
 import { entityTile, entityTileBadge } from "../../remote-card/src/entity-icons/entity-tile";
-import { X1_ICON_PATHS, X2_ICON_PATHS } from "../../remote-card/src/entity-icons/x2-icons";
+import { X1S_ICON_PATHS, X1_ICON_PATHS, X2_ICON_PATHS } from "../../remote-card/src/entity-icons/x2-icons";
 
 test("iconHubLine reads the line out of a hub version", () => {
   assert.equal(iconHubLine("X1"), "X1");
@@ -34,14 +34,23 @@ test("entityIconIds offers each line's own set", () => {
 });
 
 test("X1S and X2 share ids: the X1S shows X2 paths 1-16 where the object is the same", () => {
-  // The X2 redrew 4, 5, 6, 9 and 15 as other objects; the X1S keeps its own
-  // (the X1 drawing of that object): 9 stays an AV receiver, not a router.
-  const own: Record<number, number> = { 4: 6, 5: 8, 6: 10, 9: 22, 15: 25 };
+  // The X2 redrew 4, 5, 6, 9, 13 and 16 as objects the X1 also draws; the
+  // X1S keeps its own (the X1 drawing of that object): 9 stays an AV
+  // receiver, not a router. 8, 11, 12 and 15 have X1S drawings of their own.
+  const asX1: Record<number, number> = { 4: 6, 5: 8, 6: 10, 9: 22, 13: 13, 16: 16 };
+  const own = [8, 11, 12, 15];
+  assert.deepEqual(Object.keys(X1S_ICON_PATHS).map(Number), own);
   for (const id of entityIconIds("X1S")) {
-    assert.equal(entityIconPath("X1S", id), own[id] ? X1_ICON_PATHS[own[id]] : X2_ICON_PATHS[id], `X1S icon ${id}`);
+    const expected = own.includes(id) ? X1S_ICON_PATHS[id] : asX1[id] ? X1_ICON_PATHS[asX1[id]] : X2_ICON_PATHS[id];
+    assert.equal(entityIconPath("X1S", id), expected, `X1S icon ${id}`);
   }
   assert.equal(entityIconName("X1S", 9), "AV receiver");
   assert.equal(entityIconName("X2", 9), "Wifi router");
+  assert.equal(entityIconName("X1S", 12), "Bulb");
+  assert.equal(entityIconName("X2", 12), "Pendant lamp");
+  assert.equal(entityIconName("X1S", 16), "Netflix");
+  assert.equal(entityIconPath("X1S", 16), entityIconPath("X1", 16));
+  assert.notEqual(entityIconPath("X1S", 16), X2_ICON_PATHS[16]);
   for (const id of entityIconIds("X2")) assert.equal(entityIconPath("X2", id), X2_ICON_PATHS[id]);
 });
 
@@ -88,7 +97,8 @@ test("every X1 id resolves: its own drawing, else the mapped X2 one", () => {
   }
   assert.equal(entityIconPath("X1", 1), X2_ICON_PATHS[1]);
   assert.equal(entityIconPath("X1", 20), X2_ICON_PATHS[9]);
-  assert.equal(entityIconPath("X1", 23), X2_ICON_PATHS[10]);
+  // the X2 redrew these; the X1 keeps what its remote shows
+  for (const id of [13, 16, 19, 21, 23, 24]) assert.equal(entityIconPath("X1", id), X1_ICON_PATHS[id], `X1 icon ${id}`);
 });
 
 test("ids outside a line's set show icon 1, as the app does", () => {

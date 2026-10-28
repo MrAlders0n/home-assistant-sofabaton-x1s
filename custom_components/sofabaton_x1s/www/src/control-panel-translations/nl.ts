@@ -261,6 +261,7 @@ export const TOOLS_CARD_STRINGS_NL = {
       "Home": "Home",
       "Computer": "Computer",
       "Speaker": "Luidspreker",
+      "Speakers": "Luidsprekers",
       "Bulb": "Gloeilamp",
       "AV receiver": "AV-receiver",
       "Disc player": "Schijfspeler",

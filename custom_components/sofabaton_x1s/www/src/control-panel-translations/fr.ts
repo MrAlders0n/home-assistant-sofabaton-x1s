@@ -222,6 +222,7 @@ export const TOOLS_CARD_STRINGS_FR = {
       "Home": "Accueil",
       "Computer": "Ordinateur",
       "Speaker": "Enceinte",
+      "Speakers": "Enceintes",
       "Bulb": "Ampoule",
       "AV receiver": "Ampli-tuner AV",
       "Disc player": "Lecteur de disques",
