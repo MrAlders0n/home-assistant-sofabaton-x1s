@@ -417,9 +417,9 @@ export const TOOLS_CARD_STRINGS_DE = {
   },
   decodedPayload: {
     httpTitle: "HTTP-Anfrage", httpSubtitle: "Konfiguriere die vom Hub gesendete HTTP-Anfrage. Lege das Ziel in den Feldern Host und Port fest.",
-    hostIpv4: "Host (IPv4)", hostExample: "z. B. 192.168.2.77", port: "Port", httpMethod: "HTTP-Methode", httpMethodExample: "z. B. GET, POST", path: "Pfad", extraHeaders: "Zusätzliche Header",
+    hostIpv4: "Host (IPv4)", port: "Port", httpMethod: "HTTP-Methode", path: "Pfad", extraHeaders: "Zusätzliche Header",
     extraHeadersHelper: "Ein Header pro Zeile. Host und Content-Length werden automatisch hinzugefügt.", contentType: "Inhaltstyp", body: "Body", protocol: "Protokoll", host: "Host",
-    hostOrNameExample: "Eine IPv4-Adresse oder ein Hostname, z. B. 192.168.2.77 oder ha.example.com", portDefaultHelper: "Leer lassen für 80 (http) oder 443 (https).",
+    hostOrNameExample: "Eine IPv4-Adresse oder ein Hostname, z. B. 192.168.2.77 oder ha.example.com",
     hostRequired: "Gib den Host ein.", hostInvalid: "Gib hier nur den Host ein. Port und Pfad haben eigene Felder.",
     hostNeedsIpv4: "Gib eine IPv4-Adresse ein, z. B. 192.168.2.77. Hostnamen und https erfordern einen X2-Hub.", portInvalid: "Der Port muss eine ganze Zahl von 1 bis 65535 sein.",
     urlMethodUnsupported: "Verwende GET, POST oder PUT. Befehle mit https oder einem Hostnamen sowie in der Sofabaton-App erstellte Befehle unterstützen nur diese.",

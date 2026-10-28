@@ -1069,6 +1069,7 @@ export const backupTabStyles = css`
       display: flex;
       flex-direction: column;
       gap: 10px;
+      container-type: inline-size;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
     .payload-format-tabs {
@@ -1170,6 +1171,45 @@ export const backupTabStyles = css`
       color: var(--secondary-text-color);
       line-height: 1.35;
     }
+    /* Fields side by side (the wifi_ip address and request line); short
+       values keep a fixed column. The form is the query container, so the
+       rows follow the dialog's width, not the card's. */
+    .decoded-row { display: flex; flex-direction: column; gap: 4px; }
+    .decoded-row-fields { display: flex; gap: 10px; align-items: flex-start; }
+    .decoded-row-fields > .decoded-field { flex: 1 1 0; min-width: 0; }
+    .decoded-row-fields > .decoded-field--narrow { flex: 0 0 104px; }
+    @container (max-width: 420px) {
+      /* Three across leaves the host too little room: it takes its own line. */
+      .decoded-row-fields:has(> .decoded-field:nth-child(3)) { flex-wrap: wrap; }
+      .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field:not(.decoded-field--narrow) { flex-basis: 100%; order: -1; }
+      .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field--narrow { flex: 1 1 0; }
+    }
+    /* The request the form describes, as one line: method and URL. Tinted
+       like the class badge so it reads as a summary, not another field. */
+    .decoded-request-preview {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .decoded-request-method {
+      flex: 0 0 auto;
+      font-weight: 700;
+      color: var(--sb-accent-text, var(--primary-color));
+    }
+    .decoded-request-url {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--primary-text-color);
+      overflow-wrap: anywhere;
+    }
+    .decoded-field-input::placeholder { color: var(--secondary-text-color); opacity: 0.7; }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }
     .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }

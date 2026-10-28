@@ -6,10 +6,12 @@ import { join } from "node:path";
 import {
   WifiIpFormError,
   buildWifiIpRecord,
+  wifiIpDefaultPort,
   wifiIpDraftsChanged,
   wifiIpDraftsFromFields,
   wifiIpDraftsWithScheme,
   wifiIpRecordKind,
+  wifiIpRequestPreview,
 } from "../../custom_components/sofabaton_x1s/www/src/shared/wifi-ip-form";
 
 // Shared vectors, also consumed by tests/test_wifi_ip_form_vectors.py: every
@@ -134,4 +136,26 @@ test("an empty host is refused", () => {
     () => buildWifiIpRecord({ scheme: "http", host: " ", port: "80", method: "GET", path: "/" }, { original: null, existing: false, isX2: true }),
     (error: unknown) => error instanceof WifiIpFormError && error.code === "host_required",
   );
+});
+
+test("the summary line shows the request as typed", () => {
+  assert.deepEqual(
+    wifiIpRequestPreview({ scheme: "http", host: "192.168.1.161", port: "8080", method: "post", path: "/jsonrpc" }),
+    { method: "POST", url: "http://192.168.1.161:8080/jsonrpc" },
+  );
+  // An empty port and path read as the defaults; an IPv6 host is bracketed.
+  assert.deepEqual(wifiIpRequestPreview({ scheme: "https", host: "fd00::5", port: "", method: "", path: "" }), {
+    method: "",
+    url: "https://[fd00::5]/",
+  });
+  assert.equal(wifiIpRequestPreview({ scheme: "http", host: "a", path: "status" })?.url, "http://a/status");
+  // A mistake stays visible rather than being repaired.
+  assert.equal(wifiIpRequestPreview({ scheme: "http", host: "http://a", path: "/" })?.url, "http://http://a/");
+  assert.equal(wifiIpRequestPreview({ scheme: "http", host: " ", path: "/" }), null);
+});
+
+test("an empty port shows its protocol's default", () => {
+  assert.equal(wifiIpDefaultPort("http"), "80");
+  assert.equal(wifiIpDefaultPort("HTTPS"), "443");
+  assert.equal(wifiIpDefaultPort(undefined), "80");
 });

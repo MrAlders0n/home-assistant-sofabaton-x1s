@@ -25,6 +25,7 @@ import {
   wifiIpDraftsChanged,
   wifiIpDraftsFromFields,
   wifiIpDraftsWithScheme,
+  wifiIpRequestPreview,
   type WifiIpRecord,
 } from "../../shared/wifi-ip-form";
 import {
@@ -35,7 +36,8 @@ import {
   bundleDeviceClass,
   commandDecodedBlock,
   commandRawPayloadHex,
-  decodedFormFields,
+  decodedFieldPlaceholder,
+  decodedFormRows,
   normalizeCommandPayloadHex,
   setCommandRestoreData,
   updateCommandRawPayload,
@@ -685,22 +687,45 @@ export class PayloadDialogController implements ReactiveController {
             ${spec.subtitle ? html`<div class="decoded-form-sub">${spec.subtitle}</div>` : nothing}
           </div>
         `;
+    const preview = className === "wifi_ip" ? wifiIpRequestPreview(this.decodedDrafts) : null;
     return html`
       <div class="decoded-form">
         ${head}
-        ${decodedFormFields(className, bundleIsX2(this.host.bundle)).map((field) => this.renderDecodedField(field))}
+        ${preview
+          ? html`
+              <div class="decoded-request-preview">
+                ${preview.method ? html`<span class="decoded-request-method">${preview.method}</span>` : nothing}
+                <span class="decoded-request-url">${preview.url}</span>
+              </div>
+            `
+          : nothing}
+        ${decodedFormRows(className, bundleIsX2(this.host.bundle)).map((row) => this.renderDecodedRow(row))}
       </div>
     `;
   }
 
-  renderDecodedField(field: DecodedFieldSpec) {
+  renderDecodedRow(row: DecodedFieldSpec[]) {
+    if (row.length === 1) return this.renderDecodedField(row[0]);
+    // Under a side-by-side field a helper would push its input out of
+    // line with the others: the row's helpers go under the whole row.
+    return html`
+      <div class="decoded-row">
+        <div class="decoded-row-fields">${row.map((field) => this.renderDecodedField(field, false))}</div>
+        ${row.map((field) => field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing)}
+      </div>
+    `;
+  }
+
+  renderDecodedField(field: DecodedFieldSpec, withHelper = true) {
     const value = this.decodedDrafts[field.key] ?? "";
+    const placeholder = decodedFieldPlaceholder(field, this.decodedDrafts);
     const onInput = (event: Event) => this.handleDecodedFieldInput(event, field.key);
     const multilineClass = field.escapedDisplay
       ? "decoded-field-input--multiline decoded-field-input--escaped"
       : "decoded-field-input--multiline";
+    const suggestionsId = field.suggestions ? `decoded-suggestions-${field.key}` : "";
     return html`
-      <label class="decoded-field">
+      <label class="decoded-field ${field.narrow ? "decoded-field--narrow" : ""}" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
         ${field.options
           ? html`
@@ -712,8 +737,9 @@ export class PayloadDialogController implements ReactiveController {
           ? html`
               <textarea
                 class="decoded-field-input ${multilineClass}"
-                rows="4"
+                rows=${field.rows ?? 4}
                 spellcheck="false"
+                placeholder=${placeholder}
                 .value=${value}
                 @input=${onInput}
                 @change=${onInput}
@@ -722,15 +748,22 @@ export class PayloadDialogController implements ReactiveController {
           : html`
               <input
                 class="decoded-field-input"
-                type=${field.numeric ? "number" : "text"}
+                type="text"
+                inputmode=${field.numeric ? "numeric" : "text"}
                 spellcheck="false"
+                autocomplete="off"
+                placeholder=${placeholder}
+                list=${suggestionsId || nothing}
                 .value=${value}
                 ?disabled=${Boolean(field.readonly)}
                 @input=${field.readonly ? null : onInput}
                 @change=${field.readonly ? null : onInput}
               />
+              ${field.suggestions
+                ? html`<datalist id=${suggestionsId}>${field.suggestions.map((option) => html`<option value=${option}></option>`)}</datalist>`
+                : nothing}
             `}
-        ${field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
+        ${withHelper && field.helper ? html`<span class="decoded-field-helper">${field.helper}</span>` : nothing}
       </label>
     `;
   }

@@ -453,10 +453,10 @@ export const TOOLS_CARD_STRINGS_ZH_HANS = {
   },
   decodedPayload: {
     httpTitle: "HTTP 请求", httpSubtitle: "配置 Hub 发送的 HTTP 请求。在主机和端口字段中设置目标。",
-    hostIpv4: "主机（IPv4）", hostExample: "例如 192.168.2.77", port: "端口", httpMethod: "HTTP 方法", httpMethodExample: "例如 GET、POST", path: "路径",
+    hostIpv4: "主机（IPv4）", port: "端口", httpMethod: "HTTP 方法", path: "路径",
     extraHeaders: "其他标头", extraHeadersHelper: "每行一个标头。Host 和 Content-Length 会自动添加。", contentType: "内容类型", body: "正文",
     protocol: "协议", host: "主机",
-    hostOrNameExample: "IPv4 地址或主机名，例如 192.168.2.77 或 ha.example.com", portDefaultHelper: "留空则使用 80（http）或 443（https）。",
+    hostOrNameExample: "IPv4 地址或主机名，例如 192.168.2.77 或 ha.example.com",
     hostRequired: "请输入主机。", hostInvalid: "此处只填写主机。端口和路径有各自的字段。",
     hostNeedsIpv4: "请输入 IPv4 地址，例如 192.168.2.77。主机名和 https 需要 X2 Hub。", portInvalid: "端口必须是 1 到 65535 之间的整数。",
     urlMethodUnsupported: "请使用 GET、POST 或 PUT。使用 https 或主机名的命令，以及在 Sofabaton 应用中创建的命令，只支持这些方法。",

@@ -461,10 +461,10 @@ export const TOOLS_CARD_STRINGS_NL = {
   },
   decodedPayload: {
     httpTitle: "HTTP-verzoek", httpSubtitle: "Configureer het HTTP-verzoek dat de hub verstuurt. Stel de bestemming in via de velden Host en Poort.",
-    hostIpv4: "Host (IPv4)", hostExample: "bijv. 192.168.2.77", port: "Poort", httpMethod: "HTTP-methode", httpMethodExample: "bijv. GET, POST", path: "Pad",
+    hostIpv4: "Host (IPv4)", port: "Poort", httpMethod: "HTTP-methode", path: "Pad",
     extraHeaders: "Extra headers", extraHeadersHelper: "Eén header per regel. Host en Content-Length worden automatisch toegevoegd.", contentType: "Inhoudstype", body: "Body",
     protocol: "Protocol", host: "Host",
-    hostOrNameExample: "Een IPv4-adres of een hostnaam, bijv. 192.168.2.77 of ha.example.com", portDefaultHelper: "Laat leeg voor 80 (http) of 443 (https).",
+    hostOrNameExample: "Een IPv4-adres of een hostnaam, bijv. 192.168.2.77 of ha.example.com",
     hostRequired: "Voer de host in.", hostInvalid: "Voer hier alleen de host in. Poort en pad hebben eigen velden.",
     hostNeedsIpv4: "Voer een IPv4-adres in, bijv. 192.168.2.77. Hostnamen en https vereisen een X2-hub.", portInvalid: "De poort moet een geheel getal van 1 tot en met 65535 zijn.",
     urlMethodUnsupported: "Gebruik GET, POST of PUT. Commando's met https of een hostnaam, en commando's die in de Sofabaton-app zijn gemaakt, ondersteunen alleen deze.",

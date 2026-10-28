@@ -2691,6 +2691,56 @@
           await detail.updateComplete;
         },
       },
+      ...[
+        {
+          id: "payload-editor-wifi-ip-x2", version: "X2",
+          label: "Device editor — X2 Wifi payload dialog (an app-made URL record)",
+          decoded: {
+            class: "wifi_ip", trailer_hex: "",
+            fields: { url: "http://192.168.1.161:8080/jsonrpc", method: "POST", headers: [["Content-Type", "application/json"]], body: "{\"jsonrpc\":\"2.0\",\"method\":\"Input.Home\",\"id\":1}" },
+          },
+        },
+        {
+          id: "payload-editor-wifi-ip-x1s", version: "X1S",
+          label: "Device editor — X1S Wifi payload dialog (request text)",
+          decoded: {
+            class: "wifi_ip", trailer_hex: "f1",
+            fields: { host: "192.168.2.77", port: 8123, method: "POST", path: "/api/webhook/sofabaton", header: "", content_type: "application/json", body: "{\"key\":\"home\"}" },
+          },
+        },
+      ].map(({ id, version, label, decoded }) => ({
+        id, label, group: "Activity Editor",
+        states: STATES_CONNECTED,
+        contents: {
+          ...BASE_CONTENTS,
+          hubs: [{
+            ...BASE_CONTENTS.hubs[0],
+            devices_list: [...BASE_CONTENTS.hubs[0].devices_list, { id: 4, name: "Kodi", command_count: 1, device_class: "wifi_ip" }],
+          }],
+        },
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => {
+            const bundle = clone(EDIT_BACKUP_BUNDLE);
+            bundle.hub = { ...bundle.hub, version };
+            bundle.devices.push({
+              device: { device_id: 4, name: "Kodi", sort: 4, device_class: "wifi_ip" },
+              commands: [{ command_id: 1, name: "Home" }],
+              button_bindings: [], macros: [],
+            });
+            return { bundle, generation: 1 };
+          },
+        },
+        async postLoad(card) {
+          const editor = await openLiveEditor(card, "Devices", "Kodi");
+          const detail = editor.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+          if (!detail) throw new Error(`${id}: detail view did not open`);
+          await detail.updateComplete;
+          // Same entry point the per-command pencil uses once its blob fetch returns.
+          detail._payload.openLive(4, 1, { dataHex: "00 01", decoded });
+          detail.requestUpdate();
+          await detail.updateComplete;
+        },
+      })),
       {
         id: "activities-needs-refresh", group: "Activity Editor",
         label: "Activity editor — needs cache refresh",

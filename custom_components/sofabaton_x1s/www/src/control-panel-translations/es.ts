@@ -405,9 +405,9 @@ export const TOOLS_CARD_STRINGS_ES = {
   },
   decodedPayload: {
     httpTitle: "Solicitud HTTP", httpSubtitle: "Configura la solicitud HTTP que envía el hub. Indica el destino en los campos Host y Puerto.",
-    hostIpv4: "Host (IPv4)", hostExample: "p. ej., 192.168.2.77", port: "Puerto", httpMethod: "Método HTTP", httpMethodExample: "p. ej., GET, POST", path: "Ruta", extraHeaders: "Encabezados adicionales",
+    hostIpv4: "Host (IPv4)", port: "Puerto", httpMethod: "Método HTTP", path: "Ruta", extraHeaders: "Encabezados adicionales",
     extraHeadersHelper: "Un encabezado por línea. Host y Content-Length se añaden automáticamente.", contentType: "Tipo de contenido", body: "Cuerpo", protocol: "Protocolo", host: "Host",
-    hostOrNameExample: "Una dirección IPv4 o un nombre de host, p. ej., 192.168.2.77 o ha.example.com", portDefaultHelper: "Déjalo vacío para 80 (http) o 443 (https).",
+    hostOrNameExample: "Una dirección IPv4 o un nombre de host, p. ej., 192.168.2.77 o ha.example.com",
     hostRequired: "Introduce el host.", hostInvalid: "Introduce aquí solo el host. El puerto y la ruta tienen sus propios campos.",
     hostNeedsIpv4: "Introduce una dirección IPv4, p. ej., 192.168.2.77. Los nombres de host y https requieren un hub X2.", portInvalid: "El puerto debe ser un número entero entre 1 y 65535.",
     urlMethodUnsupported: "Usa GET, POST o PUT. Los comandos con https o un nombre de host, y los creados en la aplicación Sofabaton, solo admiten estos.",

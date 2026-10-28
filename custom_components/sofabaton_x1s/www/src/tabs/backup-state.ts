@@ -13,7 +13,7 @@ import type {
 } from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
 import { hubDevices } from "../shared/utils/control-panel-selectors";
-import { WIFI_IP_SCHEMES, WifiIpFormError } from "../shared/wifi-ip-form";
+import { WIFI_IP_SCHEMES, WIFI_IP_URL_METHODS, WifiIpFormError, wifiIpDefaultPort } from "../shared/wifi-ip-form";
 import { TOOLS_CARD_STRINGS } from "../strings";
 
 export interface BackupSelectionOption {
@@ -88,6 +88,15 @@ export interface DecodedFieldSpec {
   readonly?: boolean;
   // Rendered as a select of these values (the wifi_ip protocol on the X2).
   options?: readonly string[];
+  // Offered as a datalist under a free-text input (common HTTP methods).
+  suggestions?: readonly string[];
+  // Shown in an empty field; a function reads the other drafts (the
+  // wifi_ip port shows its protocol's default).
+  placeholder?: string | ((drafts: Record<string, string>) => string);
+  // A short value (a port, a method): a fixed-width column in its row.
+  narrow?: boolean;
+  // Textarea height in lines; 4 when absent.
+  rows?: number;
 }
 
 export interface DecodedFormSpec {
@@ -96,6 +105,13 @@ export interface DecodedFormSpec {
   subtitle?: string;
   fields: DecodedFieldSpec[];
 }
+
+const CONTENT_TYPE_SUGGESTIONS: readonly string[] = [
+  "application/json",
+  "application/x-www-form-urlencoded",
+  "text/plain",
+  "text/xml",
+];
 
 /**
  * Per-class form layouts. The shape mirrors the corresponding decoder
@@ -111,19 +127,39 @@ function decodedClassFormSpecs(): Record<DecodableCommandClass, DecodedFormSpec>
     title: S.httpTitle,
     subtitle: S.httpSubtitle,
     fields: [
-      { key: "host", label: S.hostIpv4, helper: S.hostExample },
-      { key: "port", label: S.port, numeric: true },
-      { key: "method", label: S.httpMethod, helper: S.httpMethodExample },
-      { key: "path", label: S.path },
+      { key: "host", label: S.hostIpv4, placeholder: "192.168.2.77" },
+      {
+        key: "port",
+        label: S.port,
+        numeric: true,
+        narrow: true,
+        placeholder: (drafts) => wifiIpDefaultPort(drafts.scheme),
+      },
+      {
+        key: "method",
+        label: S.httpMethod,
+        narrow: true,
+        placeholder: "GET",
+        // The methods a URL record can hold; request text takes any.
+        suggestions: WIFI_IP_URL_METHODS,
+      },
+      { key: "path", label: S.path, placeholder: "/" },
       {
         key: "header",
         label: S.extraHeaders,
         multiline: true,
         crlfOnWire: true,
+        rows: 2,
+        placeholder: "X-Api-Key: 123",
         helper: S.extraHeadersHelper,
       },
-      { key: "content_type", label: S.contentType },
-      { key: "body", label: S.body, multiline: true },
+      {
+        key: "content_type",
+        label: S.contentType,
+        placeholder: "application/json",
+        suggestions: CONTENT_TYPE_SUGGESTIONS,
+      },
+      { key: "body", label: S.body, multiline: true, rows: 5 },
     ],
   },
   wifi_roku: {
@@ -212,13 +248,39 @@ export function decodedFormFields(className: DecodableCommandClass, isX2: boolea
   if (className !== "wifi_ip" || !isX2) return fields;
   const S = TOOLS_CARD_STRINGS.decodedPayload;
   return [
-    { key: "scheme", label: S.protocol, options: WIFI_IP_SCHEMES },
-    ...fields.map((field) => {
-      if (field.key === "host") return { ...field, label: S.host, helper: S.hostOrNameExample };
-      if (field.key === "port") return { ...field, helper: S.portDefaultHelper };
-      return field;
-    }),
+    { key: "scheme", label: S.protocol, options: WIFI_IP_SCHEMES, narrow: true },
+    ...fields.map((field) =>
+      field.key === "host" ? { ...field, label: S.host, helper: S.hostOrNameExample } : field,
+    ),
   ];
+}
+
+// The wifi_ip form's rows: the address, the request line, then the content.
+const WIFI_IP_FORM_ROWS: readonly (readonly string[])[] = [
+  ["scheme", "host", "port"],
+  ["method", "path"],
+  ["content_type"],
+  ["header"],
+  ["body"],
+];
+
+/**
+ * The decoded form as rows of fields shown side by side. The wifi_ip form
+ * groups its address and its request line; every other form has one field
+ * per row.
+ */
+export function decodedFormRows(className: DecodableCommandClass, isX2: boolean): DecodedFieldSpec[][] {
+  const fields = decodedFormFields(className, isX2);
+  if (className !== "wifi_ip") return fields.map((field) => [field]);
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  return WIFI_IP_FORM_ROWS
+    .map((keys) => keys.flatMap((key) => byKey.get(key) ?? []))
+    .filter((row) => row.length > 0);
+}
+
+/** The placeholder an empty field shows. */
+export function decodedFieldPlaceholder(field: DecodedFieldSpec, drafts: Record<string, string>): string {
+  return typeof field.placeholder === "function" ? field.placeholder(drafts) : field.placeholder ?? "";
 }
 
 /** The message for a wifi_ip draft the form refused; other errors pass through. */

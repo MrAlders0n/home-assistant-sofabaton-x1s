@@ -406,9 +406,9 @@ export const TOOLS_CARD_STRINGS_FR = {
   },
   decodedPayload: {
     httpTitle: "Requête HTTP", httpSubtitle: "Configurez la requête HTTP envoyée par le hub. Définissez sa destination dans les champs Hôte et Port.",
-    hostIpv4: "Hôte (IPv4)", hostExample: "p. ex. 192.168.2.77", port: "Port", httpMethod: "Méthode HTTP", httpMethodExample: "p. ex. GET, POST", path: "Chemin", extraHeaders: "En-têtes supplémentaires",
+    hostIpv4: "Hôte (IPv4)", port: "Port", httpMethod: "Méthode HTTP", path: "Chemin", extraHeaders: "En-têtes supplémentaires",
     extraHeadersHelper: "Un en-tête par ligne. Host et Content-Length sont ajoutés automatiquement.", contentType: "Type de contenu", body: "Corps", protocol: "Protocole", host: "Hôte",
-    hostOrNameExample: "Une adresse IPv4 ou un nom d’hôte, p. ex. 192.168.2.77 ou ha.example.com", portDefaultHelper: "Laissez vide pour 80 (http) ou 443 (https).",
+    hostOrNameExample: "Une adresse IPv4 ou un nom d’hôte, p. ex. 192.168.2.77 ou ha.example.com",
     hostRequired: "Saisissez l’hôte.", hostInvalid: "Saisissez uniquement l’hôte ici. Le port et le chemin ont leurs propres champs.",
     hostNeedsIpv4: "Saisissez une adresse IPv4, p. ex. 192.168.2.77. Les noms d’hôte et https nécessitent un hub X2.", portInvalid: "Le port doit être un nombre entier compris entre 1 et 65535.",
     urlMethodUnsupported: "Utilisez GET, POST ou PUT. Les commandes en https ou avec un nom d’hôte, ainsi que celles créées dans l’application Sofabaton, ne prennent en charge que ces méthodes.",

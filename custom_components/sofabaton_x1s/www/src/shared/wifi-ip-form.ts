@@ -153,6 +153,29 @@ export function wifiIpDraftsWithScheme(drafts: Record<string, string>, scheme: s
   return { ...drafts, scheme, port: nextPort };
 }
 
+/** The port a request goes to when the Port field is left empty. */
+export function wifiIpDefaultPort(scheme: string | undefined): string {
+  return String(scheme ?? "").trim().toLowerCase() === "https" ? "443" : "80";
+}
+
+/**
+ * The request the drafts describe, for the form's summary line: the method
+ * and the URL as typed (no validation, so a mistake shows in it). Null
+ * until there is a host.
+ */
+export function wifiIpRequestPreview(drafts: Record<string, string>): { method: string; url: string } | null {
+  const host = String(drafts.host ?? "").trim();
+  if (!host) return null;
+  const scheme = String(drafts.scheme ?? "").trim().toLowerCase() === "https" ? "https" : "http";
+  const port = String(drafts.port ?? "").trim();
+  // Brackets for IPv6 only: one colon is a mistake (see urlHost) and shows as typed.
+  const shownHost = (host.match(/:/g) ?? []).length > 1 && !host.startsWith("[") ? `[${host}]` : host;
+  return {
+    method: String(drafts.method ?? "").trim().toUpperCase(),
+    url: `${scheme}://${shownHost}${port ? `:${port}` : ""}${urlPath(String(drafts.path ?? "")) || "/"}`,
+  };
+}
+
 /** The dotted quad without leading zeros (the record packs four bytes), or null. */
 function canonicalIpv4(host: string): string | null {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);

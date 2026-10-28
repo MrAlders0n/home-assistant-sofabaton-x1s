@@ -61,7 +61,9 @@ import {
   normalizeCommandPayloadHex,
   updateCommandRawPayload,
   updateCommandDecodedFields,
+  decodedFieldPlaceholder,
   decodedFormFields,
+  decodedFormRows,
   deviceButtonBindingItems,
   deviceIdleBehavior,
   updateBundleDeviceIdleBehavior,
@@ -1640,6 +1642,25 @@ test("the wifi_ip form adds the protocol and host names on the X2 only", () => {
   assert.deepEqual(x2[0].options, ["http", "https"]);
   // Other classes are the same on every hub.
   assert.deepEqual(decodedFormFields("wifi_roku", true), decodedFormFields("wifi_roku", false));
+});
+
+test("the wifi_ip form groups its address and request line into rows", () => {
+  const keys = (isX2: boolean) => decodedFormRows("wifi_ip", isX2).map((row) => row.map((field) => field.key));
+  assert.deepEqual(keys(true), [["scheme", "host", "port"], ["method", "path"], ["content_type"], ["header"], ["body"]]);
+  assert.deepEqual(keys(false), [["host", "port"], ["method", "path"], ["content_type"], ["header"], ["body"]]);
+  // Every field is in a row, once.
+  assert.deepEqual(keys(true).flat().sort(), decodedFormFields("wifi_ip", true).map((field) => field.key).sort());
+  // Other forms keep one field per row.
+  assert.deepEqual(decodedFormRows("wifi_hue", true).map((row) => row.length), [1, 1]);
+});
+
+test("the wifi_ip port placeholder follows the protocol", () => {
+  const port = decodedFormFields("wifi_ip", true).find((field) => field.key === "port")!;
+  assert.equal(decodedFieldPlaceholder(port, { scheme: "http" }), "80");
+  assert.equal(decodedFieldPlaceholder(port, { scheme: "https" }), "443");
+  const host = decodedFormFields("wifi_ip", false).find((field) => field.key === "host")!;
+  assert.equal(decodedFieldPlaceholder(host, {}), "192.168.2.77");
+  assert.equal(decodedFieldPlaceholder(decodedFormFields("wifi_roku", false)[0], {}), "");
 });
 
 test("reconcile repairs missing power refs in interleaved macros", () => {

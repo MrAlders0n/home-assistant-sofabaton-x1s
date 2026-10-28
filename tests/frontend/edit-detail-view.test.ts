@@ -1406,6 +1406,8 @@ test("an X2 URL record opens in the HTTP form and a body edit keeps its URL", ()
   const markup = templateText(element._payload.render());
   assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.protocol));
   assert.ok(markup.includes(TOOLS_CARD_STRINGS.decodedPayload.hostOrNameExample));
+  // The summary line reads the request back as one URL.
+  assert.ok(markup.includes("http://192.168.1.161:8080/jsonrpc"));
 
   element._payload.decodedDrafts = { ...drafts, body: "{\"id\":2}" };
   element._payload.apply();

@@ -3374,10 +3374,8 @@ var TOOLS_CARD_STRINGS_EN = {
     httpTitle: "HTTP request",
     httpSubtitle: "Configure the HTTP request sent by the hub. Set its destination using the Host and Port fields.",
     hostIpv4: "Host (IPv4)",
-    hostExample: "e.g. 192.168.2.77",
     port: "Port",
     httpMethod: "HTTP method",
-    httpMethodExample: "e.g. GET, POST",
     path: "Path",
     extraHeaders: "Extra headers",
     extraHeadersHelper: "One header per line. Host and Content-Length are added automatically.",
@@ -3386,7 +3384,6 @@ var TOOLS_CARD_STRINGS_EN = {
     protocol: "Protocol",
     host: "Host",
     hostOrNameExample: "An IPv4 address or a host name, e.g. 192.168.2.77 or ha.example.com",
-    portDefaultHelper: "Leave empty for 80 (http) or 443 (https).",
     hostRequired: "Enter the host.",
     hostInvalid: "Enter only the host here. The port and the path have their own fields.",
     hostNeedsIpv4: "Enter an IPv4 address, e.g. 192.168.2.77. Host names and https need an X2 hub.",
@@ -9120,6 +9117,7 @@ var backupTabStyles = i`
       display: flex;
       flex-direction: column;
       gap: 10px;
+      container-type: inline-size;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
     .payload-format-tabs {
@@ -9221,6 +9219,45 @@ var backupTabStyles = i`
       color: var(--secondary-text-color);
       line-height: 1.35;
     }
+    /* Fields side by side (the wifi_ip address and request line); short
+       values keep a fixed column. The form is the query container, so the
+       rows follow the dialog's width, not the card's. */
+    .decoded-row { display: flex; flex-direction: column; gap: 4px; }
+    .decoded-row-fields { display: flex; gap: 10px; align-items: flex-start; }
+    .decoded-row-fields > .decoded-field { flex: 1 1 0; min-width: 0; }
+    .decoded-row-fields > .decoded-field--narrow { flex: 0 0 104px; }
+    @container (max-width: 420px) {
+      /* Three across leaves the host too little room: it takes its own line. */
+      .decoded-row-fields:has(> .decoded-field:nth-child(3)) { flex-wrap: wrap; }
+      .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field:not(.decoded-field--narrow) { flex-basis: 100%; order: -1; }
+      .decoded-row-fields:has(> .decoded-field:nth-child(3)) > .decoded-field--narrow { flex: 1 1 0; }
+    }
+    /* The request the form describes, as one line: method and URL. Tinted
+       like the class badge so it reads as a summary, not another field. */
+    .decoded-request-preview {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 30%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .decoded-request-method {
+      flex: 0 0 auto;
+      font-weight: 700;
+      color: var(--sb-accent-text, var(--primary-color));
+    }
+    .decoded-request-url {
+      flex: 1 1 auto;
+      min-width: 0;
+      color: var(--primary-text-color);
+      overflow-wrap: anywhere;
+    }
+    .decoded-field-input::placeholder { color: var(--secondary-text-color); opacity: 0.7; }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }
     .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
@@ -9980,6 +10017,20 @@ function wifiIpDraftsWithScheme(drafts, scheme) {
   const nextPort = scheme === "https" && port === "80" ? "443" : scheme === "http" && port === "443" ? "80" : drafts.port ?? "";
   return { ...drafts, scheme, port: nextPort };
 }
+function wifiIpDefaultPort(scheme) {
+  return String(scheme ?? "").trim().toLowerCase() === "https" ? "443" : "80";
+}
+function wifiIpRequestPreview(drafts) {
+  const host = String(drafts.host ?? "").trim();
+  if (!host) return null;
+  const scheme = String(drafts.scheme ?? "").trim().toLowerCase() === "https" ? "https" : "http";
+  const port = String(drafts.port ?? "").trim();
+  const shownHost = (host.match(/:/g) ?? []).length > 1 && !host.startsWith("[") ? `[${host}]` : host;
+  return {
+    method: String(drafts.method ?? "").trim().toUpperCase(),
+    url: `${scheme}://${shownHost}${port ? `:${port}` : ""}${urlPath(String(drafts.path ?? "")) || "/"}`
+  };
+}
 function canonicalIpv4(host) {
   const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
   if (!match) return null;
@@ -10055,6 +10106,12 @@ function buildWifiIpRecord(drafts, options) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var CONTENT_TYPE_SUGGESTIONS = [
+  "application/json",
+  "application/x-www-form-urlencoded",
+  "text/plain",
+  "text/xml"
+];
 function decodedClassFormSpecs() {
   const S5 = TOOLS_CARD_STRINGS.decodedPayload;
   return {
@@ -10062,19 +10119,39 @@ function decodedClassFormSpecs() {
       title: S5.httpTitle,
       subtitle: S5.httpSubtitle,
       fields: [
-        { key: "host", label: S5.hostIpv4, helper: S5.hostExample },
-        { key: "port", label: S5.port, numeric: true },
-        { key: "method", label: S5.httpMethod, helper: S5.httpMethodExample },
-        { key: "path", label: S5.path },
+        { key: "host", label: S5.hostIpv4, placeholder: "192.168.2.77" },
+        {
+          key: "port",
+          label: S5.port,
+          numeric: true,
+          narrow: true,
+          placeholder: (drafts) => wifiIpDefaultPort(drafts.scheme)
+        },
+        {
+          key: "method",
+          label: S5.httpMethod,
+          narrow: true,
+          placeholder: "GET",
+          // The methods a URL record can hold; request text takes any.
+          suggestions: WIFI_IP_URL_METHODS
+        },
+        { key: "path", label: S5.path, placeholder: "/" },
         {
           key: "header",
           label: S5.extraHeaders,
           multiline: true,
           crlfOnWire: true,
+          rows: 2,
+          placeholder: "X-Api-Key: 123",
           helper: S5.extraHeadersHelper
         },
-        { key: "content_type", label: S5.contentType },
-        { key: "body", label: S5.body, multiline: true }
+        {
+          key: "content_type",
+          label: S5.contentType,
+          placeholder: "application/json",
+          suggestions: CONTENT_TYPE_SUGGESTIONS
+        },
+        { key: "body", label: S5.body, multiline: true, rows: 5 }
       ]
     },
     wifi_roku: {
@@ -10155,13 +10232,27 @@ function decodedFormFields(className, isX2) {
   if (className !== "wifi_ip" || !isX2) return fields;
   const S5 = TOOLS_CARD_STRINGS.decodedPayload;
   return [
-    { key: "scheme", label: S5.protocol, options: WIFI_IP_SCHEMES },
-    ...fields.map((field) => {
-      if (field.key === "host") return { ...field, label: S5.host, helper: S5.hostOrNameExample };
-      if (field.key === "port") return { ...field, helper: S5.portDefaultHelper };
-      return field;
-    })
+    { key: "scheme", label: S5.protocol, options: WIFI_IP_SCHEMES, narrow: true },
+    ...fields.map(
+      (field) => field.key === "host" ? { ...field, label: S5.host, helper: S5.hostOrNameExample } : field
+    )
   ];
+}
+var WIFI_IP_FORM_ROWS = [
+  ["scheme", "host", "port"],
+  ["method", "path"],
+  ["content_type"],
+  ["header"],
+  ["body"]
+];
+function decodedFormRows(className, isX2) {
+  const fields = decodedFormFields(className, isX2);
+  if (className !== "wifi_ip") return fields.map((field) => [field]);
+  const byKey = new Map(fields.map((field) => [field.key, field]));
+  return WIFI_IP_FORM_ROWS.map((keys) => keys.flatMap((key) => byKey.get(key) ?? [])).filter((row) => row.length > 0);
+}
+function decodedFieldPlaceholder(field, drafts) {
+  return typeof field.placeholder === "function" ? field.placeholder(drafts) : field.placeholder ?? "";
 }
 function wifiIpFormErrorText(error) {
   const S5 = TOOLS_CARD_STRINGS.decodedPayload;
@@ -14659,19 +14750,37 @@ var PayloadDialogController = class {
             ${spec.subtitle ? b2`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
           </div>
         `;
+    const preview = className === "wifi_ip" ? wifiIpRequestPreview(this.decodedDrafts) : null;
     return b2`
       <div class="decoded-form">
         ${head}
-        ${decodedFormFields(className, bundleIsX2(this.host.bundle)).map((field) => this.renderDecodedField(field))}
+        ${preview ? b2`
+              <div class="decoded-request-preview">
+                ${preview.method ? b2`<span class="decoded-request-method">${preview.method}</span>` : A}
+                <span class="decoded-request-url">${preview.url}</span>
+              </div>
+            ` : A}
+        ${decodedFormRows(className, bundleIsX2(this.host.bundle)).map((row) => this.renderDecodedRow(row))}
       </div>
     `;
   }
-  renderDecodedField(field) {
+  renderDecodedRow(row) {
+    if (row.length === 1) return this.renderDecodedField(row[0]);
+    return b2`
+      <div class="decoded-row">
+        <div class="decoded-row-fields">${row.map((field) => this.renderDecodedField(field, false))}</div>
+        ${row.map((field) => field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A)}
+      </div>
+    `;
+  }
+  renderDecodedField(field, withHelper = true) {
     const value = this.decodedDrafts[field.key] ?? "";
+    const placeholder = decodedFieldPlaceholder(field, this.decodedDrafts);
     const onInput = (event) => this.handleDecodedFieldInput(event, field.key);
     const multilineClass = field.escapedDisplay ? "decoded-field-input--multiline decoded-field-input--escaped" : "decoded-field-input--multiline";
+    const suggestionsId = field.suggestions ? `decoded-suggestions-${field.key}` : "";
     return b2`
-      <label class="decoded-field">
+      <label class="decoded-field ${field.narrow ? "decoded-field--narrow" : ""}" data-field=${field.key}>
         <span class="decoded-field-label">${field.label}</span>
         ${field.options ? b2`
               <select class="decoded-field-input" @change=${onInput}>
@@ -14680,8 +14789,9 @@ var PayloadDialogController = class {
             ` : field.multiline ? b2`
               <textarea
                 class="decoded-field-input ${multilineClass}"
-                rows="4"
+                rows=${field.rows ?? 4}
                 spellcheck="false"
+                placeholder=${placeholder}
                 .value=${value}
                 @input=${onInput}
                 @change=${onInput}
@@ -14689,15 +14799,20 @@ var PayloadDialogController = class {
             ` : b2`
               <input
                 class="decoded-field-input"
-                type=${field.numeric ? "number" : "text"}
+                type="text"
+                inputmode=${field.numeric ? "numeric" : "text"}
                 spellcheck="false"
+                autocomplete="off"
+                placeholder=${placeholder}
+                list=${suggestionsId || A}
                 .value=${value}
                 ?disabled=${Boolean(field.readonly)}
                 @input=${field.readonly ? null : onInput}
                 @change=${field.readonly ? null : onInput}
               />
+              ${field.suggestions ? b2`<datalist id=${suggestionsId}>${field.suggestions.map((option) => b2`<option value=${option}></option>`)}</datalist>` : A}
             `}
-        ${field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A}
+        ${withHelper && field.helper ? b2`<span class="decoded-field-helper">${field.helper}</span>` : A}
       </label>
     `;
   }

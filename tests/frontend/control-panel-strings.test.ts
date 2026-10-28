@@ -778,8 +778,10 @@ test("control-panel UI source does not introduce literal user-facing strings", (
     skip: (relative) => relative === "strings.ts"
       || relative.startsWith("control-panel-translations/")
       || relative.endsWith("-styles.ts"),
-    // Transport names, shown as the protocol spells them in every locale.
-    allowedValues: new Set(["MQTT", "HTTP"]),
+    // Transport names, shown as the protocol spells them in every locale,
+    // and the wifi_ip form's placeholders: an HTTP method, a media type and
+    // a header line, protocol text that no locale translates.
+    allowedValues: new Set(["MQTT", "HTTP", "GET", "application/json", "X-Api-Key: 123"]),
   });
   assert.deepEqual(offenders, [], offenders.join("\n"));
 });
