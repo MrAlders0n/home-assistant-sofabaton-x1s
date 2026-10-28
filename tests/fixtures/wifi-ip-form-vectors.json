@@ -114,6 +114,30 @@
       "error": "method_unsupported"
     },
     {
+      "name": "url record: an empty method saves as GET",
+      "is_x2": true,
+      "existing": true,
+      "original": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "POST",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      },
+      "edits": { "method": " " },
+      "expected": {
+        "fields": {
+          "url": "http://192.168.1.161:8080/jsonrpc",
+          "method": "GET",
+          "headers": [["Content-Type", "application/json"]],
+          "body": "{}"
+        },
+        "trailer_hex": ""
+      }
+    },
+    {
       "name": "url record: a header line without a colon is refused",
       "is_x2": true,
       "existing": true,
@@ -184,6 +208,36 @@
           "path": "/launch/12",
           "header": "",
           "content_type": "application/x-www-form-urlencoded",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      }
+    },
+    {
+      "name": "request text: an empty method saves as GET",
+      "is_x2": false,
+      "existing": true,
+      "original": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "POST",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "",
+          "body": ""
+        },
+        "trailer_hex": "f1"
+      },
+      "edits": { "method": "" },
+      "expected": {
+        "fields": {
+          "host": "192.168.2.77",
+          "port": 8060,
+          "method": "GET",
+          "path": "/launch/12",
+          "header": "",
+          "content_type": "",
           "body": ""
         },
         "trailer_hex": "f1"

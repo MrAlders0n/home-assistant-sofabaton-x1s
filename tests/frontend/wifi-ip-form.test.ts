@@ -143,9 +143,10 @@ test("the summary line shows the request as typed", () => {
     wifiIpRequestPreview({ scheme: "http", host: "192.168.1.161", port: "8080", method: "post", path: "/jsonrpc" }),
     { method: "POST", url: "http://192.168.1.161:8080/jsonrpc" },
   );
-  // An empty port and path read as the defaults; an IPv6 host is bracketed.
+  // An empty port and path read as the defaults, an empty method as GET; an
+  // IPv6 host is bracketed.
   assert.deepEqual(wifiIpRequestPreview({ scheme: "https", host: "fd00::5", port: "", method: "", path: "" }), {
-    method: "",
+    method: "GET",
     url: "https://[fd00::5]/",
   });
   assert.equal(wifiIpRequestPreview({ scheme: "http", host: "a", path: "status" })?.url, "http://a/status");

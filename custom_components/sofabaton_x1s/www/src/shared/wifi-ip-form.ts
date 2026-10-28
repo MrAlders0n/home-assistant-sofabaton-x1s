@@ -17,7 +17,9 @@
  * The decoded fields stay the library's own (the sync and restore paths
  * round-trip them exactly), so a kind switch replaces the whole field set.
  * Parts of a stored record whose drafts the user did not touch are kept
- * verbatim, so editing only the body leaves the rest byte-identical.
+ * verbatim, so editing only the body leaves the rest byte-identical. An
+ * empty port, path or method saves as its default (80 or 443, "/", GET),
+ * which is what the form's placeholders show.
  */
 
 export type WifiIpRecordKind = "text" | "url";
@@ -70,6 +72,11 @@ export function wifiIpRecordKind(fields: Record<string, unknown>): WifiIpRecordK
 
 function fieldText(value: unknown): string {
   return value == null ? "" : String(value);
+}
+
+/** The method a draft saves as: uppercased, GET when left empty. */
+function methodOf(draft: string | undefined): string {
+  return String(draft ?? "").trim().toUpperCase() || "GET";
 }
 
 function sameLines(a: string, b: string): boolean {
@@ -160,8 +167,8 @@ export function wifiIpDefaultPort(scheme: string | undefined): string {
 
 /**
  * The request the drafts describe, for the form's summary line: the method
- * and the URL as typed (no validation, so a mistake shows in it). Null
- * until there is a host.
+ * and the URL as typed (no validation, so a mistake shows in it), an empty
+ * method or path as what it saves as. Null until there is a host.
  */
 export function wifiIpRequestPreview(drafts: Record<string, string>): { method: string; url: string } | null {
   const host = String(drafts.host ?? "").trim();
@@ -171,7 +178,7 @@ export function wifiIpRequestPreview(drafts: Record<string, string>): { method: 
   // Brackets for IPv6 only: one colon is a mistake (see urlHost) and shows as typed.
   const shownHost = (host.match(/:/g) ?? []).length > 1 && !host.startsWith("[") ? `[${host}]` : host;
   return {
-    method: String(drafts.method ?? "").trim().toUpperCase(),
+    method: methodOf(drafts.method),
     url: `${scheme}://${shownHost}${port ? `:${port}` : ""}${urlPath(String(drafts.path ?? "")) || "/"}`,
   };
 }
@@ -255,7 +262,7 @@ export function buildWifiIpRecord(
       fields: {
         host: keep("host", () => ipv4),
         port: keep("port", () => port ?? 80),
-        method: keep("method", () => String(drafts.method ?? "").trim().toUpperCase()),
+        method: keep("method", () => methodOf(drafts.method)),
         path: keep("path", () => String(drafts.path ?? "").trim() || "/"),
         header: keep("header", () => String(drafts.header ?? "").replace(/\r\n|\r|\n/g, "\r\n")),
         content_type: keep("content_type", () => String(drafts.content_type ?? "")),
@@ -264,7 +271,7 @@ export function buildWifiIpRecord(
     };
   }
 
-  const method = String(drafts.method ?? "").trim().toUpperCase();
+  const method = methodOf(drafts.method);
   if (!WIFI_IP_URL_METHODS.includes(method)) throw new WifiIpFormError("method_unsupported");
   const url = same && untouched("scheme", "host", "port", "path")
     ? fieldText(same.fields.url)

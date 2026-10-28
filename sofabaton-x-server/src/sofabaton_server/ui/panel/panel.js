@@ -16972,6 +16972,9 @@ function wifiIpRecordKind(fields) {
 function fieldText(value) {
   return value == null ? "" : String(value);
 }
+function methodOf(draft) {
+  return String(draft ?? "").trim().toUpperCase() || "GET";
+}
 function sameLines(a4, b3) {
   return a4.replace(/\r\n|\r/g, "\n") === b3.replace(/\r\n|\r/g, "\n");
 }
@@ -17045,7 +17048,7 @@ function wifiIpRequestPreview(drafts) {
   const port = String(drafts.port ?? "").trim();
   const shownHost = (host.match(/:/g) ?? []).length > 1 && !host.startsWith("[") ? `[${host}]` : host;
   return {
-    method: String(drafts.method ?? "").trim().toUpperCase(),
+    method: methodOf(drafts.method),
     url: `${scheme}://${shownHost}${port ? `:${port}` : ""}${urlPath(String(drafts.path ?? "")) || "/"}`
   };
 }
@@ -17105,7 +17108,7 @@ function buildWifiIpRecord(drafts, options) {
       fields: {
         host: keep("host", () => ipv4),
         port: keep("port", () => port ?? 80),
-        method: keep("method", () => String(drafts.method ?? "").trim().toUpperCase()),
+        method: keep("method", () => methodOf(drafts.method)),
         path: keep("path", () => String(drafts.path ?? "").trim() || "/"),
         header: keep("header", () => String(drafts.header ?? "").replace(/\r\n|\r|\n/g, "\r\n")),
         content_type: keep("content_type", () => String(drafts.content_type ?? "")),
@@ -17113,7 +17116,7 @@ function buildWifiIpRecord(drafts, options) {
       }
     };
   }
-  const method = String(drafts.method ?? "").trim().toUpperCase();
+  const method = methodOf(drafts.method);
   if (!WIFI_IP_URL_METHODS.includes(method)) throw new WifiIpFormError("method_unsupported");
   const url = same2 && untouched("scheme", "host", "port", "path") ? fieldText(same2.fields.url) : `${scheme}://${ipv4 ?? urlHost(host)}${port === null ? "" : `:${port}`}${urlPath(String(drafts.path ?? ""))}`;
   const headers = same2 && untouched("header", "content_type") ? (Array.isArray(same2.fields.headers) ? same2.fields.headers : []).map((pair) => [...pair]) : headerPairs(String(drafts.header ?? ""), String(drafts.content_type ?? ""));
