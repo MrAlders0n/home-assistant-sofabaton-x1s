@@ -377,15 +377,17 @@ test.describe("tools-card browser harness", () => {
     })]);
   });
 
-  test("loads every scenario in English and Chinese without setup or API failures", async ({ page }) => {
-    test.setTimeout(60_000);
-    await page.goto("/tests/tools-card-harness.html");
-    const scenarioIds = await page.evaluate(
-      () => window.__toolsCardHarness.scenarioIds,
-    );
-    const failures = [];
+  // One test per language, so each gets its own budget: both languages in
+  // one test outgrew 60 s on the Windows runner as scenarios were added.
+  for (const [language, name] of [["en", "English"], ["zh-hans", "Chinese"]]) {
+    test(`loads every scenario in ${name} without setup or API failures`, async ({ page }) => {
+      test.setTimeout(60_000);
+      await page.goto("/tests/tools-card-harness.html");
+      const scenarioIds = await page.evaluate(
+        () => window.__toolsCardHarness.scenarioIds,
+      );
+      const failures = [];
 
-    for (const language of ["en", "zh-hans"]) {
       await page.evaluate(
         (value) => window.__toolsCardHarness.setLanguage(value),
         language,
@@ -407,10 +409,10 @@ test.describe("tools-card browser harness", () => {
           failures.push({ language, scenarioId, ...result });
         }
       }
-    }
 
-    expect(failures).toEqual([]);
-  });
+      expect(failures).toEqual([]);
+    });
+  }
 
   test("interactive scenarios reach the visible state promised by their labels", async ({ page }) => {
     test.setTimeout(45_000);
