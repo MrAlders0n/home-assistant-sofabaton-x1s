@@ -93,6 +93,12 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   single-button RF device); the remote target it caches was built from the
   row count byte and addressed nothing. The rows are available from the
   engine's `x2_paired_devices()`.
+- `validate_hub_bundle_for_model` accepts macro delay rows whose unused
+  device byte is 0, the way the SofaBaton app on iPad writes them (the
+  Android app and this library write 0xFF). One such delay in any activity
+  failed the whole bundle with `device_id: must be between 1 and 255`, so
+  every edit validated against that hub's bundle was refused. A command
+  step with device 0 is still rejected.
 
 - Devices and activities keep their color (X2) and Bluetooth link mode
   through every record rewrite and through backup and restore. A rename,
