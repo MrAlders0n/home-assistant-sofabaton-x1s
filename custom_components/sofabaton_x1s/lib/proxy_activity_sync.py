@@ -1740,6 +1740,13 @@ class ActivitySyncMixin(_ProxyHost if TYPE_CHECKING else object):
                 renamed = replace(renamed, icon=int(payload["icon"]) & 0xFF)
             if payload.get("color_id") is not None:
                 renamed = replace(renamed, color_id=int(payload["color_id"]) & 0xFF)
+            emitters = payload.get("emitters")
+            if emitters is not None:
+                # The X2's IR emitter routing (tail[19..21]); the planner
+                # validated it, the RF-button byte included.
+                extra_a, extra_b, extra_c = (int(value) & 0xFF for value in emitters)
+                renamed = replace(renamed, extra_a=extra_a, extra_b=extra_b, extra_c=extra_c,
+                                  extras_present=True)
             body = build_device_create_payload(renamed, hub_version=self.hub_version)
         except (ValueError, TypeError):
             self._log.exception("[DEVICE_SYNC] device_rename: could not rebuild record dev=0x%02X", dev_lo)

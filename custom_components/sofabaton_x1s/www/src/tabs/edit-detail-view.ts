@@ -65,6 +65,8 @@ import {
   bundleActivityOptions,
   bundleDeviceBrand,
   bundleDeviceClass,
+  bundleDeviceExtras,
+  setBundleDeviceExtras,
   isManagedWifiBrand,
   isWifiEventsBrand,
   managedWifiDeviceKey,
@@ -103,15 +105,18 @@ import type {
   BackupRenameDialogTarget,
   DeliveryHost,
   FetchedCommandPayload,
+  IrEmitterHost,
   IrLearnHost,
   MacroTargetMode,
   WifiEventsHost,
 } from "./edit-detail/host-types";
 import { DeliveryPillController, deliveryPillStyles } from "../components/delivery-pill";
 import { hubBrokerFormStyles } from "../components/hub-broker-form";
+import { IrEmitterPillController, irEmitterStyles } from "../components/ir-emitter-pill";
+import { extrasOfRouting, routingFromExtras, sameRouting, type EmitterRouting } from "../../../../../remote-card/src/ir-emitters/emitter-routing";
 import { renderKindSegments } from "./edit-detail/kind-segments";
 import { anchoredListPosition, moveListFocus, type MenuAnchor } from "../shared/utils/overlay-menu";
-import { editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
+import { bundleIsX2, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 import { editDetailViewStyles } from "./edit-detail/styles";
 import { iconHubLine } from "../../../../../remote-card/src/entity-icons/entity-icons";
 import { entityPickerStyles } from "../../../../../remote-card/src/entity-icons/entity-picker";
@@ -124,7 +129,7 @@ import { BindingDialogController } from "./edit-detail/binding-dialog-controller
 import { MacroStepEditorController } from "./edit-detail/macro-step-editor";
 
 // The element's public names, kept here for its importers (R6, CR-F2-14).
-export type { BackupEditTargetKind, DeliveryHost, FetchedCommandPayload, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
+export type { BackupEditTargetKind, DeliveryHost, FetchedCommandPayload, IrEmitterHost, IrLearnHost, WifiEventsHost } from "./edit-detail/host-types";
 export { bundleIsX2, bundleSupportsUnicodeNames, editorErrorMessage, sanitizeBundleName, useLegacyTextField } from "./edit-detail/names";
 
 export class SofabatonEditDetailView extends LitElement {
@@ -137,6 +142,7 @@ export class SofabatonEditDetailView extends LitElement {
     mqttAvailable: { type: Boolean },
     pendingTransport: { attribute: false },
     delivery: { attribute: false },
+    irEmitters: { attribute: false },
     wifiEvents: { attribute: false },
     _editDetailActiveSection: { state: true },
     _editRenameDialogOpen: { state: true },
@@ -171,7 +177,7 @@ export class SofabatonEditDetailView extends LitElement {
   // The whole backup-tab stylesheet ships to both shadow roots (see
   // backup-tab-styles.ts); the :host rule it carries gives this element
   // the same flex-fill layout the tab-panel had inside backup-tab.
-  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, deliveryPillStyles, hubBrokerFormStyles, editDetailViewStyles];
+  static styles = [activityEditorStyles, backupTabStyles, addButtonStyles, entityTileStyles, entityPickerStyles, appearanceEditorStyles, deliveryPillStyles, irEmitterStyles, hubBrokerFormStyles, editDetailViewStyles];
 
   // ── Host-owned props ───────────────────────────────────────────────
   bundle: BackupBundlePayload | null = null;
@@ -210,6 +216,9 @@ export class SofabatonEditDetailView extends LitElement {
   /** The live host's side of the delivery pill; null in the Backup editor. */
   delivery: DeliveryHost | null = null;
   readonly _delivery = new DeliveryPillController(this);
+  /** The live host's side of the IR pill (X2 IR devices); null in the Backup editor. */
+  irEmitters: IrEmitterHost | null = null;
+  readonly _irPill = new IrEmitterPillController(this);
   _editRenameDialogOpen = false;
   _editRenameDialogDraft = "";
   _editRenameDialogError = "";
@@ -445,6 +454,7 @@ export class SofabatonEditDetailView extends LitElement {
                   <div class="detail-title">${params.title}</div>
                 </div>
                 ${this._renderDeliveryPill(params.kind)}
+                ${this._renderIrPill(params.kind)}
                 ${this._renderDirtyChip()}
                 <div class="detail-title-actions">
                   ${this._renderDetailRenameDeleteButtons(params.kind)}
@@ -521,6 +531,48 @@ export class SofabatonEditDetailView extends LitElement {
       },
       onBusy: (busy, label) => host.setBusy(busy, label),
     });
+  }
+
+  /** The IR pill of an X2 IR device in the LIVE editor: which emitters send
+   *  its IR (docs/internal/ir-emitter-pill-plan.md). Device class `ir` only
+   *  for now; a Bluetooth or RF device holding IR commands could follow the
+   *  same routing (open point). A pick writes `device.extras` into the edited
+   *  bundle, a pending edit the Sync applies like a rename; Undo restores the
+   *  hub's bytes. Never in the offline Backup editor. */
+  _renderIrPill(kind: BackupEditTargetKind) {
+    if (kind !== "device" || this.entityId == null || this.mode !== "live" || !this.irEmitters) return nothing;
+    if (!bundleIsX2(this.bundle)) return nothing;
+    const deviceId = Number(this.entityId);
+    if (bundleDeviceClass(this.bundle, deviceId) !== "ir") return nothing;
+    const host = this.irEmitters;
+    const baselineExtras = host.baselineExtras(deviceId);
+    const baseline = routingFromExtras(baselineExtras);
+    const routing = routingFromExtras(bundleDeviceExtras(this.bundle, deviceId));
+    if (!baselineExtras || !baseline || !routing) return nothing;
+    return this._irPill.renderPill({
+      hass: host.hass(),
+      hubEntryId: host.hubEntryId(),
+      deviceId,
+      routing,
+      baseline,
+      locked: host.locked(),
+      onChange: (next) => this._setDeviceEmitters(deviceId, next, baseline, baselineExtras),
+      onUndo: () => this._setDeviceEmitters(deviceId, baseline, baseline, baselineExtras),
+      onBusy: (busy, label) => host.setBusy(busy, label),
+    });
+  }
+
+  /** A routing back at the hub's bytes takes the hub's own block again, so
+   *  the bundle compares equal and the pending state clears. */
+  private _setDeviceEmitters(
+    deviceId: number,
+    next: EmitterRouting,
+    baseline: EmitterRouting,
+    baselineExtras: { a: number; b: number; c: number },
+  ) {
+    if (!this.bundle) return;
+    const extras = sameRouting(next, baseline) ? baselineExtras : extrasOfRouting(next);
+    this._commitEditBundleEdit(setBundleDeviceExtras(this.bundle, deviceId, extras));
   }
 
   private _isManagedWifiLiveDevice(): boolean {

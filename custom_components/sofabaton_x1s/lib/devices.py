@@ -194,7 +194,8 @@ class DeviceConfig:
 
     #: Optional vendor-extension triple. When ``extras_present`` is
     #: true, the tail region carries an additional ``0xFC`` marker
-    #: followed by these three bytes (seen on some X1S build variants).
+    #: followed by these three bytes. On the X2 they are the device's IR
+    #: emitter routing (:class:`emitter_routing.EmitterRouting`).
     extra_a: int = 0
     extra_b: int = 0
     extra_c: int = 0
@@ -564,6 +565,23 @@ def record_appearance(body: bytes, *, hub_version: str) -> tuple[int | None, int
     if color_offset is None or len(body) <= color_offset:
         return icon, None
     return icon, int(body[color_offset])
+
+
+def record_emitters(body: bytes, *, hub_version: str) -> tuple[int, int, int] | None:
+    """Return the X2 emitter-routing bytes ``(a, b, c)`` of a device record
+    body (tail[19..21], after the ``0xFC`` at tail[18]), without the full
+    parse. None on another hub line, without the marker, or when the body
+    is too short."""
+
+    if hub_version != HUB_VERSION_X2:
+        return None
+    color_offset = _color_offset(hub_version)
+    if color_offset is None:
+        return None
+    marker = color_offset - 4
+    if len(body) <= marker + 3 or body[marker] != 0xFC:
+        return None
+    return int(body[marker + 1]), int(body[marker + 2]), int(body[marker + 3])
 
 
 def patch_record_appearance(

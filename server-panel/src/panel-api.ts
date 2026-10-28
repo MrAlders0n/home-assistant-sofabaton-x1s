@@ -138,6 +138,8 @@ export type HubCreate = Schemas["HubCreate"];
 // -- the catalog (openapi Device, Command, Activity, Button, Macro, Favorite) --
 
 export type Device = Schemas["Device"];
+/** `GET /hubs/{id}/ir-emitters`: an X2's paired remotes and repeaters for the IR pill. */
+export type IrEmitterStatusView = Schemas["IrEmitterStatusView"];
 
 export type Command = Schemas["Command"];
 
@@ -551,6 +553,11 @@ export class PanelApi {
   /** Store the display order of every activity or device, once each (a job). */
   reorderEntities(hubId: string, kind: "activity" | "device", order: number[]): Promise<ApiResponse<JobView>> {
     return this.request<JobView>("PUT", `${this._hub(hubId)}/${kind === "device" ? "devices" : "activities"}/order`, { body: { order } });
+  }
+
+  /** An X2's paired remotes and repeaters: `refresh` reads the hub (a few seconds), otherwise the server's last read. */
+  irEmitters(hubId: string, refresh: boolean): Promise<ApiResponse<IrEmitterStatusView>> {
+    return this.request<IrEmitterStatusView>("GET", `${this._hub(hubId)}/ir-emitters`, { query: `refresh=${refresh ? "true" : "false"}` });
   }
 
   devices(hubId: string): Promise<ApiResponse<Device[]>> {

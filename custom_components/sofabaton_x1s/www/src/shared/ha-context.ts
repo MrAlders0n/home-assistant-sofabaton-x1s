@@ -85,6 +85,9 @@ export interface ControlPanelHubState {
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
+    /** An X2 record's IR routing bytes [a, b, c] (its `device.extras`),
+     *  once the record is cached; absent off the X2. */
+    emitters?: number[];
   }>;
   buttons?: Record<string, number[]>;
   commands?: Record<string, Record<string, string>>;
@@ -173,6 +176,9 @@ export interface CacheHubState {
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
+    /** An X2 record's IR routing bytes [a, b, c] (its `device.extras`),
+     *  once the record is cached; absent off the X2. */
+    emitters?: number[];
   }>;
   buttons?: Record<string, number[]>;
   commands?: Record<string, Record<string, string>>;
@@ -451,6 +457,21 @@ export interface IrEmitterConsumersResponse {
   emitter_entity_id: string | null;
   consumers: IrEmitterConsumer[];
 }
+/** One paired remote or repeater an X2 device's IR can be routed to. */
+export interface IrEmitterPairedRow {
+  kind: "remote" | "repeater";
+  number: number;
+  name: string;
+  online: boolean;
+  port_cable: boolean | null;
+}
+/** `ir_emitters/status`: the paired remotes and repeaters (null before the
+ *  first read) and when they were read (epoch seconds). */
+export interface IrEmitterStatusResponse {
+  available: boolean;
+  paired: IrEmitterPairedRow[] | null;
+  read_at: number | null;
+}
 /** Events of one hub learn window (`ir_learn/subscribe`): `listening`, then one terminal state. */
 export type IrLearnState =
   | "listening"
@@ -503,6 +524,10 @@ export interface BackupBundleDeviceBlock {
   // with the name in one record write.
   icon?: number | null;
   color_id?: number | null;
+  // The X2's IR emitter routing, the three bytes after the record's 0xFC
+  // marker (null / absent off the X2 or without the block). The IR pill
+  // edits b and c; a (single-button RF) is carried, never changed.
+  extras?: { a: number; b: number; c: number } | null;
 }
 
 export interface BackupBundleDevicePayload {

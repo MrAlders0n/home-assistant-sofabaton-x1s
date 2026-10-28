@@ -111,6 +111,11 @@ OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites map
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_SET_HUB_NAME = 0x0030  # payload: GB2312-encoded hub name bytes
 FAMILY_HUB_NAME_REPLY = 0x31  # H→A variable-length hub-name reply family
+# X2: asks for the hub-name reply (family 0x31) without renaming. That reply
+# starts with two bytes the vendor app reads as IR port 1 and 2 cable
+# plugged, but they flip between 00 00 and 01 01 on their own with both
+# cables plugged (bench 2026-10-28): not used.
+OP_REQ_HUB_NAME = 0x0032
 # X2 hub's own MQTT broker link (not benched yet, see the Wifi webhook
 # transport plan, gates B5/B11). Setup payload: [len BE16] + broker IPv4 +
 # port BE16 + hub MAC + username and password, each a char count and
@@ -316,6 +321,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
     OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_SET_HUB_NAME: "SET_HUB_NAME",
+    OP_REQ_HUB_NAME: "REQ_HUB_NAME",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_HUB_MQTT_STATUS_QUERY: "HUB_MQTT_STATUS_QUERY",
     OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
@@ -674,6 +680,7 @@ __all__ = [
     "OP_REQ_ACTIVITY_MAP",
     "OP_DELETE_DEVICE",
     "OP_SET_HUB_NAME",
+    "OP_REQ_HUB_NAME",
     "FAMILY_HUB_MQTT_SETUP",
     "FAMILY_HUB_MQTT_STATUS",
     "OP_HUB_MQTT_STATUS_QUERY",

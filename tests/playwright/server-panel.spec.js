@@ -4161,3 +4161,139 @@ test.describe("control panel, MQTT broker", () => {
     await expect(page.locator("#mqtt-form")).toHaveCount(0);
   });
 });
+
+test.describe("control panel, IR pill", () => {
+  // An X2 IR device's emitters (IR emitter pill plan, IR5): the card's pill on the shared template.
+  const X2 = { ...LIVING, config: { ...LIVING.config, hub_version: "X2" }, status: { ...CONTROL, hub_version: "X2" } };
+  const PAIRED = [
+    { kind: "remote", number: 1, name: "X2 Remote", online: true, port_cable: null },
+    { kind: "repeater", number: 1, name: "Cabinet", online: true, port_cable: true },
+    { kind: "repeater", number: 2, name: "Bedroom", online: false, port_cable: null },
+  ];
+
+  test("a catalog row warns, the editor's pill reads the paired list on open, and a pick goes out with the device's PUT", async ({ page }, testInfo) => {
+    const state = { hubs: [X2], seen: [] };
+    await mockServer(page, state);
+    const element = (id, name, extras) => ({
+      kind: "device_backup", complete: true, editable: true, fetched_at: "2026-10-28T00:00:00Z",
+      device: { device_id: id, name, brand: "Sony", device_class: "ir", idle_behavior: 1, extras },
+      commands: [{ command_id: 1, name: "Power" }], button_bindings: [], macros: [], key_sort: null, input_record: null,
+    });
+    const snapshot = {
+      snapshot_id: "snap-1", captured_at: "2026-10-28T00:00:00Z", engine_generation: 1, complete: true, payload_profile: "structural",
+      hub: { name: "Living room", version: "X2" },
+      // The TV routes to the built-in emitter and the offline Bedroom repeater.
+      devices: [element(1, "TV", { a: 0, b: 0b1100, c: 0x01 }), element(2, "Soundbar", { a: 0, b: 0, c: 0x07 })],
+      activities: [],
+    };
+    const reads = [];
+    const puts = [];
+    let polls = 0;
+    await page.route(`**${API}/hubs/${X2.hub_id}/ir-emitters*`, async (route) => {
+      const refresh = new URL(route.request().url()).searchParams.get("refresh");
+      reads.push(refresh);
+      if (refresh === "true") await new Promise((resolve) => setTimeout(resolve, 400));
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ paired: PAIRED, read_at: 1793000000 }) });
+    });
+    await page.route(`**${API}/hubs/${X2.hub_id}/devices`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
+      { device_id: 1, name: "TV", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 1, emitters: [0, 0b1100, 0x01] },
+      { device_id: 2, name: "Soundbar", brand: "Sony", device_class: "ir", device_class_code: 1, power_state: 0, idle_behavior: 1, emitters: [0, 0, 0x07] },
+    ]) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/info`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ known: true, model: "X2", name: "Living room", mac: "E2:6A:44:86:1B:45", firmware_version: 5, production_batch: null }) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    await page.route(`**${API}/hubs/${X2.hub_id}/devices/1`, (route) => {
+      const request = route.request();
+      puts.push({ ifMatch: request.headers()["if-match"], body: request.postDataJSON() });
+      snapshot.devices[0] = { ...snapshot.devices[0], ...request.postDataJSON() };
+      snapshot.snapshot_id = "snap-2";
+      polls = 0;
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: "queued" })) });
+    });
+    await page.route(`**${API}/hubs/${X2.hub_id}/jobs/j1`, (route) => {
+      polls++;
+      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(job({ job_id: "j1", kind: "sync_device", status: polls < 2 ? "running" : "done", progress: { completed_steps: polls, total_steps: 1 } })) });
+    });
+
+    // The catalog: only the row that needs attention carries the read-only amber pill.
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices`);
+    const rows = page.locator("#catalog-rows .entity-block");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator(".ir-pill")).toHaveClass(/attention/);
+    await expect(rows.nth(0).locator(".ir-pill")).toHaveAttribute("title", "An emitter of this device needs attention.");
+    await expect(rows.nth(1).locator(".ir-pill")).toHaveCount(0);
+    expect(reads).toEqual(["false"]);
+
+    // The editor: the pill in the header, amber at rest from the last read.
+    await rows.nth(0).locator(".entity-edit").click();
+    const editor = page.locator("sb-panel-device-editor");
+    const pill = editor.locator("#editor-ir-pill");
+    const pop = editor.locator("#editor-ir-pop");
+    await expect(pill).toHaveClass(/attention/);
+    await expect(pill).toHaveText("IR");
+    await pill.click();
+    await expect(pop).toContainText("Checking the paired remotes and repeaters…");
+    await expect(pop.locator('[data-status="checking"]')).toHaveCount(0);
+    expect(reads).toEqual(["false", "true"]);
+    await expect(pop.locator('.ir-row[data-row="repeater:2"]')).toContainText("Repeater 2 · offline");
+    await expect(pop.locator(".ir-status.warn")).toContainText("Bedroom is offline");
+    const box = await pop.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    await page.screenshot({ path: shot(testInfo, "ir-pill") });
+    // Untick Bedroom and pick port 2: a pending edit, Sync on.
+    await pop.locator('.ir-row[data-row="repeater:2"] .ir-row-head').click();
+    await expect(pill).not.toHaveClass(/attention/);
+    await expect(pill).toHaveClass(/pending/);
+    await pop.locator('.ir-row[data-row="hub"] [data-choice="port2"]').click();
+    await expect(editor.locator("#editor-sync")).toBeEnabled();
+    // Undo, then the pick again.
+    await pop.locator(".ir-undo").click();
+    await expect(pill).toHaveClass(/attention/);
+    await expect(pill).not.toHaveClass(/pending/);
+    await expect(editor.locator("#editor-sync")).toBeDisabled();
+    await pop.locator('.ir-row[data-row="repeater:2"] .ir-row-head').click();
+    await pop.locator('.ir-row[data-row="hub"] [data-choice="port2"]').click();
+    // Escape closes it and gives the focus back to the pill.
+    await page.keyboard.press("Escape");
+    await expect(pop).toHaveCount(0);
+    await expect(pill).toBeFocused();
+    // The header keeps every part apart at any width: the pill never covers the title or the buttons.
+    const [pillBox, titleBox, renameBox] = await Promise.all([pill.boundingBox(), editor.locator("#editor-title").boundingBox(), editor.locator("#editor-rename").boundingBox()]);
+    expect(pillBox.x + pillBox.width).toBeLessThanOrEqual(renameBox.x);
+    expect(titleBox.width).toBeGreaterThan(20);
+    expect(pillBox.y + pillBox.height <= titleBox.y + 1 || pillBox.x >= titleBox.x + titleBox.width - 1).toBe(true);
+    await page.screenshot({ path: shot(testInfo, "ir-pill-header") });
+    await editor.locator("#editor-sync").click();
+    await expect.poll(() => puts.length).toBe(1);
+    expect(puts[0].ifMatch).toBe('"snap-1"');
+    expect(puts[0].body.device.extras).toEqual({ a: 0, b: 0, c: 0x04 });
+    await expect(editor.locator("#editor-sync")).toHaveText("Up to date");
+    await expect(pill).not.toHaveClass(/pending|attention/);
+    // The pill read the hub once, when it opened.
+    expect(reads.filter((refresh) => refresh === "true")).toHaveLength(1);
+  });
+
+  test("an X1S device editor has no IR pill and never asks for the paired list", async ({ page }) => {
+    const state = { hubs: [LIVING], seen: [] };
+    await mockServer(page, state);
+    const reads = [];
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/ir-emitters*`, (route) => {
+      reads.push(route.request().url());
+      route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ type: "not_x2", title: "IR emitter routing exists on the X2 only", status: 409 }) });
+    });
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/snapshot`, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      snapshot_id: "snap-1", captured_at: "t", engine_generation: 1, complete: true, payload_profile: "structural", hub: { name: "Living room", version: "X1S" },
+      devices: [{ kind: "device_backup", complete: true, editable: true, fetched_at: "t", device: { device_id: 1, name: "TV", device_class: "ir", idle_behavior: 1 }, commands: [], button_bindings: [], macros: [] }],
+      activities: [],
+    }) }));
+    await page.route(`**${API}/hubs/${LIVING.hub_id}/callback-device`, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ type: "callback_device_not_found", title: "No callback device", status: 404 }) }));
+    await page.goto(`${PAGE}#/e26a44861b45/hub/devices/1`);
+    const editor = page.locator("sb-panel-device-editor");
+    await expect(editor.locator("#editor-title")).toHaveText("TV");
+    await expect(editor.locator(".ir-pill")).toHaveCount(0);
+    await expect(page.locator("#catalog-rows .ir-pill")).toHaveCount(0);
+    expect(reads).toEqual([]);
+  });
+});

@@ -7,9 +7,30 @@ Protocol-library changes are recorded in the
 ## Unreleased
 
 Requires the next sofabaton-x release (`validate_appearance()`, the
-`icon` and `color_id` arguments of `add_device()` / `add_activity()`).
+`icon` and `color_id` arguments of `add_device()` / `add_activity()`,
+`ir_emitter_status()` and `Device.emitters`).
 
 ### Added
+
+- `GET /hubs/{id}/ir-emitters` (`getIrEmitters`, X2 only): the paired
+  remotes and repeaters an X2 can send a device's IR from (`kind`,
+  `number`, `name`, `online`, `port_cable`) and `read_at`. Without
+  `refresh` it returns the last read without asking the hub (both fields
+  null before the first one); `?refresh=true` reads the hub's
+  paired-device list now (a few seconds, control mode). 409 `not_x2` on an
+  X1 or X1S. A free read, like the other reads.
+- Device list rows (`GET .../devices`) carry `emitters`: an X2 device's IR
+  emitter routing, the record's three bytes `[a, b, c]`; null on the X1
+  and X1S, or when the record is not cached.
+- `PUT /devices/{id}` (and its plan preview) takes a changed IR emitter
+  routing on an X2, as the element's `device.extras` (`a`, `b`, `c`), and
+  writes it as one record update with no remote sync (the hub updates its
+  remotes itself). The routing applies to commands sent to the device; a
+  payload play always fires from the hub's own emitters. A routing the hub
+  cannot take is a 422 `out_of_scope` before any job: no emitter left, a
+  changed RF-button byte `a`, hub emitters changed to a mix other than all,
+  built-in, port 1, port 2 or none, a dropped routing, or a routing change
+  off the X2.
 
 - Activities and devices carry `icon` (the hub's icon id) and `color_id`
   (the X2 palette id, `0` when none was picked) in the catalog and the
@@ -37,6 +58,9 @@ Requires the next sofabaton-x release (`validate_appearance()`, the
   earlier write sent the remote its update) answers 409 `remote_syncing`
   instead of 502 `hub_rejected`: wait until the remote is done, then send
   it again.
+- `POST /devices` creates an X2 IR device that sends from all of the hub's
+  emitters (built-in and both IR ports, `00 00 07`), as the Sofabaton app
+  does; it used to be the built-in emitter only (`00 00 01`).
 
 ## 0.2.6 (2026-10-17)
 

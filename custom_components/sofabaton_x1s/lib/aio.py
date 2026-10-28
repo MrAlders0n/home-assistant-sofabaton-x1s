@@ -20,7 +20,7 @@ from dataclasses import dataclass, field, replace
 import inspect
 import logging
 import time
-from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Optional, Sequence
+from typing import Any, AsyncIterator, Awaitable, Callable, Iterable, Mapping, Optional, Sequence
 
 from .config import HubConfig
 from .discovery import (
@@ -76,7 +76,7 @@ from .wifi_device import (
     labels_from_spec,
     snapshot_from_spec,
 )
-from .devices import parse_device_record, record_appearance, validate_appearance
+from .devices import parse_device_record, record_appearance, record_emitters, validate_appearance
 from .device_class_profiles import supported_create_classes
 from .models import (
     Activity,
@@ -94,6 +94,8 @@ from .models import (
     HubInfo,
     HubSnapshot,
     HubStatus,
+    IrEmitterDevice,
+    IrEmitterStatus,
     Macro,
     RestoreResult,
     RunningActivity,
@@ -220,6 +222,32 @@ def _activity_from_row(
     )
 
 
+def _ir_emitter_status_from(raw: Optional[Mapping[str, Any]]) -> Optional[IrEmitterStatus]:
+    """The facade view of the engine's IR emitter read: remotes and
+    repeaters by their routing number, single-button RF devices dropped."""
+
+    if not raw:
+        return None
+    rows = raw.get("paired")
+    paired: Optional[tuple[IrEmitterDevice, ...]] = None
+    if rows is not None:
+        paired = tuple(
+            IrEmitterDevice(
+                kind="remote" if row.is_remote else "repeater",
+                number=int(row.number),
+                name=str(row.name),
+                online=bool(row.online),
+                port_cable=row.port_cable,
+            )
+            for row in rows
+            if (row.is_remote or row.is_repeater) and row.number is not None
+        )
+    return IrEmitterStatus(
+        paired=paired,
+        read_at=float(raw.get("read_at") or 0.0),
+    )
+
+
 def _device_from_row(dev_id: int, row: dict, hub_version: Optional[str]) -> Device:
     power_state: Optional[int] = None
     raw_body = row.get("raw_body")
@@ -242,6 +270,11 @@ def _device_from_row(dev_id: int, row: dict, hub_version: Optional[str]) -> Devi
         sort=_sort_byte(row),
         icon=icon,
         color_id=color_id,
+        emitters=(
+            record_emitters(bytes(raw_body), hub_version=hub_version)
+            if hub_version and isinstance(raw_body, (bytes, bytearray))
+            else None
+        ),
     )
 
 
@@ -511,6 +544,10 @@ class AsyncXProxy:
             "fetch_banner_info",
             "get_banner_info",
             "get_proxy_status",
+            # the X2's IR emitter routing targets (ir_emitter_status)
+            "read_ir_emitter_status",
+            "last_ir_emitter_status",
+            "read_x2_paired_devices",
             # snapshot / state document (phase 3 plan, W0)
             "assemble_hub_bundle_from_state",
             "export_cache_state",
@@ -2449,6 +2486,26 @@ class AsyncXProxy:
             device_id, WIFI_PROBE_COMMAND_ID, sent=True, delivered=True, latency_s=round(loop.time() - started, 3)
         )
 
+    async def ir_emitter_status(self, *, refresh: bool = True) -> Optional[IrEmitterStatus]:
+        """The paired remotes and repeaters an X2 device's IR can be sent
+        from (the hub's own emitters and both ports are always available).
+
+        ``refresh`` (the default) reads the hub's paired-device list after
+        the hub has polled its devices (a few seconds). ``refresh=False``
+        returns the last read without asking the hub, None when there was
+        none. None on another model. Raises :class:`HubNotConnectedError` /
+        :class:`HubBusyError` when the hub cannot be read.
+        """
+
+        if str(getattr(self._proxy, "hub_version", "") or "") != HUB_VERSION_X2:
+            return None
+        if not refresh:
+            return _ir_emitter_status_from(self._proxy.last_ir_emitter_status())
+        what = "ir_emitter_status"
+        self._raise_if_cannot_fetch(what)
+        await self._wait_for_free_hub(what, DEFAULT_FETCH_TIMEOUT)
+        return _ir_emitter_status_from(await self.run(self._proxy.read_ir_emitter_status))
+
     async def hub_mqtt_status(self, *, timeout: float = 3.0) -> Optional[bool]:
         """Whether the X2 reports a connected MQTT broker.
 
@@ -3621,6 +3678,7 @@ ENGINE_ONLY: dict[str, str] = {
             "wait_for_ack",
             "wait_for_ack_any",
             "wait_for_ack_family_low",
+            "wait_for_ack_families_low",
             "wait_for_any_response",
             "wait_for_assigned_device_id",
             "wait_for_macro_record",

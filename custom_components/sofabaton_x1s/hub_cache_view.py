@@ -10,7 +10,7 @@ from typing import Any
 
 from .command_config import is_wifi_events_device_key
 from .lib.backup_export import build_device_button_rows
-from .lib.devices import record_appearance
+from .lib.devices import record_appearance, record_emitters
 from .lib.hub_versions import HUB_VERSION_X2
 from .wifi_deploy import _parse_managed_wifi_brand
 
@@ -34,6 +34,17 @@ class HubCacheViewMixin:
         if color_id is not None and hub_version == HUB_VERSION_X2:
             fields["color_id"] = color_id
         return fields
+
+    def _record_emitter_fields(self, raw_body: Any) -> dict[str, Any]:
+        """``emitters``, an X2 device record's IR routing bytes ``[a, b, c]``
+        (``device.extras``), so the device list and the IR pill show the
+        routing without a hub read. Empty off the X2, without a cached record
+        body, or when the record carries no routing block."""
+        if not isinstance(raw_body, (bytes, bytearray)):
+            return {}
+        hub_version = getattr(self._proxy, "hub_version", None)
+        triple = record_emitters(bytes(raw_body), hub_version=str(hub_version or ""))
+        return {"emitters": list(triple)} if triple is not None else {}
 
     async def async_get_cache_contents(self) -> dict[str, Any]:
         # Read before the export: a change landing during it then shows as a
@@ -279,6 +290,7 @@ class HubCacheViewMixin:
                 "name": self._get_cached_device_name(device_id) or f"Device {device_id}",
                 "sort": sort_value,
                 **self._record_appearance_fields(raw_body),
+                **self._record_emitter_fields(raw_body),
                 "command_count": len(commands) if isinstance(commands, dict) else 0,
                 "has_commands": bool(commands) if isinstance(commands, dict) else False,
             }

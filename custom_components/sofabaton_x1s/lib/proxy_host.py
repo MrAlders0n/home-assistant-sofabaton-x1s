@@ -18,7 +18,7 @@ from __future__ import annotations
 import contextlib
 import threading
 from collections import deque
-from typing import Any, Callable, Dict, Iterable, Mapping, Protocol, Sequence, TYPE_CHECKING
+from typing import Any, Callable, Collection, Dict, Iterable, Mapping, Protocol, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .ack import AckOutcome, InputsBurstResult, SendStepResult
@@ -89,6 +89,13 @@ class _WireHost(Protocol):
     def wait_for_ack_family_low(
         self,
         family_low: int,
+        *,
+        timeout: float = ...,
+        not_before: float | None = ...,
+    ) -> tuple[int, bytes] | None: ...
+    def wait_for_ack_families_low(
+        self,
+        families_low: Collection[int],
         *,
         timeout: float = ...,
         not_before: float | None = ...,

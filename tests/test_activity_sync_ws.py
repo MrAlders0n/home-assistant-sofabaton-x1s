@@ -1196,3 +1196,39 @@ def test_ws_device_create_blocked_when_locked(monkeypatch):
     }))
     assert conn.error[1] == "busy"
     assert hub.created is None
+
+
+def _routed_device_bundle(c, version="X1S"):
+    bundle = _device_bundle([])
+    bundle["hub"]["version"] = version
+    bundle["devices"][0]["device"]["extras"] = {"a": 0, "b": 0, "c": c}
+    return bundle
+
+
+def test_ws_device_sync_plan_carries_an_x2_emitter_change(monkeypatch):
+    """The IR pill writes ``device.extras`` into the edited bundle; the WS
+    plan preview hands it to the lib planner as one head write."""
+    hub = _Hub()
+    hub.version = "X2"
+    conn = _Conn()
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 11, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _routed_device_bundle(0x07, "X2"), "edited": _routed_device_bundle(0x04, "X2"),
+    }))
+    assert conn.error is None
+    steps = conn.result[1]["steps"]
+    assert [s["kind"] for s in steps] == ["device_rename"]
+
+
+def test_ws_device_sync_plan_refuses_an_emitter_change_off_the_x2(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)  # the X1S fake hub
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 12, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _routed_device_bundle(0x07), "edited": _routed_device_bundle(0x04),
+    }))
+    assert conn.result is None and conn.error is not None
+    assert "X2 only" in conn.error[2]

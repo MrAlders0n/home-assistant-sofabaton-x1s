@@ -44,6 +44,8 @@ import { formatWhen } from "../panel-state";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { PointerReorder } from "../pointer-reorder";
 import { sanitizeName } from "./device-editor-state";
+import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead, renderReadOnlyIrPill } from "../components/ir-emitter-pill";
+import { irEmitterRowAttention } from "../../../remote-card/src/ir-emitters/emitter-rules";
 
 const S = TOOLS_CARD_STRINGS.cache;
 
@@ -259,6 +261,7 @@ export class SbPanelCatalog extends LitElement {
     entityTileStyles,
     entityPickerStyles,
     appearanceToggleStyles,
+    irEmitterStyles,
     css`
       :host { display: block; container-type: inline-size; }
       /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
@@ -507,6 +510,10 @@ export class SbPanelCatalog extends LitElement {
       this._snapshot = snapshot.ok ? snapshot.body : null;
       this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
       if (this._open && !this.openEntry) this._open = null;
+      // An X2's device rows warn from the server's last paired-device read (no hub exchange).
+      if (String(this._hubVersion ?? "").toUpperCase().includes("X2") && !irEmitterLastReadKnown(hubId)) {
+        void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate());
+      }
     } catch (err) {
       this._notice = String(err);
     } finally {
@@ -814,6 +821,7 @@ export class SbPanelCatalog extends LitElement {
           </span>
         </span>
         <span class="entity-meta">
+          ${this._renderIrRowPill(e)}
           ${badge(DEV_ID_BADGE, e.id)}
           <button class="icon-btn entity-edit" type="button" ?disabled=${locked} title=${e.kind === "device" ? "Edit device" : "Edit activity"} aria-label=${e.kind === "device" ? "Edit device" : "Edit activity"} @click=${(event: Event) => { event.stopPropagation(); this._edit(e); }}>${icon(mdiWrench)}</button>
           <button class="icon-btn entity-refresh ${spinning ? "spinning" : ""}" type="button" ?disabled=${locked} title=${`${e.kind === "device" ? "Refresh device" : "Refresh activity"} (${fetched})`} aria-label=${e.kind === "device" ? "Refresh device" : "Refresh activity"} @click=${(event: Event) => { event.stopPropagation(); this._refreshEntry(e); }}>${icon(mdiRefresh)}</button>
@@ -822,6 +830,15 @@ export class SbPanelCatalog extends LitElement {
       </div>
       ${isOpen ? html`<div class="entity-body">${this._renderBody(e, key)}</div>` : nothing}
     </div>`;
+  }
+
+  /** An IR device whose routing needs attention (an offline repeater, an emitter no longer
+   *  paired) gets the read-only amber IR pill; most devices are IR, so the rest get none. */
+  private _renderIrRowPill(e: CatalogEntry): TemplateResult | typeof nothing {
+    const hubId = this.hub?.hub_id ?? "";
+    if (e.kind !== "device" || !hubId || String(e.device?.device_class ?? "").toLowerCase() !== "ir") return nothing;
+    if (!irEmitterRowAttention(e.device?.emitters, irEmitterLastRead(hubId)?.paired ?? null)) return nothing;
+    return renderReadOnlyIrPill({ labels: TOOLS_CARD_STRINGS.irEmitters, attention: true });
   }
 
   /** The hub's own icon on its tile once the record is cached (the class glyph moves to a

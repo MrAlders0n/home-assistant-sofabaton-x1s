@@ -57,6 +57,8 @@ import {
   bundleDeleteImpact,
   bundleDeviceBrand,
   bundleDeviceClass,
+  bundleDeviceExtras,
+  setBundleDeviceExtras,
   buttonName,
   deviceButtonBindingItems,
   deviceCommandItems,
@@ -94,6 +96,9 @@ import {
 } from "../../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 import { problemText, type ApiResponse, type JobView, type PayloadView, type SnapshotEntity } from "../panel-api";
 import { OPERATION_PROGRESS_CSS } from "../components/operation-progress";
+import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead, readIrEmitters, renderPanelIrPill } from "../components/ir-emitter-pill";
+import { anchoredListPosition } from "../../../custom_components/sofabaton_x1s/www/src/shared/utils/overlay-menu";
+import { extrasOfRouting, routingFromExtras, sameRouting, type EmitterRouting } from "../../../remote-card/src/ir-emitters/emitter-routing";
 import { PANEL_BASE_CSS } from "../panel-styles";
 import { EDITOR_CSS } from "./editor-styles";
 import { SbPanelEntityEditor, icon, type EntityFrameStrings } from "./entity-editor-base";
@@ -292,6 +297,9 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     _payloadDialog: { state: true },
     _payloadFetching: { state: true },
     _addCommandPreparing: { state: true },
+    _irOpen: { state: true },
+    _irChecking: { state: true },
+    _irError: { state: true },
   };
 
   static styles = [
@@ -301,6 +309,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     appearanceEditorStyles,
     EDITOR_CSS,
     OPERATION_PROGRESS_CSS,
+    irEmitterStyles,
   ];
 
   deviceId: number | null = null;
@@ -338,6 +347,12 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
   private _payloadDialog: { mode: "add" | "edit"; commandId: number; snapshot: BackupCommandDecodedBlock | null; rawHex: string; fetchedHex: string } | null = null;
   private _payloadFetching: number | null = null;
   private _addCommandPreparing = false;
+  /** The IR pill's dropdown: open, where, the read running, a refused read's line. */
+  private _irOpen = false;
+  private _irStyle = "";
+  private _irChecking = false;
+  private _irError: string | null = null;
+  private _irEscapeBound = false;
   private _sectionScrollPending = false;
   private _sectionScrollTimer: number | null = null;
   private readonly _onWindowScroll = () => {
@@ -375,6 +390,8 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     window.removeEventListener("touchstart", this._onManualScroll);
     window.removeEventListener("keydown", this._onScrollKey);
     this._clearSectionScroll();
+    this._irOpen = false;
+    this._irListen(false);
   }
 
   protected _resetView(): void {
@@ -390,6 +407,10 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     this._payloadFetching = null;
     this._addCommandPreparing = false;
     this._activeSection = "power";
+    this._irOpen = false;
+    this._irListen(false);
+    this._irChecking = false;
+    this._irError = null;
   }
 
   // -- the working copy --------------------------------------------------------------------------
@@ -559,6 +580,104 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
     }
     this._commit(addBundleDeviceCommand(this._working, deviceId, newId, name, data));
     this._payloadDialog = null;
+  }
+
+  // -- the IR pill (X2 IR devices; IR emitter pill plan, IR5) ------------------------------------
+
+  /** The device's routing bytes on the hub (the snapshot) and in the working copy; null when either has none. */
+  private _irRouting(): { baseline: EmitterRouting; routing: EmitterRouting; baselineExtras: { a: number; b: number; c: number } } | null {
+    const deviceId = this.deviceId;
+    if (this._offline || deviceId == null || !this._working || !this._baseline) return null;
+    if (!String(this._hubVersion ?? "").toUpperCase().includes("X2")) return null;
+    if (this._deviceClass.toLowerCase() !== "ir") return null;
+    const baselineExtras = bundleDeviceExtras(this._baseline, deviceId);
+    const baseline = routingFromExtras(baselineExtras);
+    const routing = routingFromExtras(bundleDeviceExtras(this._working, deviceId));
+    return baselineExtras && baseline && routing ? { baseline, routing, baselineExtras } : null;
+  }
+
+  /** A pick (or Undo) lands in the working copy; back at the hub's bytes it takes the hub's own block, so the element compares equal. */
+  private _setIrRouting(next: EmitterRouting): void {
+    const ir = this._irRouting();
+    const deviceId = this.deviceId;
+    if (!ir || deviceId == null || !this._working) return;
+    const extras = sameRouting(next, ir.baseline) ? ir.baselineExtras : extrasOfRouting(next);
+    this._commit(setBundleDeviceExtras(this._working, deviceId, extras));
+  }
+
+  private _toggleIr = (trigger: HTMLElement): void => {
+    if (this._irOpen) {
+      this._closeIr();
+      return;
+    }
+    this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest<HTMLElement>(".detail-view") });
+    this._irOpen = true;
+    this._irListen(true);
+    void this._readIr();
+  };
+
+  private _closeIr = (): void => {
+    this._irListen(false);
+    if (!this._irOpen) return;
+    this._irOpen = false;
+    void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLElement>("#editor-ir-pill")?.focus());
+  };
+
+  /** Escape closes the dropdown wherever focus went; the document is only touched while it is open. */
+  private _irListen(on: boolean): void {
+    if (on === this._irEscapeBound) return;
+    this._irEscapeBound = on;
+    if (on) document.addEventListener("keydown", this._onIrKeydown);
+    else document.removeEventListener("keydown", this._onIrKeydown);
+  }
+
+  private _onIrKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || !this._irOpen) return;
+    event.preventDefault();
+    this._closeIr();
+  };
+
+  /** Read the paired remotes and repeaters from the hub (the dropdown opened, or Check again); the rows show the last read meanwhile. */
+  private async _readIr(): Promise<void> {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._irChecking) return;
+    if (this._hubBusy) {
+      this._irError = TOOLS_CARD_STRINGS.irEmitters.readBusy;
+      return;
+    }
+    const key = `${hubId}:${this.deviceId ?? ""}`;
+    this._irChecking = true;
+    this._irError = null;
+    try {
+      const { error } = await readIrEmitters(this.api, hubId);
+      if (key === `${this._hub?.hub_id ?? ""}:${this.deviceId ?? ""}`) this._irError = error;
+    } finally {
+      this._irChecking = false;
+    }
+  }
+
+  private _renderIrPill(): TemplateResult | typeof nothing {
+    const ir = this._irRouting();
+    const hubId = this._hub?.hub_id ?? "";
+    if (!ir || !hubId) return nothing;
+    if (!irEmitterLastReadKnown(hubId)) {
+      queueMicrotask(() => { void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate()); });
+    }
+    return renderPanelIrPill({
+      idPrefix: "editor",
+      routing: ir.routing,
+      baseline: ir.baseline,
+      paired: irEmitterLastRead(hubId)?.paired ?? null,
+      open: this._irOpen,
+      menuStyle: this._irStyle,
+      checking: this._irChecking,
+      error: this._irError,
+      onToggle: this._toggleIr,
+      onClose: this._closeIr,
+      onChange: (next) => this._setIrRouting(next),
+      onUndo: () => this._setIrRouting(ir.baseline),
+      onRetry: () => { void this._readIr(); },
+    });
   }
 
   // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
@@ -1060,6 +1179,7 @@ export class SbPanelDeviceEditor extends SbPanelEntityEditor {
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
+                ${this._renderIrPill()}
                 ${this._offline && dirty ? html`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S.unsavedTooltip}>${S.unsaved}</span>` : nothing}
                 <div class="detail-title-actions">
                   ${callback

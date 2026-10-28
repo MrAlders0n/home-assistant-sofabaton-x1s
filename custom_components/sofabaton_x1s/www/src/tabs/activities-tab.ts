@@ -28,6 +28,7 @@ import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   bundleDeviceBrand,
   bundleDeviceClass,
+  bundleDeviceExtras,
   graftDeviceIntoBundle,
   isWifiEventsBrand,
   managedWifiDeviceKey,
@@ -37,7 +38,7 @@ import {
   retireWifiEventLongRecords,
   rewriteWifiEventPlaceholderRefs,
 } from "./backup-state";
-import type { DeliveryHost, IrLearnHost, WifiEventsHost } from "./edit-detail-view";
+import type { DeliveryHost, IrEmitterHost, IrLearnHost, WifiEventsHost } from "./edit-detail-view";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 import { rebaseBundle } from "./bundle-rebase";
@@ -482,6 +483,17 @@ class SofabatonActivitiesTab extends LitElement {
     hass: () => this.hass ?? null,
     hubEntryId: () => String(this.hub?.entry_id ?? ""),
     canSwitch: () => this.hub?.broker_setup_available === true,
+    locked: () => Boolean(this.hubCommandBusy),
+    setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || undefined),
+  };
+
+  // The IR pill of an X2 IR device: it reads the paired remotes and
+  // repeaters through Home Assistant itself; the routing the hub has is the
+  // captured baseline's (the pending state and Undo).
+  private _irEmitterHost: IrEmitterHost = {
+    hass: () => this.hass ?? null,
+    hubEntryId: () => String(this.hub?.entry_id ?? ""),
+    baselineExtras: (deviceId) => bundleDeviceExtras(this._baseline, deviceId),
     locked: () => Boolean(this.hubCommandBusy),
     setBusy: (busy, label) => this.setHubCommandBusy?.(busy, label, String(this.hub?.entry_id ?? "") || undefined),
   };
@@ -1361,6 +1373,7 @@ class SofabatonActivitiesTab extends LitElement {
           .mqttAvailable=${Boolean(this.mqttAvailable)}
           .pendingTransport=${this._pendingTransport}
           .delivery=${this._deliveryHost}
+          .irEmitters=${this._irEmitterHost}
           @bundle-change=${this._handleBundleChange}
           @sync-request=${this._requestSync}
           @transport-change=${this._handleTransportChange}

@@ -43,6 +43,7 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderRenameDialog } from "./components/rename-dialog";
 import { HubBrokerFormController, hubBrokerFormStyles } from "./components/hub-broker-form";
+import { irEmitterLastRead, irEmitterLastReadKnown, irEmitterStyles, loadIrEmitterLastRead } from "./components/ir-emitter-pill";
 import { HUB_NAME_MAX, sanitizeHubName } from "./shared/hub-names";
 import {
   normalizeSidebarPanelName,
@@ -196,7 +197,7 @@ const previewStyles = css`
 `;
 
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles];
+  static styles = [cardStyles, entityTileStyles, entityPickerStyles, appearanceToggleStyles, previewStyles, phraseNameStyles, hubBrokerFormStyles, irEmitterStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so
@@ -450,6 +451,20 @@ class SofabatonControlPanelCard extends LitElement {
 
     this._lastRenderedTab = this._snapshot.selectedTab;
     this.syncBrokerLine();
+    this.syncIrEmitterRead();
+  }
+
+  /** The Hub tab's device rows warn from an X2's last paired-device read:
+   *  asked of Home Assistant once per hub (no hub exchange); the editor's IR
+   *  pill reads the hub itself and keeps the result for the rows. */
+  private syncIrEmitterRead() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id ?? "");
+    if (this._snapshot.selectedTab !== "cache" || !entryId || irEmitterLastReadKnown(entryId)) return;
+    if (hubLineFor(this._snapshot.hass, hub) !== "X2") return;
+    void loadIrEmitterLastRead(this._snapshot.hass, entryId).then((read) => {
+      if (read?.paired) this.requestUpdate();
+    });
   }
 
   /** The Settings tab reads an X2's broker link once per hub it shows (one
@@ -1363,6 +1378,7 @@ class SofabatonControlPanelCard extends LitElement {
           onCloseAddDevice: () => this.closeAddDevice(),
           onSelectAddDeviceClass: (deviceClass) => this.selectAddDeviceClass(deviceClass),
           onConfirmAddDevice: (name, deviceClass) => void this.confirmAddDevice(name, deviceClass),
+          irEmitterPaired: hubEntryId ? irEmitterLastRead(hubEntryId)?.paired ?? null : null,
           addAppearance: this._addAppearance,
           onAddAppearanceChange: (next) => {
             this._addAppearance = next;

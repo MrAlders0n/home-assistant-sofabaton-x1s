@@ -15,6 +15,8 @@ __all__ = [
     "HubMode",
     "HubStatus",
     "HubInfo",
+    "IrEmitterDevice",
+    "IrEmitterStatus",
     "RunningActivity",
     "Activity",
     "Device",
@@ -108,6 +110,47 @@ class HubInfo:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class IrEmitterDevice:
+    """A paired remote or repeater an X2 can send a device's IR from.
+
+    ``number`` is remote 1-5 or repeater 1-4, the numbering
+    :class:`EmitterRouting` uses. ``online`` is as of the read.
+    ``port_cable`` says whether a repeater's IR port has a cable in it;
+    None for a remote.
+    """
+
+    kind: Literal["remote", "repeater"]
+    number: int
+    name: str
+    online: bool
+    port_cable: Optional[bool] = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class IrEmitterStatus:
+    """An X2's IR emitter hardware, from one read
+    (:meth:`AsyncXProxy.ir_emitter_status`).
+
+    ``paired`` lists the paired remotes and repeaters (single-button RF
+    devices left out), None when the hub did not answer. ``read_at`` is
+    when it was read (epoch seconds). The hub's IR ports are not part of
+    it: both are always available to route to.
+    """
+
+    paired: Optional[tuple[IrEmitterDevice, ...]]
+    read_at: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "paired": [device.to_dict() for device in self.paired] if self.paired is not None else None,
+            "read_at": self.read_at,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Catalog read results
 # ---------------------------------------------------------------------------
@@ -153,6 +196,9 @@ class Device:
     stored display position (what :meth:`AsyncXProxy.reorder_devices`
     writes), ``0`` when the record carries none; ``devices()`` already
     lists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.
+    ``emitters`` is an X2 device's IR emitter routing, the record's three
+    bytes ``(a, b, c)`` (decode with :meth:`EmitterRouting.decode`); None
+    on the X1 and X1S, or when the record carries no routing.
     """
 
     device_id: int
@@ -165,6 +211,7 @@ class Device:
     sort: int = 0
     icon: Optional[int] = None
     color_id: Optional[int] = None
+    emitters: Optional[tuple[int, int, int]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

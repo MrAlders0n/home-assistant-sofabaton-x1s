@@ -142,9 +142,13 @@ from .models import (  # noqa: F401
     HubInfo,
     HubMode,
     HubStatus,
+    IrEmitterDevice,
+    IrEmitterStatus,
     Macro,
     RunningActivity,
 )
+# X2 IR emitter routing (the three bytes after tail[18]).
+from .emitter_routing import EmitterRouting  # noqa: F401
 from .errors import (  # noqa: F401
     FetchTimeoutError,
     HubBusyError,
@@ -269,6 +273,9 @@ _CURATED = [
     "HubInfo",
     "HubMode",
     "HubStatus",
+    "IrEmitterDevice",
+    "IrEmitterStatus",
+    "EmitterRouting",
     "RunningActivity",
     "FetchTimeoutError",
     "HubBusyError",

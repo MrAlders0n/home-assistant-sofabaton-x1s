@@ -7923,6 +7923,8 @@ function defineHaCardShim() {
 }
 
 // node_modules/@mdi/js/mdi.js
+var mdiAccessPoint = "M4.93,4.93C3.12,6.74 2,9.24 2,12C2,14.76 3.12,17.26 4.93,19.07L6.34,17.66C4.89,16.22 4,14.22 4,12C4,9.79 4.89,7.78 6.34,6.34L4.93,4.93M19.07,4.93L17.66,6.34C19.11,7.78 20,9.79 20,12C20,14.22 19.11,16.22 17.66,17.66L19.07,19.07C20.88,17.26 22,14.76 22,12C22,9.24 20.88,6.74 19.07,4.93M7.76,7.76C6.67,8.85 6,10.35 6,12C6,13.65 6.67,15.15 7.76,16.24L9.17,14.83C8.45,14.11 8,13.11 8,12C8,10.89 8.45,9.89 9.17,9.17L7.76,7.76M16.24,7.76L14.83,9.17C15.55,9.89 16,10.89 16,12C16,13.11 15.55,14.11 14.83,14.83L16.24,16.24C17.33,15.15 18,13.65 18,12C18,10.35 17.33,8.85 16.24,7.76M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
+var mdiAccessPointNetwork = "M4.93,3.93C3.12,5.74 2,8.24 2,11C2,13.76 3.12,16.26 4.93,18.07L6.34,16.66C4.89,15.22 4,13.22 4,11C4,8.79 4.89,6.78 6.34,5.34L4.93,3.93M19.07,3.93L17.66,5.34C19.11,6.78 20,8.79 20,11C20,13.22 19.11,15.22 17.66,16.66L19.07,18.07C20.88,16.26 22,13.76 22,11C22,8.24 20.88,5.74 19.07,3.93M7.76,6.76C6.67,7.85 6,9.35 6,11C6,12.65 6.67,14.15 7.76,15.24L9.17,13.83C8.45,13.11 8,12.11 8,11C8,9.89 8.45,8.89 9.17,8.17L7.76,6.76M16.24,6.76L14.83,8.17C15.55,8.89 16,9.89 16,11C16,12.11 15.55,13.11 14.83,13.83L16.24,15.24C17.33,14.15 18,12.65 18,11C18,9.35 17.33,7.85 16.24,6.76M12,9A2,2 0 0,0 10,11A2,2 0 0,0 12,13A2,2 0 0,0 14,11A2,2 0 0,0 12,9M11,15V19H10A1,1 0 0,0 9,20H2V22H9A1,1 0 0,0 10,23H14A1,1 0 0,0 15,22H22V20H15A1,1 0 0,0 14,19H13V15H11Z";
 var mdiAccount = "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z";
 var mdiAccountGroup = "M12,5.5A3.5,3.5 0 0,1 15.5,9A3.5,3.5 0 0,1 12,12.5A3.5,3.5 0 0,1 8.5,9A3.5,3.5 0 0,1 12,5.5M5,8C5.56,8 6.08,8.15 6.53,8.42C6.38,9.85 6.8,11.27 7.66,12.38C7.16,13.34 6.16,14 5,14A3,3 0 0,1 2,11A3,3 0 0,1 5,8M19,8A3,3 0 0,1 22,11A3,3 0 0,1 19,14C17.84,14 16.84,13.34 16.34,12.38C17.2,11.27 17.62,9.85 17.47,8.42C17.92,8.15 18.44,8 19,8M5.5,18.25C5.5,16.18 8.41,14.5 12,14.5C15.59,14.5 18.5,16.18 18.5,18.25V20H5.5V18.25M0,20V18.5C0,17.11 1.89,15.94 4.45,15.6C3.86,16.28 3.5,17.22 3.5,18.25V20H0M24,20H20.5V18.25C20.5,17.22 20.14,16.28 19.55,15.6C22.11,15.94 24,17.11 24,18.5V20Z";
 var mdiAirConditioner = "M6.59,0.66C8.93,-1.15 11.47,1.06 12.04,4.5C12.47,4.5 12.89,4.62 13.27,4.84C13.79,4.24 14.25,3.42 14.07,2.5C13.65,0.35 16.06,-1.39 18.35,1.58C20.16,3.92 17.95,6.46 14.5,7.03C14.5,7.46 14.39,7.89 14.16,8.27C14.76,8.78 15.58,9.24 16.5,9.06C18.63,8.64 20.38,11.04 17.41,13.34C15.07,15.15 12.53,12.94 11.96,9.5C11.53,9.5 11.11,9.37 10.74,9.15C10.22,9.75 9.75,10.58 9.93,11.5C10.35,13.64 7.94,15.39 5.65,12.42C3.83,10.07 6.05,7.53 9.5,6.97C9.5,6.54 9.63,6.12 9.85,5.74C9.25,5.23 8.43,4.76 7.5,4.94C5.37,5.36 3.62,2.96 6.59,0.66M5,16H7A2,2 0 0,1 9,18V24H7V22H5V24H3V18A2,2 0 0,1 5,16M5,18V20H7V18H5M12.93,16H15L12.07,24H10L12.93,16M18,16H21V18H18V22H21V24H18A2,2 0 0,1 16,22V18A2,2 0 0,1 18,16Z";
@@ -8229,6 +8231,7 @@ var mdiStove = "M6,14H8L11,17H9L6,14M4,4H5V3A1,1 0 0,1 6,2H10A1,1 0 0,1 11,3V4H1
 var mdiSubtitles = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M4,12H8V14H4V12M14,18H4V16H14V18M20,18H16V16H20V18M20,14H10V12H20V14Z";
 var mdiSubtitlesOutline = "M20,4A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4H20M20,18V6H4V18H20M6,10H8V12H6V10M6,14H14V16H6V14M16,14H18V16H16V14M10,10H18V12H10V10Z";
 var mdiSurroundSound = "M20,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V6A2,2 0 0,0 20,4M7.76,16.24L6.35,17.65C4.78,16.1 4,14.05 4,12C4,9.95 4.78,7.9 6.34,6.34L7.75,7.75C6.59,8.93 6,10.46 6,12C6,13.54 6.59,15.07 7.76,16.24M12,16A4,4 0 0,1 8,12A4,4 0 0,1 12,8A4,4 0 0,1 16,12A4,4 0 0,1 12,16M17.66,17.66L16.25,16.25C17.41,15.07 18,13.54 18,12C18,10.46 17.41,8.93 16.24,7.76L17.65,6.35C19.22,7.9 20,9.95 20,12C20,14.05 19.22,16.1 17.66,17.66M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z";
+var mdiSwapHorizontal = "M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z";
 var mdiSwapVertical = "M9,3L5,7H8V14H10V7H13M16,17V10H14V17H11L15,21L19,17H16Z";
 var mdiSync = "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z";
 var mdiSyncAlert = "M11,13H13V7H11M21,4H15V10L17.24,7.76C18.32,8.85 19,10.34 19,12C19,14.61 17.33,16.83 15,17.65V19.74C18.45,18.85 21,15.73 21,12C21,9.79 20.09,7.8 18.64,6.36M11,17H13V15H11M3,12C3,14.21 3.91,16.2 5.36,17.64L3,20H9V14L6.76,16.24C5.68,15.15 5,13.66 5,12C5,9.39 6.67,7.17 9,6.35V4.26C5.55,5.15 3,8.27 3,12Z";
@@ -11691,6 +11694,10 @@ var PanelApi = class {
   reorderEntities(hubId, kind, order) {
     return this.request("PUT", `${this._hub(hubId)}/${kind === "device" ? "devices" : "activities"}/order`, { body: { order } });
   }
+  /** An X2's paired remotes and repeaters: `refresh` reads the hub (a few seconds), otherwise the server's last read. */
+  irEmitters(hubId, refresh) {
+    return this.request("GET", `${this._hub(hubId)}/ir-emitters`, { query: `refresh=${refresh ? "true" : "false"}` });
+  }
   devices(hubId) {
     return this.request("GET", `${this._hub(hubId)}/devices`);
   }
@@ -13796,6 +13803,55 @@ var TOOLS_CARD_STRINGS_EN = {
     brokerPasswordTooLong: "The password is too long for the hub. Use a shorter password or separate credentials.",
     brokerCredentialsTooLong: "The username and password together are too long for the hub. Use shorter credentials.",
     brokerDone: "Done"
+  },
+  // The IR pill of an X2 IR device (the Hub editor's device header, the
+  // device list rows; the server panel takes the same table) and its
+  // dropdown: which emitters send the device's IR.
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "IR emitters",
+    pillAttention: "An emitter needs attention.",
+    pillPending: "Changes on the next Sync.",
+    rowAttention: "An emitter of this device needs attention.",
+    title: "Where this device's IR comes from",
+    intro: "Pick the emitters that send this device's commands.",
+    scope: "This applies to commands sent to this device. Test plays and the Home Assistant Infrared entity always fire from the hub.",
+    checking: "Checking the paired remotes and repeaters\u2026",
+    readBusy: "The hub is busy, so the paired remotes and repeaters weren't checked.",
+    readUnavailable: "The Sofabaton app is connected to the hub, so the paired remotes and repeaters weren't checked.",
+    readNoAnswer: "The hub didn't list its paired remotes and repeaters.",
+    readFailed: "The paired remotes and repeaters couldn't be checked.",
+    readKept: "The rows show the last check.",
+    checkAgain: "Check again",
+    sendFrom: "Send IR from",
+    hub: "Hub",
+    hubSub: "Built-in emitter and IR ports 1 and 2",
+    hubChoices: "Hub emitters",
+    all: "All",
+    builtin: "Built-in",
+    port1: "Port 1",
+    port2: "Port 2",
+    port: "Port",
+    hubCustom: (mix) => mix === "ports" ? "Now: IR ports 1 and 2" : mix === "builtin_port1" ? "Now: built-in emitter and IR port 1" : "Now: built-in emitter and IR port 2",
+    hubCustomNote: "Kept as it is until you pick one of the choices.",
+    repeaterNumber: (number) => `Repeater ${number}`,
+    remoteNumber: (number) => `Remote ${number}`,
+    repeaterChoices: (name) => `${name} emitters`,
+    online: "online",
+    offline: "offline",
+    notPaired: "no longer paired",
+    remoteOnNote: "The hub passes this device's commands to the remote, which sends them from its own emitter.",
+    repeaterOffline: (name) => `${name} is offline`,
+    repeaterOfflineHint: "Commands sent through it don't reach the device until it's back. Check its power and its distance to the hub.",
+    notPairedTitle: (name) => `${name} is no longer paired`,
+    notPairedHint: "Commands routed to it go nowhere. Untick it here, or pair it again in the Sofabaton app.",
+    remoteOnly: (count) => count === 1 ? "Commands sent to this device fire from the remote only." : "Commands sent to this device fire from the remotes only.",
+    repeaterOnly: (count) => count === 1 ? "Commands sent to this device fire from the repeater only." : "Commands sent to this device fire from the repeaters only.",
+    noHub: "Commands sent to this device fire from the picked remotes and repeaters only.",
+    noHubHint: "The hub's own emitters stay quiet for it.",
+    duplicateHint: "Pick only the emitters you need. Two emitters that both reach the device send each command twice.",
+    lastOneHint: "At least one emitter stays picked.",
+    undo: "Undo"
   }
 };
 var currentLanguage2 = "en";
@@ -17752,6 +17808,27 @@ function bundleDeviceBrand(bundle, deviceId) {
   );
   return String(device?.device?.brand ?? "").trim();
 }
+function bundleDeviceExtras(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const extras = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  )?.device?.extras;
+  if (!extras || typeof extras !== "object") return null;
+  const { a: a4, b: b3, c: c7 } = extras;
+  return [a4, b3, c7].every((value) => Number.isInteger(value) && value >= 0 && value <= 255) ? { a: a4, b: b3, c: c7 } : null;
+}
+function setBundleDeviceExtras(bundle, deviceId, extras) {
+  const normalizedId = Number(deviceId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      const block = entry?.device;
+      if (!block || Number(block.device_id || 0) !== normalizedId) return entry;
+      return { ...entry, device: { ...block, extras: { a: extras.a, b: extras.b, c: extras.c } } };
+    })
+  };
+}
 function isManagedWifiBrand(brand) {
   const text = String(brand ?? "").trim();
   for (const prefix of ["m3-", "m3tac0de-"]) {
@@ -21481,6 +21558,587 @@ var appearanceToggleStyles = i`
   .cache-dialog-appearance-pane { max-height: 200px; overflow-y: auto; padding: 5px; margin: -5px; }
 `;
 
+// remote-card/src/ir-emitters/emitter-routing.ts
+var EMITTER_REMOTE_COUNT = 5;
+var EMITTER_REPEATER_COUNT = 4;
+var HUB_BITS = { none: 0, builtin: 1, port1: 2, port2: 4, all: 7 };
+var HUB_MASK = 7;
+var REMOTE_SHIFT = 3;
+var REPEATER_BITS = { builtin: 1, port: 2, all: 3 };
+var HUB_CHOICES = ["all", "builtin", "port1", "port2"];
+var REPEATER_CHOICES = ["all", "builtin", "port"];
+var hubChoiceOfBits = (bits) => {
+  for (const [choice, value] of Object.entries(HUB_BITS)) if (value === bits) return choice;
+  return "custom";
+};
+var repeaterChoiceOfBits = (bits) => {
+  for (const [choice, value] of Object.entries(REPEATER_BITS)) if (value === bits) return choice;
+  return null;
+};
+function decodeEmitters(a4, b3, c7) {
+  const hubBits = c7 & HUB_MASK;
+  const remotes = [];
+  for (let n7 = 1; n7 <= EMITTER_REMOTE_COUNT; n7++) if (c7 & 1 << REMOTE_SHIFT + n7 - 1) remotes.push(n7);
+  const repeaters = [];
+  for (let n7 = 1; n7 <= EMITTER_REPEATER_COUNT; n7++) {
+    const choice = repeaterChoiceOfBits(b3 >> 2 * (n7 - 1) & 3);
+    if (choice) repeaters.push([n7, choice]);
+  }
+  return { hub: hubChoiceOfBits(hubBits), remotes, repeaters, hubBits, rfByte: a4 & 255 };
+}
+function encodeEmitters(routing) {
+  const hubBits = routing.hub === "custom" ? routing.hubBits : HUB_BITS[routing.hub];
+  let c7 = hubBits & HUB_MASK;
+  for (const n7 of routing.remotes) c7 |= 1 << REMOTE_SHIFT + n7 - 1;
+  let b3 = 0;
+  for (const [n7, choice] of routing.repeaters) b3 |= REPEATER_BITS[choice] << 2 * (n7 - 1);
+  return [routing.rfByte & 255, b3 & 255, c7 & 255];
+}
+var isByte = (value) => typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255;
+function routingFromExtras(extras) {
+  if (!extras || typeof extras !== "object") return null;
+  const { a: a4, b: b3, c: c7 } = extras;
+  if (!isByte(a4) || !isByte(b3) || !isByte(c7)) return null;
+  return decodeEmitters(a4, b3, c7);
+}
+function routingFromTriple(triple) {
+  if (!Array.isArray(triple) || triple.length !== 3) return null;
+  const [a4, b3, c7] = triple;
+  if (!isByte(a4) || !isByte(b3) || !isByte(c7)) return null;
+  return decodeEmitters(a4, b3, c7);
+}
+function extrasOfRouting(routing) {
+  const [a4, b3, c7] = encodeEmitters(routing);
+  return { a: a4, b: b3, c: c7 };
+}
+function sameRouting(left, right) {
+  const [a1, b1, c1] = encodeEmitters(left);
+  const [a22, b22, c22] = encodeEmitters(right);
+  return a1 === a22 && b1 === b22 && c1 === c22;
+}
+function repeaterChoice(routing, number) {
+  return routing.repeaters.find(([n7]) => n7 === number)?.[1] ?? null;
+}
+function withHub2(routing, choice) {
+  if (!(choice in HUB_BITS)) throw new RangeError(`hub emitters must be one of ${Object.keys(HUB_BITS).join(", ")}; got ${String(choice)}`);
+  return { ...routing, hub: choice, hubBits: HUB_BITS[choice] };
+}
+function withRemote(routing, number, on) {
+  if (!Number.isInteger(number) || number < 1 || number > EMITTER_REMOTE_COUNT) {
+    throw new RangeError(`remote number must be 1-${EMITTER_REMOTE_COUNT}; got ${number}`);
+  }
+  const remotes = new Set(routing.remotes);
+  if (on) remotes.add(number);
+  else remotes.delete(number);
+  return { ...routing, remotes: [...remotes].sort((x2, y3) => x2 - y3) };
+}
+function withRepeater(routing, number, choice) {
+  if (!Number.isInteger(number) || number < 1 || number > EMITTER_REPEATER_COUNT) {
+    throw new RangeError(`repeater number must be 1-${EMITTER_REPEATER_COUNT}; got ${number}`);
+  }
+  if (choice !== null && !(choice in REPEATER_BITS)) {
+    throw new RangeError(`repeater emitters must be one of ${Object.keys(REPEATER_BITS).join(", ")}; got ${String(choice)}`);
+  }
+  const repeaters = new Map(routing.repeaters.map(([n7, c7]) => [n7, c7]));
+  if (choice === null) repeaters.delete(number);
+  else repeaters.set(number, choice);
+  return { ...routing, repeaters: [...repeaters.entries()].sort(([x2], [y3]) => x2 - y3) };
+}
+
+// remote-card/src/ir-emitters/emitter-rules.ts
+var inRange = (kind, number) => Number.isInteger(number) && number >= 1 && number <= (kind === "remote" ? EMITTER_REMOTE_COUNT : EMITTER_REPEATER_COUNT);
+function normalizePaired(raw) {
+  if (!Array.isArray(raw)) return null;
+  const rows = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item;
+    const kind = row.kind === "remote" || row.kind === "repeater" ? row.kind : null;
+    const number = Number(row.number);
+    if (!kind || !inRange(kind, number)) continue;
+    rows.push({
+      kind,
+      number,
+      name: String(row.name ?? "").trim(),
+      online: row.online === true,
+      port_cable: typeof row.port_cable === "boolean" ? row.port_cable : null
+    });
+  }
+  return rows;
+}
+var pairedRow = (paired, kind, number) => paired?.find((row) => row.kind === kind && row.number === number) ?? null;
+function pickedRowCount(routing) {
+  return (routing.hub === "none" ? 0 : 1) + routing.remotes.length + routing.repeaters.length;
+}
+function irEmitterProblems(routing, paired) {
+  if (!paired) return [];
+  const problems = [];
+  for (const [number] of routing.repeaters) {
+    const row = pairedRow(paired, "repeater", number);
+    if (!row) problems.push({ kind: "unpaired", target: "repeater", number, name: null });
+    else if (!row.online) problems.push({ kind: "offline", target: "repeater", number, name: row.name });
+  }
+  for (const number of routing.remotes) {
+    if (!pairedRow(paired, "remote", number)) problems.push({ kind: "unpaired", target: "remote", number, name: null });
+  }
+  return problems;
+}
+function irEmitterAttention(routing, paired) {
+  return routing !== null && irEmitterProblems(routing, paired).length > 0;
+}
+function irEmitterRowAttention(emitters, paired) {
+  return irEmitterAttention(routingFromTriple(emitters), paired);
+}
+function irEmitterNote(routing) {
+  if (routing.hub !== "none") return null;
+  const remotes = routing.remotes.length > 0;
+  const repeaters = routing.repeaters.length > 0;
+  if (remotes && repeaters) return "no_hub";
+  if (remotes) return "remote_only";
+  if (repeaters) return "repeater_only";
+  return null;
+}
+function irEmitterRows(routing, paired) {
+  const rows = [{
+    key: "hub",
+    kind: "hub",
+    number: 0,
+    name: null,
+    picked: routing.hub !== "none",
+    paired: true,
+    online: true,
+    choice: routing.hub === "none" ? null : routing.hub
+  }];
+  for (const kind of ["repeater", "remote"]) {
+    const picked = kind === "repeater" ? routing.repeaters.map(([n7]) => n7) : [...routing.remotes];
+    const listed = (paired ?? []).filter((row) => row.kind === kind).map((row) => row.number);
+    const numbers = [.../* @__PURE__ */ new Set([...listed, ...picked])].sort((x2, y3) => x2 - y3);
+    for (const number of numbers) {
+      const row = pairedRow(paired, kind, number);
+      rows.push({
+        key: `${kind}:${number}`,
+        kind,
+        number,
+        name: row?.name || null,
+        picked: picked.includes(number),
+        paired: paired ? row !== null : null,
+        online: row ? row.online : null,
+        choice: kind === "repeater" ? repeaterChoice(routing, number) : null
+      });
+    }
+  }
+  return rows;
+}
+function toggleEmitterRow(routing, row) {
+  if (row.picked && pickedRowCount(routing) <= 1) return null;
+  if (row.kind === "hub") return withHub2(routing, row.picked ? "none" : "all");
+  if (row.kind === "repeater") return withRepeater(routing, row.number, row.picked ? null : "all");
+  return withRemote(routing, row.number, !row.picked);
+}
+function pickHubEmitters(routing, choice) {
+  return withHub2(routing, choice);
+}
+function pickRepeaterEmitters(routing, number, choice) {
+  return withRepeater(routing, number, choice);
+}
+function customHubMix(routing) {
+  if (routing.hub !== "custom") return null;
+  switch (routing.hubBits & 7) {
+    case 3:
+      return "builtin_port1";
+    case 5:
+      return "builtin_port2";
+    case 6:
+      return "ports";
+    default:
+      return null;
+  }
+}
+
+// remote-card/src/ir-emitters/emitter-dropdown.ts
+function svg(path, cls = "") {
+  return b2`<svg class="ir-mdi ${cls}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d=${path}></path></svg>`;
+}
+function pillInner(labels, attention, chevron) {
+  return b2`${attention ? svg(mdiAlertOutline, "ir-pill-alert") : A}<span class="ir-pill-text">${labels.pill}</span>${chevron ? svg(mdiChevronDown) : A}`;
+}
+function renderReadOnlyIrPill(params) {
+  const { labels, attention } = params;
+  return b2`<span
+    class="ir-pill ir-pill--ro${attention ? " attention" : ""}"
+    title=${attention ? labels.rowAttention : labels.pillLabel}
+    aria-label=${attention ? `${labels.pillLabel}. ${labels.rowAttention}` : labels.pillLabel}
+    role="img"
+  >${pillInner(labels, attention, false)}</span>`;
+}
+function onChoiceKeydown(event) {
+  const keys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"];
+  if (!keys.includes(event.key)) return;
+  const group = event.currentTarget;
+  if (!group) return;
+  const options = [...group.querySelectorAll("button[role='radio']:not(:disabled)")];
+  if (!options.length) return;
+  const root = group.getRootNode();
+  const current = options.findIndex((option) => option === root.activeElement);
+  const rtl = getComputedStyle(group).direction === "rtl";
+  const forward = event.key === "ArrowDown" || event.key === (rtl ? "ArrowLeft" : "ArrowRight");
+  const back = event.key === "ArrowUp" || event.key === (rtl ? "ArrowRight" : "ArrowLeft");
+  const next = event.key === "Home" ? 0 : event.key === "End" ? options.length - 1 : forward ? (current + 1) % options.length : back ? (current - 1 + options.length) % options.length : -1;
+  if (next < 0) return;
+  event.preventDefault();
+  options[next].focus();
+  options[next].click();
+}
+function rowName(labels, row) {
+  if (row.kind === "hub") return labels.hub;
+  return row.name || (row.kind === "repeater" ? labels.repeaterNumber(row.number) : labels.remoteNumber(row.number));
+}
+function rowSub(labels, row, routing) {
+  if (row.kind === "hub") {
+    const mix = customHubMix(routing);
+    return mix ? labels.hubCustom(mix) : labels.hubSub;
+  }
+  const number = row.kind === "repeater" ? labels.repeaterNumber(row.number) : labels.remoteNumber(row.number);
+  if (row.paired === false) return `${number} \xB7 ${labels.notPaired}`;
+  if (row.online === null) return number;
+  return `${number} \xB7 ${row.online ? labels.online : labels.offline}`;
+}
+function problemLine(labels, problem) {
+  const name = problem.kind === "offline" ? problem.name || labels.repeaterNumber(problem.number) : problem.target === "repeater" ? labels.repeaterNumber(problem.number) : labels.remoteNumber(problem.number);
+  const title = problem.kind === "offline" ? labels.repeaterOffline(name) : labels.notPairedTitle(name);
+  const meta = problem.kind === "offline" ? labels.repeaterOfflineHint : labels.notPairedHint;
+  return b2`
+    <div class="ir-status warn" role="alert" data-problem=${`${problem.kind}:${problem.target}:${problem.number}`}>
+      ${svg(mdiAlertOutline)}
+      <div class="ir-status-copy"><span class="ir-status-title">${title}</span><span class="ir-status-meta">${meta}</span></div>
+    </div>`;
+}
+function noteLine(labels, routing) {
+  const note = irEmitterNote(routing);
+  if (!note) return A;
+  const title = note === "remote_only" ? labels.remoteOnly(routing.remotes.length) : note === "repeater_only" ? labels.repeaterOnly(routing.repeaters.length) : labels.noHub;
+  return b2`
+    <div class="ir-status idle" data-note=${note}>
+      ${svg(mdiInformationOutline)}
+      <div class="ir-status-copy"><span class="ir-status-title">${title}</span><span class="ir-status-meta">${labels.noHubHint}</span></div>
+    </div>`;
+}
+function choiceGroup(params) {
+  return b2`
+    <div class="ir-choice" role="radiogroup" aria-label=${params.label} data-choices=${params.key} @keydown=${onChoiceKeydown}>
+      ${params.choices.map((choice) => b2`<button
+        type="button"
+        role="radio"
+        class="ir-option"
+        data-choice=${choice}
+        aria-checked=${params.current === choice ? "true" : "false"}
+        ?disabled=${params.disabled}
+        @click=${() => {
+    if (params.current !== choice) params.onPick(choice);
+  }}
+      >${params.names[choice]}</button>`)}
+    </div>`;
+}
+function renderRow(params, row, lastOne) {
+  const { labels, routing } = params;
+  const disabled = Boolean(params.disabled);
+  const locked = row.picked && lastOne;
+  const name = rowName(labels, row);
+  const glyph = row.kind === "hub" ? mdiAccessPointNetwork : row.kind === "repeater" ? mdiAccessPoint : mdiRemote;
+  const toggle = () => {
+    if (disabled || locked) return;
+    const next = toggleEmitterRow(routing, row);
+    if (next) params.onChange(next);
+  };
+  const dot = row.kind !== "hub" && row.online !== null ? b2`<i class="ir-dot${row.online && row.paired !== false ? "" : " off"}" aria-hidden="true"></i>` : A;
+  let choices = A;
+  if (row.picked && row.kind === "hub") {
+    choices = choiceGroup({
+      label: labels.hubChoices,
+      choices: HUB_CHOICES,
+      current: routing.hub,
+      names: { all: labels.all, builtin: labels.builtin, port1: labels.port1, port2: labels.port2 },
+      disabled,
+      key: "hub",
+      onPick: (choice) => params.onChange(pickHubEmitters(routing, choice))
+    });
+  } else if (row.picked && row.kind === "repeater") {
+    choices = choiceGroup({
+      label: labels.repeaterChoices(name),
+      choices: REPEATER_CHOICES,
+      current: row.choice,
+      names: { all: labels.all, builtin: labels.builtin, port: labels.port },
+      disabled,
+      key: row.key,
+      onPick: (choice) => params.onChange(pickRepeaterEmitters(routing, row.number, choice))
+    });
+  }
+  const note = row.picked && row.kind === "hub" && routing.hub === "custom" ? labels.hubCustomNote : row.picked && row.kind === "remote" ? labels.remoteOnNote : "";
+  return b2`
+    <div class="ir-row${row.picked ? " on" : ""}${locked ? " locked" : ""}" data-row=${row.key}>
+      <button
+        type="button"
+        class="ir-row-head"
+        role="checkbox"
+        aria-checked=${row.picked ? "true" : "false"}
+        aria-disabled=${disabled || locked ? "true" : "false"}
+        @click=${toggle}
+      >
+        <span class="ir-box">${svg(mdiCheck)}</span>
+        <span class="ir-glyph">${svg(glyph)}</span>
+        <span class="ir-name"><span class="ir-name-title">${name}</span><span class="ir-name-sub">${dot}<span>${rowSub(labels, row, routing)}</span></span></span>
+      </button>
+      ${choices}
+      ${note ? b2`<p class="ir-row-note">${note}</p>` : A}
+    </div>`;
+}
+function renderIrEmitterBody(params) {
+  const { labels, routing, paired } = params;
+  const prefix = params.idPrefix;
+  const problems = irEmitterProblems(routing, paired);
+  const rows = irEmitterRows(routing, paired);
+  const picked = pickedRowCount(routing);
+  const lastOne = picked <= 1;
+  const pending = !sameRouting(routing, params.baseline);
+  const labelId = `${prefix}-ir-send-from`;
+  return b2`
+    <div class="ir-main">
+      <span class="ir-title">${labels.title}</span>
+      <p class="ir-intro">${labels.intro}</p>
+      ${params.checking ? b2`<div class="ir-status idle brief" data-status="checking">${svg(mdiLoading, "ir-spin")}<div class="ir-status-copy"><span class="ir-status-title">${labels.checking}</span></div></div>` : A}
+      ${!params.checking && params.error ? b2`<div class="ir-status idle" data-status="error">
+            ${svg(mdiInformationOutline)}
+            <div class="ir-status-copy">
+              <span class="ir-status-title">${params.error}</span>
+              ${paired ? b2`<span class="ir-status-meta">${labels.readKept}</span>` : A}
+              ${params.onRetry ? b2`<span class="ir-actions"><button class="ir-link-btn ir-retry" type="button" @click=${params.onRetry}>${labels.checkAgain}</button></span>` : A}
+            </div>
+          </div>` : A}
+      ${problems.map((problem) => problemLine(labels, problem))}
+      ${noteLine(labels, routing)}
+    </div>
+    <div class="ir-section">
+      <span class="ir-label" id=${labelId}>${labels.sendFrom}</span>
+      <div class="ir-rows" role="group" aria-labelledby=${labelId}>
+        ${rows.map((row) => renderRow(params, row, lastOne))}
+      </div>
+      ${picked > 1 ? b2`<p class="ir-hint" data-hint="duplicate">${labels.duplicateHint}</p>` : A}
+      ${lastOne ? b2`<p class="ir-hint" data-hint="last-one">${labels.lastOneHint}</p>` : A}
+      <p class="ir-hint" data-hint="scope">${labels.scope}</p>
+      ${pending ? b2`<div class="ir-pending">
+            ${svg(mdiSwapHorizontal)}
+            <span>${labels.pillPending}</span>
+            <button class="ir-link-btn ir-undo" type="button" ?disabled=${Boolean(params.disabled)} @click=${params.onUndo}>${labels.undo}</button>
+          </div>` : A}
+    </div>`;
+}
+function renderIrEmitterPill(params) {
+  const { labels } = params;
+  const prefix = params.idPrefix;
+  const attention = irEmitterProblems(params.routing, params.paired).length > 0;
+  const pending = !sameRouting(params.routing, params.baseline);
+  const onKeydown = (event) => {
+    if (event.key !== "Escape" || !params.open) return;
+    event.preventDefault();
+    event.stopPropagation();
+    params.onClose();
+  };
+  return b2`
+    <span class="ir-pill-wrap" @keydown=${onKeydown}>
+      <button
+        class="ir-pill${pending ? " pending" : ""}${attention ? " attention" : ""}"
+        id="${prefix}-ir-pill"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded=${params.open ? "true" : "false"}
+        aria-label=${attention ? `${labels.pillLabel}. ${labels.pillAttention}` : labels.pillLabel}
+        title=${pending ? labels.pillPending : labels.pillLabel}
+        @click=${(event) => params.onToggle(event.currentTarget)}
+      >${pillInner(labels, attention, true)}</button>
+      ${params.open ? b2`
+            <button class="ir-backdrop" type="button" tabindex="-1" aria-hidden="true" @click=${params.onClose} @wheel=${(event) => event.preventDefault()}></button>
+            <div class="ir-pop" id="${prefix}-ir-pop" role="dialog" aria-label=${labels.title} style=${params.menuStyle}>
+              ${renderIrEmitterBody(params)}
+            </div>` : A}
+    </span>`;
+}
+var irEmitterStyles = i`
+  .ir-pill, .ir-pop {
+    --ir-line: var(--divider-color, rgba(0, 0, 0, 0.12));
+    --ir-text: var(--primary-text-color, #212121);
+    --ir-muted: var(--secondary-text-color, #727272);
+    --ir-surface: var(--ha-card-background, var(--card-background-color, #fff));
+    --ir-accent: var(--primary-color, #03a9f4);
+    --ir-accent-text: var(--sb-accent-text, color-mix(in srgb, var(--primary-color, #03a9f4) 60%, var(--primary-text-color, #212121)));
+    --ir-warn: var(--warning-color, #f59e0b);
+    --ir-ok: var(--success-color, #43a047);
+    --ir-on-accent: var(--text-primary-color, #fff);
+  }
+  /* The card measures an opaque popup surface for glass themes
+     (--sb-popup-surface, theme-polarity.ts); elsewhere the card's surface. */
+  .ir-pop { --ir-pop-surface: var(--sb-popup-surface, var(--ir-surface)); }
+  .ir-mdi { width: 13px; height: 13px; flex: 0 0 auto; display: block; }
+  .ir-pill-wrap { display: inline-flex; align-self: center; flex: 0 0 auto; }
+  .ir-pill {
+    display: inline-flex; align-items: center; align-self: center; gap: 3px; flex: 0 0 auto;
+    margin: 0; border-radius: 999px; padding: 3px 5px 3px 9px; padding-inline: 9px 5px;
+    font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; line-height: 1.25;
+    border: 1px solid var(--ir-line); color: var(--ir-muted); background: var(--ir-surface);
+    white-space: nowrap; cursor: pointer; opacity: 1;
+  }
+  .ir-pill--ro { padding-inline: 9px; cursor: default; }
+  .ir-pill.pending { border-style: dashed; }
+  .ir-pill.attention {
+    border-color: color-mix(in srgb, var(--ir-warn) 60%, var(--ir-line));
+    background: color-mix(in srgb, var(--ir-warn) 14%, var(--ir-surface));
+    color: var(--ir-text);
+  }
+  .ir-pill .ir-pill-alert { color: var(--ir-warn); margin-inline-start: -3px; }
+  button.ir-pill:hover { border-color: color-mix(in srgb, var(--ir-accent) 60%, var(--ir-line)); }
+  button.ir-pill.attention:hover { border-color: color-mix(in srgb, var(--ir-warn) 85%, var(--ir-text)); }
+  button.ir-pill:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  button.ir-pill[aria-expanded="true"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ir-accent) 24%, transparent); }
+  .ir-backdrop { position: fixed; inset: 0; z-index: 8; border: 0; border-radius: 0; padding: 0; margin: 0; background: transparent; cursor: default; }
+  .ir-backdrop:hover { border: 0; }
+  .ir-pop {
+    z-index: 9; box-sizing: border-box; display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+    border: 1px solid var(--ir-line); border-radius: var(--tools-radius-sm, 12px); background: var(--ir-pop-surface);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22), 0 2px 6px rgba(0, 0, 0, 0.1);
+    color: var(--ir-text); font-size: 12.5px; font-weight: 400; letter-spacing: normal; line-height: 1.45;
+    text-align: start; text-transform: none; white-space: normal;
+  }
+  .ir-pop button { font: inherit; letter-spacing: normal; text-transform: none; }
+  .ir-main { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; }
+  .ir-title { font-size: 13px; font-weight: 700; }
+  .ir-intro { margin: 0; color: var(--ir-muted); overflow-wrap: anywhere; }
+  .ir-section { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border-top: 1px solid var(--ir-line); }
+  .ir-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ir-muted); }
+  .ir-hint { margin: 0; font-size: 12px; color: var(--ir-muted); }
+  .ir-status { display: flex; gap: 8px; padding: 8px 10px; border-radius: 9px; background: color-mix(in srgb, var(--ir-text) 6%, transparent); }
+  .ir-status > .ir-mdi { width: 17px; height: 17px; margin-top: 1px; color: var(--ir-muted); }
+  .ir-status.warn { background: color-mix(in srgb, var(--ir-warn) 14%, transparent); }
+  .ir-status.warn > .ir-mdi { color: var(--ir-warn); }
+  .ir-status.brief { padding: 0 2px; background: transparent; }
+  .ir-status-copy { display: flex; flex-direction: column; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+  .ir-status-title { font-weight: 500; }
+  .ir-status.warn .ir-status-title { font-weight: 700; }
+  .ir-status-meta { font-size: 12px; color: var(--ir-muted); }
+  .ir-actions { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 2px; }
+  .ir-link-btn {
+    border: 0; border-radius: 0; margin: 0; padding: 0; background: none; color: var(--ir-accent-text);
+    font-size: 12px; font-weight: 500; text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+  }
+  .ir-link-btn:hover { border: 0; color: var(--ir-text); }
+  .ir-link-btn:disabled { opacity: 0.45; cursor: default; }
+  .ir-link-btn:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  .ir-rows { display: flex; flex-direction: column; border: 1px solid var(--ir-line); border-radius: 10px; overflow: hidden; }
+  .ir-row { display: flex; flex-direction: column; gap: 8px; padding: 9px 10px; }
+  .ir-row + .ir-row { border-top: 1px solid var(--ir-line); }
+  .ir-row.on { background: color-mix(in srgb, var(--ir-accent) 6%, transparent); }
+  .ir-row-head {
+    display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; margin: 0;
+    border: 0; border-radius: 7px; padding: 0; background: none; color: var(--ir-text); text-align: start; cursor: pointer; opacity: 1;
+  }
+  .ir-row-head:hover { border: 0; }
+  .ir-row-head:hover:not([aria-disabled="true"]) .ir-box { border-color: var(--ir-accent); }
+  .ir-row-head:hover:not([aria-disabled="true"]) .ir-glyph { background: color-mix(in srgb, var(--ir-accent) 18%, transparent); }
+  .ir-row-head[aria-disabled="true"] { cursor: default; }
+  .ir-row-head:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 2px; }
+  .ir-box {
+    width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--ir-muted); box-sizing: border-box;
+    display: grid; place-items: center; flex: 0 0 auto; color: var(--ir-on-accent);
+  }
+  .ir-box .ir-mdi { width: 14px; height: 14px; opacity: 0; }
+  .ir-row.on .ir-box { background: var(--ir-accent); border-color: var(--ir-accent); }
+  .ir-row.on .ir-box .ir-mdi { opacity: 1; }
+  .ir-row.locked .ir-box { opacity: 0.55; }
+  .ir-glyph { width: 26px; height: 26px; border-radius: 8px; background: color-mix(in srgb, var(--ir-text) 11%, transparent); display: grid; place-items: center; flex: 0 0 auto; color: var(--ir-text); }
+  .ir-glyph .ir-mdi { width: 16px; height: 16px; }
+  .ir-name { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+  .ir-name-title { font-size: 12.5px; font-weight: 700; overflow-wrap: anywhere; }
+  .ir-name-sub { font-size: 11.5px; color: var(--ir-muted); display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+  .ir-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ir-ok); flex: 0 0 auto; }
+  .ir-dot.off { background: var(--ir-muted); opacity: 0.6; }
+  .ir-choice {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; padding: 3px; border-radius: 9px;
+    background: color-mix(in srgb, var(--ir-text) 6%, transparent); margin-inline-start: 27px;
+  }
+  .ir-option {
+    display: flex; align-items: center; justify-content: center; min-width: 0; margin: 0; padding: 5px 4px;
+    border: 0; border-radius: 7px; background: transparent; color: var(--ir-muted);
+    font-size: 11.5px; font-weight: 700; line-height: 1.25; text-align: center; white-space: normal; cursor: pointer; opacity: 1;
+  }
+  .ir-option:hover:not(:disabled) { border: 0; color: var(--ir-text); background: color-mix(in srgb, var(--ir-text) 6%, transparent); }
+  .ir-option[aria-checked="true"], .ir-option[aria-checked="true"]:hover:not(:disabled) { background: var(--ir-pop-surface); color: var(--ir-text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
+  .ir-option:disabled { opacity: 0.45; cursor: default; }
+  .ir-option:focus-visible { outline: 2px solid var(--ir-accent); outline-offset: 1px; }
+  .ir-row-note { margin: 0; margin-inline-start: 27px; font-size: 11.5px; color: var(--ir-muted); }
+  .ir-pending {
+    display: flex; align-items: flex-start; gap: 7px; padding: 8px 10px; border-radius: 9px; font-size: 12px;
+    border: 1px dashed color-mix(in srgb, var(--ir-accent) 50%, var(--ir-line));
+    background: color-mix(in srgb, var(--ir-accent) 10%, transparent);
+  }
+  .ir-pending > .ir-mdi { width: 16px; height: 16px; margin-top: 1px; color: var(--ir-accent-text); }
+  .ir-pending .ir-link-btn { margin-inline-start: auto; align-self: center; }
+  .ir-spin { animation: ir-spin 0.9s linear infinite; }
+  @keyframes ir-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .ir-spin { animation: none; } }
+`;
+
+// server-panel/src/components/ir-emitter-pill.ts
+var LAST_READS = /* @__PURE__ */ new Map();
+var LOADING = /* @__PURE__ */ new Map();
+function readOf(view) {
+  return { paired: normalizePaired(view?.paired), readAt: typeof view?.read_at === "number" ? view.read_at : null };
+}
+function irEmitterLastRead(hubId) {
+  return LAST_READS.get(hubId) ?? null;
+}
+function irEmitterLastReadKnown(hubId) {
+  return LAST_READS.has(hubId) || LOADING.has(hubId);
+}
+function loadIrEmitterLastRead(api, hubId) {
+  if (!hubId) return Promise.resolve(null);
+  const known = LAST_READS.get(hubId);
+  if (known) return Promise.resolve(known);
+  const pending = LOADING.get(hubId);
+  if (pending) return pending;
+  const load = api.irEmitters(hubId, false).then(
+    (response) => {
+      const read = response.ok ? readOf(response.body) : { paired: null, readAt: null };
+      if (!LAST_READS.has(hubId)) LAST_READS.set(hubId, read);
+      return LAST_READS.get(hubId) ?? read;
+    },
+    () => null
+  ).finally(() => LOADING.delete(hubId));
+  LOADING.set(hubId, load);
+  return load;
+}
+async function readIrEmitters(api, hubId) {
+  let response;
+  try {
+    response = await api.irEmitters(hubId, true);
+  } catch {
+    return { read: null, error: TOOLS_CARD_STRINGS.irEmitters.readFailed };
+  }
+  if (!response.ok || !response.body) return { read: null, error: irEmitterReadProblem(response) };
+  if (response.body.paired == null) return { read: null, error: TOOLS_CARD_STRINGS.irEmitters.readNoAnswer };
+  const read = readOf(response.body);
+  LAST_READS.set(hubId, read);
+  return { read, error: null };
+}
+function irEmitterReadProblem(response) {
+  const S8 = TOOLS_CARD_STRINGS.irEmitters;
+  const type = String(response.body?.type ?? "");
+  if (type === "hub_busy") return S8.readUnavailable;
+  if (type === "hub_job_running" || type === "hub_conflict" || type === "remote_syncing") return S8.readBusy;
+  if (type === "hub_timeout") return S8.readNoAnswer;
+  return S8.readFailed;
+}
+function renderPanelIrPill(params) {
+  return renderIrEmitterPill({ ...params, labels: TOOLS_CARD_STRINGS.irEmitters });
+}
+
 // server-panel/src/views/catalog-view.ts
 var S4 = TOOLS_CARD_STRINGS.cache;
 var CATALOG_VIEW_TAG = "sb-panel-catalog";
@@ -21784,6 +22442,9 @@ var SbPanelCatalog = class extends i4 {
       this._snapshot = snapshot.ok ? snapshot.body : null;
       this._entries = buildCatalog(this._devices, this._activities, this._snapshot);
       if (this._open && !this.openEntry) this._open = null;
+      if (String(this._hubVersion ?? "").toUpperCase().includes("X2") && !irEmitterLastReadKnown(hubId)) {
+        void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate());
+      }
     } catch (err) {
       this._notice = String(err);
     } finally {
@@ -21998,6 +22659,7 @@ var SbPanelCatalog = class extends i4 {
           </span>
         </span>
         <span class="entity-meta">
+          ${this._renderIrRowPill(e6)}
           ${badge(DEV_ID_BADGE, e6.id)}
           <button class="icon-btn entity-edit" type="button" ?disabled=${locked} title=${e6.kind === "device" ? "Edit device" : "Edit activity"} aria-label=${e6.kind === "device" ? "Edit device" : "Edit activity"} @click=${(event) => {
       event.stopPropagation();
@@ -22012,6 +22674,14 @@ var SbPanelCatalog = class extends i4 {
       </div>
       ${isOpen ? b2`<div class="entity-body">${this._renderBody(e6, key)}</div>` : A}
     </div>`;
+  }
+  /** An IR device whose routing needs attention (an offline repeater, an emitter no longer
+   *  paired) gets the read-only amber IR pill; most devices are IR, so the rest get none. */
+  _renderIrRowPill(e6) {
+    const hubId = this.hub?.hub_id ?? "";
+    if (e6.kind !== "device" || !hubId || String(e6.device?.device_class ?? "").toLowerCase() !== "ir") return A;
+    if (!irEmitterRowAttention(e6.device?.emitters, irEmitterLastRead(hubId)?.paired ?? null)) return A;
+    return renderReadOnlyIrPill({ labels: TOOLS_CARD_STRINGS.irEmitters, attention: true });
   }
   /** The hub's own icon on its tile once the record is cached (the class glyph moves to a
    *  corner badge on devices); the card's glyph before that. */
@@ -22175,6 +22845,7 @@ SbPanelCatalog.styles = [
   entityTileStyles,
   entityPickerStyles,
   appearanceToggleStyles,
+  irEmitterStyles,
   i`
       :host { display: block; container-type: inline-size; }
       /* The shell's connected panel is the frame (the card's secondary panel); the list sits flat in it. */
@@ -22418,6 +23089,24 @@ var EDITOR_CSS = i`
     .detail-crumb-sep { flex: 0 0 auto; color: var(--sbp-muted); }
     .detail-title { display: block; width: 100%; font-size: 18px; font-weight: 700; line-height: 1.15; color: var(--sbp-text); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .detail-title-actions { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+    /* A phone-width header with the IR pill: the pill takes the crumb's line (the back arrow
+       already leads to the list), so the title keeps the room it has without a pill. */
+    @container (max-width: 420px) {
+      .detail-title-main:has(> .ir-pill-wrap) {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas: "back pill actions" "back title actions";
+        align-items: center;
+        column-gap: 8px;
+        row-gap: 2px;
+      }
+      .detail-title-main:has(> .ir-pill-wrap) > .back-btn { grid-area: back; }
+      .detail-title-main:has(> .ir-pill-wrap) > .detail-title-stack { display: contents; }
+      .detail-title-main:has(> .ir-pill-wrap) .detail-crumbs { display: none; }
+      .detail-title-main:has(> .ir-pill-wrap) .detail-title { grid-area: title; }
+      .detail-title-main:has(> .ir-pill-wrap) > .ir-pill-wrap { grid-area: pill; justify-self: start; }
+      .detail-title-main:has(> .ir-pill-wrap) > .detail-title-actions { grid-area: actions; }
+    }
     /* Offline mode (a backup file): the card's "Unsaved" chip stands where the live editor has its Sync button. */
     .edit-unsaved-chip { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; padding: 2px 8px 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; color: var(--sbp-warn); background: color-mix(in srgb, var(--sbp-warn) 16%, transparent); border: 1px solid color-mix(in srgb, var(--sbp-warn) 35%, transparent); }
     .edit-unsaved-chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--sbp-warn); }
@@ -24859,6 +25548,12 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._payloadDialog = null;
     this._payloadFetching = null;
     this._addCommandPreparing = false;
+    /** The IR pill's dropdown: open, where, the read running, a refused read's line. */
+    this._irOpen = false;
+    this._irStyle = "";
+    this._irChecking = false;
+    this._irError = null;
+    this._irEscapeBound = false;
     this._sectionScrollPending = false;
     this._sectionScrollTimer = null;
     this._onWindowScroll = () => {
@@ -24878,6 +25573,27 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     };
     this._closePayloadDialog = () => {
       this._payloadDialog = null;
+    };
+    this._toggleIr = (trigger) => {
+      if (this._irOpen) {
+        this._closeIr();
+        return;
+      }
+      this._irStyle = anchoredListPosition(trigger, { minWidth: 320, maxHeight: 560, within: trigger.closest(".detail-view") });
+      this._irOpen = true;
+      this._irListen(true);
+      void this._readIr();
+    };
+    this._closeIr = () => {
+      this._irListen(false);
+      if (!this._irOpen) return;
+      this._irOpen = false;
+      void this.updateComplete.then(() => this.renderRoot.querySelector("#editor-ir-pill")?.focus());
+    };
+    this._onIrKeydown = (event) => {
+      if (event.key !== "Escape" || !this._irOpen) return;
+      event.preventDefault();
+      this._closeIr();
     };
     this._closeStepEditor = () => {
       this._stepEditor = null;
@@ -25013,6 +25729,8 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     window.removeEventListener("touchstart", this._onManualScroll);
     window.removeEventListener("keydown", this._onScrollKey);
     this._clearSectionScroll();
+    this._irOpen = false;
+    this._irListen(false);
   }
   _resetView() {
     this._clearSectionScroll();
@@ -25027,6 +25745,10 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     this._payloadFetching = null;
     this._addCommandPreparing = false;
     this._activeSection = "power";
+    this._irOpen = false;
+    this._irListen(false);
+    this._irChecking = false;
+    this._irError = null;
   }
   // -- the working copy --------------------------------------------------------------------------
   get _workingElement() {
@@ -25176,6 +25898,78 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
     }
     this._commit(addBundleDeviceCommand(this._working, deviceId, newId, name, data));
     this._payloadDialog = null;
+  }
+  // -- the IR pill (X2 IR devices; IR emitter pill plan, IR5) ------------------------------------
+  /** The device's routing bytes on the hub (the snapshot) and in the working copy; null when either has none. */
+  _irRouting() {
+    const deviceId = this.deviceId;
+    if (this._offline || deviceId == null || !this._working || !this._baseline) return null;
+    if (!String(this._hubVersion ?? "").toUpperCase().includes("X2")) return null;
+    if (this._deviceClass.toLowerCase() !== "ir") return null;
+    const baselineExtras = bundleDeviceExtras(this._baseline, deviceId);
+    const baseline = routingFromExtras(baselineExtras);
+    const routing = routingFromExtras(bundleDeviceExtras(this._working, deviceId));
+    return baselineExtras && baseline && routing ? { baseline, routing, baselineExtras } : null;
+  }
+  /** A pick (or Undo) lands in the working copy; back at the hub's bytes it takes the hub's own block, so the element compares equal. */
+  _setIrRouting(next) {
+    const ir = this._irRouting();
+    const deviceId = this.deviceId;
+    if (!ir || deviceId == null || !this._working) return;
+    const extras = sameRouting(next, ir.baseline) ? ir.baselineExtras : extrasOfRouting(next);
+    this._commit(setBundleDeviceExtras(this._working, deviceId, extras));
+  }
+  /** Escape closes the dropdown wherever focus went; the document is only touched while it is open. */
+  _irListen(on) {
+    if (on === this._irEscapeBound) return;
+    this._irEscapeBound = on;
+    if (on) document.addEventListener("keydown", this._onIrKeydown);
+    else document.removeEventListener("keydown", this._onIrKeydown);
+  }
+  /** Read the paired remotes and repeaters from the hub (the dropdown opened, or Check again); the rows show the last read meanwhile. */
+  async _readIr() {
+    const hubId = this._hub?.hub_id;
+    if (!hubId || this._irChecking) return;
+    if (this._hubBusy) {
+      this._irError = TOOLS_CARD_STRINGS.irEmitters.readBusy;
+      return;
+    }
+    const key = `${hubId}:${this.deviceId ?? ""}`;
+    this._irChecking = true;
+    this._irError = null;
+    try {
+      const { error } = await readIrEmitters(this.api, hubId);
+      if (key === `${this._hub?.hub_id ?? ""}:${this.deviceId ?? ""}`) this._irError = error;
+    } finally {
+      this._irChecking = false;
+    }
+  }
+  _renderIrPill() {
+    const ir = this._irRouting();
+    const hubId = this._hub?.hub_id ?? "";
+    if (!ir || !hubId) return A;
+    if (!irEmitterLastReadKnown(hubId)) {
+      queueMicrotask(() => {
+        void loadIrEmitterLastRead(this.api, hubId).then(() => this.requestUpdate());
+      });
+    }
+    return renderPanelIrPill({
+      idPrefix: "editor",
+      routing: ir.routing,
+      baseline: ir.baseline,
+      paired: irEmitterLastRead(hubId)?.paired ?? null,
+      open: this._irOpen,
+      menuStyle: this._irStyle,
+      checking: this._irChecking,
+      error: this._irError,
+      onToggle: this._toggleIr,
+      onClose: this._closeIr,
+      onChange: (next) => this._setIrRouting(next),
+      onUndo: () => this._setIrRouting(ir.baseline),
+      onRetry: () => {
+        void this._readIr();
+      }
+    });
   }
   // -- the step editor sub-view (the card's macro editor, device scope) -------------------------
   _openStepEditor(buttonId, name) {
@@ -25523,6 +26317,7 @@ var SbPanelDeviceEditor = class extends SbPanelEntityEditor {
                   </div>
                   <div class="detail-title" id="editor-title">${this._title}</div>
                 </div>
+                ${this._renderIrPill()}
                 ${this._offline && dirty ? b2`<span class="edit-unsaved-chip" id="editor-unsaved" title=${S5.unsavedTooltip}>${S5.unsaved}</span>` : A}
                 <div class="detail-title-actions">
                   ${callback ? A : b2`<button class="icon-btn" id="editor-rename" type="button" aria-label=${iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice} title=${iconHubLine(this._hubVersion) != null ? B3.editDevice : S5.renameDevice} @click=${() => this._openRename({ kind: "device" })}>${icon4(mdiPencil)}</button>`}
@@ -25833,7 +26628,10 @@ SbPanelDeviceEditor.properties = {
   _stepDialog: { state: true },
   _payloadDialog: { state: true },
   _payloadFetching: { state: true },
-  _addCommandPreparing: { state: true }
+  _addCommandPreparing: { state: true },
+  _irOpen: { state: true },
+  _irChecking: { state: true },
+  _irError: { state: true }
 };
 SbPanelDeviceEditor.styles = [
   PANEL_BASE_CSS,
@@ -25841,7 +26639,8 @@ SbPanelDeviceEditor.styles = [
   entityPickerStyles,
   appearanceEditorStyles,
   EDITOR_CSS,
-  OPERATION_PROGRESS_CSS
+  OPERATION_PROGRESS_CSS,
+  irEmitterStyles
 ];
 function defineDeviceEditor() {
   if (!customElements.get(DEVICE_EDITOR_TAG)) customElements.define(DEVICE_EDITOR_TAG, SbPanelDeviceEditor);

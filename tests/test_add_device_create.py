@@ -140,13 +140,13 @@ def test_empty_device_block_on_x1_fits_the_short_record() -> None:
 
 def test_empty_device_block_on_x2_carries_the_emitter_block() -> None:
     ir_block = build_empty_device_block("Projector", "ir", hub_version=HUB_VERSION_X2)
-    assert ir_block["extras"] == {"a": 0, "b": 0, "c": 1}
+    assert ir_block["extras"] == {"a": 0, "b": 0, "c": 7}
     body = build_device_create_payload(
         device_config_from_backup(ir_block, for_create=False), hub_version=HUB_VERSION_X2
     )[3:]
     parsed = parse_device_record(body, hub_version=HUB_VERSION_X2, entity_kind="device")
     assert parsed.extras_present is True
-    assert (parsed.extra_a, parsed.extra_b, parsed.extra_c) == (0, 0, 1)
+    assert (parsed.extra_a, parsed.extra_b, parsed.extra_c) == (0, 0, 7)
 
     wifi_block = build_empty_device_block("Bridge", "wifi_hue", hub_version=HUB_VERSION_X2)
     assert wifi_block["extras"] == {"a": 0, "b": 0, "c": 0}

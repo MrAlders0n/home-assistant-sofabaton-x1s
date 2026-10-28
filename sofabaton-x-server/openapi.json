@@ -1456,7 +1456,7 @@
         "type": "object"
       },
       "Device": {
-        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.",
+        "description": "One device from the hub's catalog.\n\n``power_state`` is the hub's live power byte for the device (0 off,\n1 on) as of the last devices fetch; None when the row carried no\nparseable record. The hub commits it with a macro-runtime lag after a\npower fire, so it is not an instantaneous read. ``idle_behavior`` is\nthe device's power-behaviour mode when known. ``sort`` is the hub's\nstored display position (what :meth:`AsyncXProxy.reorder_devices`\nwrites), ``0`` when the record carries none; ``devices()`` already\nlists in that order. ``icon`` and ``color_id`` as for :class:`Activity`.\n``emitters`` is an X2 device's IR emitter routing, the record's three\nbytes ``(a, b, c)`` (decode with :meth:`EmitterRouting.decode`); None\non the X1 and X1S, or when the record carries no routing.",
         "properties": {
           "brand": {
             "anyOf": [
@@ -1505,6 +1505,30 @@
           "device_id": {
             "title": "Device Id",
             "type": "integer"
+          },
+          "emitters": {
+            "anyOf": [
+              {
+                "maxItems": 3,
+                "minItems": 3,
+                "prefixItems": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emitters"
           },
           "icon": {
             "anyOf": [
@@ -2615,6 +2639,86 @@
           "mode"
         ],
         "title": "IdleBehaviorRequest",
+        "type": "object"
+      },
+      "IrEmitterDevice": {
+        "description": "A paired remote or repeater an X2 can send a device's IR from.\n\n``number`` is remote 1-5 or repeater 1-4, the numbering\n:class:`EmitterRouting` uses. ``online`` is as of the read.\n``port_cable`` says whether a repeater's IR port has a cable in it;\nNone for a remote.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "remote",
+              "repeater"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "integer"
+          },
+          "online": {
+            "title": "Online",
+            "type": "boolean"
+          },
+          "port_cable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port Cable"
+          }
+        },
+        "required": [
+          "kind",
+          "number",
+          "name",
+          "online"
+        ],
+        "title": "IrEmitterDevice",
+        "type": "object"
+      },
+      "IrEmitterStatusView": {
+        "description": "``GET /hubs/{id}/ir-emitters``: the paired remotes and repeaters an X2\ncan send a device's IR from.\n\n``paired`` lists them (single-button RF devices left out), null when\nthe hub did not answer the read or when there was no read yet.\n``read_at`` is when the list was read (epoch seconds), null when there\nwas no read yet. The hub's own emitter and both IR ports are always\navailable to route to, so they are not listed.",
+        "properties": {
+          "paired": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/IrEmitterDevice"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paired"
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At"
+          }
+        },
+        "required": [
+          "paired",
+          "read_at"
+        ],
+        "title": "IrEmitterStatusView",
         "type": "object"
       },
       "JobView": {
@@ -11798,6 +11902,102 @@
         },
         "security": [],
         "summary": "Hub identity from the connect banner",
+        "tags": [
+          "hub"
+        ]
+      }
+    },
+    "/api/v1/hubs/{hub_id}/ir-emitters": {
+      "get": {
+        "description": "X2 only (409 `not_x2` on another hub). Without `refresh` this returns the last read without asking the hub (both fields null before the first one); `refresh=true` reads the hub's paired-device list now, which takes a few seconds and needs control mode. A device's routing is its `emitters` in the device list and `device.extras` in the snapshot; change it with `PUT .../devices/{did}`. The routing applies to commands sent to the device; a payload play always fires from the hub's own emitters.",
+        "operationId": "getIrEmitters",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hub_id",
+            "required": true,
+            "schema": {
+              "title": "Hub Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "read the paired-device list from the hub now (a few seconds; needs control mode)",
+            "in": "query",
+            "name": "refresh",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "read the paired-device list from the hub now (a few seconds; needs control mode)",
+              "title": "Refresh",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IrEmitterStatusView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Gateway Timeout"
+          }
+        },
+        "security": [],
+        "summary": "The remotes and repeaters an X2 can send a device's IR from",
         "tags": [
           "hub"
         ]

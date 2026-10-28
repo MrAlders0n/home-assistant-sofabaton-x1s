@@ -29,6 +29,7 @@ from typing import Any, Mapping
 
 from .devices import validate_appearance
 from .entity_refs import iter_entity_references
+from .hub_versions import HUB_VERSION_X2
 
 # ── Wire constants (kept local so this module stays import-light/pure) ──
 POWER_ON_MACRO_BUTTON_ID = 198
@@ -482,14 +483,20 @@ def build_device_sync_plan(
     base_brand = str(base_block.get("brand") or "")
     edit_brand = str(edit_block.get("brand") or "")
     appearance = _appearance_changes(base_block, edit_block, hub_version)
-    if base_name != edit_name or base_brand != edit_brand or appearance:
+    emitters = _emitter_changes(base_block, edit_block, hub_version)
+    if base_name != edit_name or base_brand != edit_brand or appearance or emitters:
         # The brand slot rides along in the same record rewrite: for managed
         # Wifi Devices the HA layer stamps a refreshed m3-<key>-<hash> brand
         # into the edited bundle so a rename keeps the hub-side brand hash in
-        # step with the command-config store. Icon and color ride it too.
+        # step with the command-config store. Icon, color and the X2's IR
+        # emitter routing ride it too. A routing change needs no remote sync
+        # of its own: the vendor app sends none and the hub updates the
+        # remotes itself (bench 2026-10-28), so the step stays remote-neutral.
         payload: dict[str, Any] = {"device_id": device_id, "name": edit_name, **appearance}
         if base_brand != edit_brand:
             payload["brand"] = edit_brand
+        if emitters:
+            payload["emitters"] = emitters
         rename.append(
             SyncStep(
                 kind="device_rename",
@@ -572,10 +579,11 @@ def _device_immutable_signature(
     block = dict(trimmed.get("device") or {})
     block.pop("idle_behavior", None)
     block.pop("power_mode", None)
-    # The name, brand, icon and color (device_rename step) and head IP
-    # (device_ip step) are live-editable fields; exclude them from the
-    # signature so an edit to any of them stays in scope.
-    for key in ("name", "brand", "icon", "color_id", "ip_address"):
+    # The name, brand, icon, color and X2 emitter routing (device_rename
+    # step) and head IP (device_ip step) are live-editable fields; exclude
+    # them from the signature so an edit to any of them stays in scope
+    # (the planner checks the routing itself: X2 only, valid values).
+    for key in ("name", "brand", "icon", "color_id", "ip_address", "extras"):
         block.pop(key, None)
     trimmed["device"] = block
     # A command's *payload* (command_payload step) and *name* (command_rename
@@ -1334,6 +1342,54 @@ def _appearance_changes(
     if changes and hub_version is not None:
         validate_appearance(hub_version, **changes)
     return changes
+
+
+# Hub emitter bits (tail[21] bits 0-2) the vendor app offers: none, the
+# built-in emitter, port 1, port 2, or all three. Another mix already on the
+# record is kept as it is; the editor cannot pick one.
+_HUB_EMITTER_CHOICES = frozenset({0x00, 0x01, 0x02, 0x04, 0x07})
+
+
+def _extras_triple(block: Mapping[str, Any]) -> tuple[int, int, int] | None:
+    extras = block.get("extras")
+    if not isinstance(extras, Mapping):
+        return None
+    return (_int(extras.get("a"), -1), _int(extras.get("b"), -1), _int(extras.get("c"), -1))
+
+
+def _emitter_changes(
+    base_block: Mapping[str, Any],
+    edit_block: Mapping[str, Any],
+    hub_version: str | None,
+) -> list[int] | None:
+    """The X2 IR emitter routing (``device.extras``) an edited ``device``
+    block changes, as ``[a, b, c]`` for the head step; None when unchanged.
+
+    X2 only (checked when the hub line is known). The RF-button byte ``a``
+    is carried, never changed; the hub bits take one of the vendor's
+    choices (or keep a mix already there); at least one emitter stays
+    picked. Anything else raises ``ValueError``.
+    """
+
+    base = _extras_triple(base_block)
+    edit = _extras_triple(edit_block)
+    if edit == base:
+        return None
+    if edit is None:
+        raise ValueError("the edited device drops its IR emitter routing (out-of-scope changes)")
+    if hub_version is not None and hub_version != HUB_VERSION_X2:
+        raise ValueError(f"IR emitter routing exists on the X2 only, not on the {hub_version} (out-of-scope changes)")
+    if any(not 0 <= value <= 0xFF for value in edit):
+        raise ValueError(f"IR emitter routing bytes must be 0-255, got {list(edit)}")
+    a, b, c = edit
+    base_a, _base_b, base_c = base if base is not None else (0, 0, 0)
+    if a != base_a:
+        raise ValueError("the RF-button byte of the IR emitter routing cannot be changed")
+    if (c & 0x07) not in _HUB_EMITTER_CHOICES and (c & 0x07) != (base_c & 0x07):
+        raise ValueError(f"hub emitters 0x{c & 0x07:02X} are not one of the choices (all, built-in, port 1, port 2)")
+    if b == 0 and c == 0:
+        raise ValueError("the IR emitter routing needs at least one emitter")
+    return [a, b, c]
 
 
 def _plan_rename(

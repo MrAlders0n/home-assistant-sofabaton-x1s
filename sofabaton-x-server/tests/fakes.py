@@ -112,6 +112,11 @@ class FakeProxy:
         self.batches = 0
         self.probes: list[int] = []
         self.probe_hook = None
+        # The X2's IR emitter read: what a fresh read returns, the last one
+        # kept (as the facade keeps it), and how often the hub was asked.
+        self.ir_emitters = None
+        self.last_ir_emitters = None
+        self.ir_emitter_reads = 0
         self.activities_data = [
             Activity(activity_id=101, name="Watch TV", active=False, needs_confirm=False),
             Activity(activity_id=102, name="Music", active=False, needs_confirm=False),
@@ -202,6 +207,21 @@ class FakeProxy:
 
     async def current_activity(self):
         return None if self.running is None else {"activity_id": self.running.activity_id, "name": self.running.name}
+
+    async def ir_emitter_status(self, *, refresh: bool = True):
+        """Like the facade: None off the X2; ``refresh=False`` is the last read
+        without hub traffic; a refresh raises the typed refusals, then reads."""
+
+        if self.model != "X2":
+            return None
+        if not refresh:
+            return self.last_ir_emitters
+        self._maybe_fail()
+        if self.refuse:
+            raise HubBusyError("cannot fetch 'ir_emitter_status': an app client is connected and holds the hub")
+        self.ir_emitter_reads += 1
+        self.last_ir_emitters = self.ir_emitters
+        return self.ir_emitters
 
     # -- control -------------------------------------------------------------
 

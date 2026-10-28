@@ -340,3 +340,100 @@ def test_a_write_refused_while_the_remote_updates_is_a_409_to_retry(tmp_path: Pa
         job = _wait(client, r.json()["job_id"])
         assert job["status"] == "failed" and job["error"]["type"] == "remote_syncing" and job["error"]["status"] == 409
         assert job["error"]["title"] == "The hub is updating its remote"
+
+
+def _device(doc, device_id):
+    return copy.deepcopy(next(d for d in doc["devices"] if d["device"]["device_id"] == device_id))
+
+
+def test_device_edit_writes_the_x2_emitter_routing_in_one_step(tmp_path: Path) -> None:
+    client, factory = _rig(tmp_path)
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+        proxy.model = "X2"
+        proxy.fetched = {1, 2, 101, 102}
+        proxy.device_blocks[1] = {"extras": {"a": 0, "b": 0, "c": 0x07}}       # hub, all emitters
+        doc, etag = _snapshot(client)
+        device = _device(doc, 1)
+        device["device"]["extras"] = {"a": 0, "b": 0, "c": 0x0C}                 # port 2 and remote 1
+
+        # One record rewrite and no remote sync: the hub updates its remotes itself.
+        plan = client.post(f"{H}/devices/1/plan", json=device)
+        assert plan.status_code == 200, plan.text
+        assert [s["kind"] for s in plan.json()["steps"]] == ["device_rename"] and plan.json()["step_count"] == 1
+        # Remote only (no hub emitter) is a valid pick too.
+        remote_only = copy.deepcopy(device)
+        remote_only["device"]["extras"] = {"a": 0, "b": 0, "c": 0x08}
+        plan = client.post(f"{H}/devices/1/plan", json=remote_only)
+        assert plan.status_code == 200 and [s["kind"] for s in plan.json()["steps"]] == ["device_rename"], plan.text
+
+        r = client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})
+        assert r.status_code == 202 and r.json()["kind"] == "sync_device", r.text
+        job = _wait(client, r.json()["job_id"])
+        assert job["status"] == "done", job
+        assert len(proxy.syncs) == 1
+        sync = proxy.syncs[-1]
+        assert sync["entity_id"] == 1 and sync["snapshot_id"] == doc["snapshot_id"]
+        assert _device(sync["baseline"], 1)["device"]["extras"] == {"a": 0, "b": 0, "c": 0x07}
+        assert _device(sync["edited"], 1)["device"]["extras"] == {"a": 0, "b": 0, "c": 0x0C}
+        assert _device(client.get(f"{H}/snapshot").json(), 1)["device"]["extras"]["c"] == 0x0C
+
+
+def test_device_edit_refuses_a_routing_the_hub_cannot_take(tmp_path: Path) -> None:
+    client, factory = _rig(tmp_path)
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+        proxy.model = "X2"
+        proxy.fetched = {1, 2, 101, 102}
+        proxy.device_blocks[1] = {"extras": {"a": 0, "b": 0, "c": 0x07}}
+        doc, etag = _snapshot(client)
+        for extras, detail in (
+            ({"a": 0, "b": 0, "c": 0}, "at least one emitter"),
+            ({"a": 1, "b": 0, "c": 0x07}, "RF-button byte"),
+            ({"a": 0, "b": 0, "c": 0x03}, "not one of the choices"),
+        ):
+            device = _device(doc, 1)
+            device["device"]["extras"] = extras
+            for r in (client.post(f"{H}/devices/1/plan", json=device),
+                      client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})):
+                assert r.status_code == 422, r.text
+                assert r.json()["type"] == "out_of_scope" and detail in r.json()["detail"], r.text
+        # Dropping the routing is refused too.
+        device = _device(doc, 1)
+        del device["device"]["extras"]
+        r = client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})
+        assert r.status_code == 422 and r.json()["type"] == "out_of_scope", r.text
+        assert proxy.syncs == []                                     # refused before any job
+
+
+def test_device_edit_refuses_a_routing_off_the_x2(tmp_path: Path) -> None:
+    client, factory = _rig(tmp_path)                                 # an X1S
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+        proxy.fetched = {1, 2, 101, 102}
+        doc, etag = _snapshot(client)
+        device = _device(doc, 1)
+        device["device"]["extras"] = {"a": 0, "b": 0, "c": 0x07}
+        r = client.put(f"{H}/devices/1", json=device, headers={"If-Match": etag})
+        assert r.status_code == 422, r.text
+        assert r.json()["type"] == "out_of_scope" and "X2 only" in r.json()["detail"]
+        assert proxy.syncs == []
+
+
+def test_add_device_leaves_the_x2_ir_routing_to_the_library(tmp_path: Path) -> None:
+    from sofabaton.device_class_profiles import build_empty_device_block
+
+    client, factory = _rig(tmp_path)
+    with client:
+        client.post(HUBS, json={"host": HOST})
+        proxy = factory.latest(HOST)
+        proxy.model = "X2"
+        r = client.post(f"{H}/devices", json={"name": "Fan", "device_class": "ir"})
+        assert r.status_code == 202 and _wait(client, r.json()["job_id"])["status"] == "done"
+        # The route passes no routing: the device gets the library's create default.
+        assert proxy.intents[-1] == ("add_device", ("Fan", "ir")) and proxy.create_appearance == (None, None)
+    # Which is the hub with all its emitters (built-in and both ports), as the Sofabaton app creates one.
+    assert build_empty_device_block("Fan", "ir", hub_version="X2")["extras"] == {"a": 0, "b": 0, "c": 0x07}

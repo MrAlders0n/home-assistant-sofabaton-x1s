@@ -1334,9 +1334,70 @@ export const TOOLS_CARD_STRINGS_EN = {
     brokerCredentialsTooLong: "The username and password together are too long for the hub. Use shorter credentials.",
     brokerDone: "Done",
   },
+  // The IR pill of an X2 IR device (the Hub editor's device header, the
+  // device list rows; the server panel takes the same table) and its
+  // dropdown: which emitters send the device's IR.
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "IR emitters",
+    pillAttention: "An emitter needs attention.",
+    pillPending: "Changes on the next Sync.",
+    rowAttention: "An emitter of this device needs attention.",
+    title: "Where this device's IR comes from",
+    intro: "Pick the emitters that send this device's commands.",
+    scope: "This applies to commands sent to this device. Test plays and the Home Assistant Infrared entity always fire from the hub.",
+    checking: "Checking the paired remotes and repeaters…",
+    readBusy: "The hub is busy, so the paired remotes and repeaters weren't checked.",
+    readUnavailable: "The Sofabaton app is connected to the hub, so the paired remotes and repeaters weren't checked.",
+    readNoAnswer: "The hub didn't list its paired remotes and repeaters.",
+    readFailed: "The paired remotes and repeaters couldn't be checked.",
+    readKept: "The rows show the last check.",
+    checkAgain: "Check again",
+    sendFrom: "Send IR from",
+    hub: "Hub",
+    hubSub: "Built-in emitter and IR ports 1 and 2",
+    hubChoices: "Hub emitters",
+    all: "All",
+    builtin: "Built-in",
+    port1: "Port 1",
+    port2: "Port 2",
+    port: "Port",
+    hubCustom: (mix: "builtin_port1" | "builtin_port2" | "ports") =>
+      mix === "ports" ? "Now: IR ports 1 and 2"
+        : mix === "builtin_port1" ? "Now: built-in emitter and IR port 1"
+          : "Now: built-in emitter and IR port 2",
+    hubCustomNote: "Kept as it is until you pick one of the choices.",
+    repeaterNumber: (number: number) => `Repeater ${number}`,
+    remoteNumber: (number: number) => `Remote ${number}`,
+    repeaterChoices: (name: string) => `${name} emitters`,
+    online: "online",
+    offline: "offline",
+    notPaired: "no longer paired",
+    remoteOnNote: "The hub passes this device's commands to the remote, which sends them from its own emitter.",
+    repeaterOffline: (name: string) => `${name} is offline`,
+    repeaterOfflineHint: "Commands sent through it don't reach the device until it's back. Check its power and its distance to the hub.",
+    notPairedTitle: (name: string) => `${name} is no longer paired`,
+    notPairedHint: "Commands routed to it go nowhere. Untick it here, or pair it again in the Sofabaton app.",
+    remoteOnly: (count: number) => count === 1
+      ? "Commands sent to this device fire from the remote only."
+      : "Commands sent to this device fire from the remotes only.",
+    repeaterOnly: (count: number) => count === 1
+      ? "Commands sent to this device fire from the repeater only."
+      : "Commands sent to this device fire from the repeaters only.",
+    noHub: "Commands sent to this device fire from the picked remotes and repeaters only.",
+    noHubHint: "The hub's own emitters stay quiet for it.",
+    duplicateHint: "Pick only the emitters you need. Two emitters that both reach the device send each command twice.",
+    lastOneHint: "At least one emitter stays picked.",
+    undo: "Undo",
+  },
 } as const;
 
 export type ToolsCardStrings = typeof TOOLS_CARD_STRINGS_EN;
+
+/** Sections whose translations are still to come: a complete translation
+ *  may leave them out, and they show in English meanwhile (the IR pill,
+ *  2026-10-28). Move a section out of here once every catalogue has it. */
+type UntranslatedSections = "irEmitters";
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: infer Args) => any
@@ -1367,7 +1428,8 @@ type DeepTranslation<T> = {
 };
 
 export type ToolsCardTranslation = DeepPartial<ToolsCardStrings>;
-export type CompleteToolsCardTranslation = DeepTranslation<ToolsCardStrings>;
+export type CompleteToolsCardTranslation =
+  DeepTranslation<Omit<ToolsCardStrings, UntranslatedSections>> & DeepPartial<Pick<ToolsCardStrings, UntranslatedSections>>;
 
 const TRANSLATIONS: Record<string, ToolsCardTranslation> = {};
 let currentLanguage = "en";

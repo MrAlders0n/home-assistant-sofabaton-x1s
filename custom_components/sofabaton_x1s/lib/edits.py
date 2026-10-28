@@ -19,6 +19,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Optional, Sequence
 
+from .emitter_routing import EmitterRouting
 from .payloads import CommandPayload, CommandRecord, NetworkCommand
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
@@ -45,6 +46,7 @@ __all__ = [
     "rename_device",
     "set_activity_appearance",
     "set_device_appearance",
+    "set_device_emitters",
     "bind_button",
     "clear_button",
     "add_favorite",
@@ -133,6 +135,21 @@ def set_device_appearance(
     ``device_id``), checked as in :func:`set_activity_appearance`."""
 
     return _set_appearance(bundle, "device", device_id, icon, color_id)
+
+
+def set_device_emitters(bundle: dict[str, Any], device_id: int, routing: EmitterRouting) -> dict[str, Any]:
+    """Set which emitters send an X2 device's IR (a ``sync_device`` on
+    ``device_id``). Build ``routing`` from the device's current one
+    (``EmitterRouting.decode`` of its ``device.extras``) with the
+    ``with_*`` changes, so the bits it does not touch stay as they are.
+    The sync refuses it on the X1 and X1S, with no emitter at all, or with
+    the RF-button byte changed. Commands sent to the device follow the
+    routing; one-shot plays use the hub's emitters regardless."""
+
+    edited, device = _edit(bundle, "device", device_id)
+    a, b, c = routing.encode()
+    device["device"]["extras"] = {"a": a, "b": b, "c": c}
+    return edited
 
 
 def bind_button(

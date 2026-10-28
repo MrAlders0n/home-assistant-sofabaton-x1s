@@ -50,8 +50,27 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   records and the order-only and per-item syncs were validated on:
   `firmware_outdated` is true for an X2 below it. The supported floor
   (`firmware_unsupported`) is unchanged.
+- A new X2 IR device (`add_device(name, "ir")`) now sends its IR from all
+  of the hub's emitters, the built-in one and both IR ports (routing
+  `00 00 07`), as the Sofabaton app's database create does. It used to be
+  the built-in emitter only (`00 00 01`), so a device created here never
+  fired from a port cable.
 
 ### Added
+
+- `Device.emitters`: an X2 device's IR emitter routing, the record's
+  three bytes `(a, b, c)` (decode with `EmitterRouting.decode`); None on
+  the X1 and X1S.
+- `sync_device()` changes an X2 device's IR emitter routing: edit
+  `device.extras` (`{"a", "b", "c"}`) in the bundle, or use
+  `edits.set_device_emitters(bundle, device_id, routing)` with an
+  `EmitterRouting`. It rides the same record write as a rename (no remote
+  sync: the hub updates the remotes itself). The sync refuses a routing
+  change on the X1 and X1S, one with no emitter left, one that changes
+  the RF-button byte, and a hub mix other than all, built-in, port 1 or
+  port 2 (a mix already on the record may stay). Commands sent to the
+  device follow the routing; one-shot plays (`play`) use the hub's
+  emitters whatever it says.
 
 - `Activity.icon` / `Device.icon` (the hub's icon id) and
   `Activity.color_id` / `Device.color_id` (the X2 palette id, `0` when none
@@ -79,6 +98,20 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   a bare `HubRejectedError`, and a sync reports it as
   `SyncResult.reason == "remote_syncing"`. Nothing waits or retries: wait
   until the remote is done, then write again.
+- `EmitterRouting`: the X2's per-device IR emitter routing, the three bytes
+  after the `0xFC` at tail[18] (`DeviceConfig.extra_a/b/c`). It decodes the
+  hub's choice (`all`, `builtin`, `port1`, `port2`, or `custom` for another
+  mix, kept as it is), remotes 1-5 and repeaters 1-4 (`all`, `builtin`,
+  `port`), and changes one of them at a time with every other bit kept.
+  Bench-validated on the X2: commands sent to a device follow it; one-shot
+  plays (`play`) use the hub's emitters whatever it says.
+- `ir_emitter_status(refresh=True)` (X2): the paired remotes and repeaters
+  a device's IR can be routed to, with their online state, as an
+  `IrEmitterStatus` of `IrEmitterDevice` rows (the hub's own emitters and
+  both IR ports are always available, so they are not read). A refresh
+  asks the hub for its paired-device list after it polls its devices (a
+  few seconds); `refresh=False` returns the last read without asking.
+  `None` on the X1 and X1S.
 
 ### Fixed
 

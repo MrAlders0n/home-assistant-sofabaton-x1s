@@ -132,6 +132,21 @@ def test_appearance_rides_the_rename_write() -> None:
     ]
 
 
+def test_set_device_emitters_plans_one_head_write() -> None:
+    routing = importlib.import_module(f"{_pkg.__name__}.emitter_routing")
+    base = _bundle()
+    edits_base = copy.deepcopy(base)
+    _find_device = lambda bundle: next(d for d in bundle["devices"] if d["device"]["device_id"] == 5)  # noqa: E731
+    _find_device(edits_base)["device"]["extras"] = {"a": 0, "b": 0, "c": 7}
+    current = routing.EmitterRouting.decode(0, 0, 7)
+    edited = edits.set_device_emitters(edits_base, 5, current.with_hub("port2").with_remote(1, True))
+    assert _find_device(edited)["device"]["extras"] == {"a": 0, "b": 0, "c": 0x0C}
+    assert _find_device(edits_base)["device"]["extras"] == {"a": 0, "b": 0, "c": 7}  # the input is untouched
+    assert _device_plan(edits_base, edited, 5) == [
+        ("device_rename", {"device_id": 5, "name": "TV", "emitters": [0, 0, 0x0C]}),
+    ]
+
+
 def test_appearance_is_checked_against_the_hub_line() -> None:
     base = _bundle()
     plan = activity_sync.build_activity_sync_plan

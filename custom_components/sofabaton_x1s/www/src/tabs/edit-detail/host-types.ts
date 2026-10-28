@@ -85,6 +85,23 @@ export interface DeliveryHost {
   setBusy(busy: boolean, label: string | null): void;
 }
 
+/**
+ * What the IR pill of an X2 IR device needs from the live host: Home
+ * Assistant (the paired remotes and repeaters read), the hub, the routing
+ * the hub has (the captured baseline, for the pending state and Undo) and
+ * the shared hub lock. Absent in the offline Backup editor, which shows no
+ * pill.
+ */
+export interface IrEmitterHost {
+  hass(): HassLike | null;
+  hubEntryId(): string;
+  /** The device's routing bytes as the hub has them (`device.extras`). */
+  baselineExtras(deviceId: number): { a: number; b: number; c: number } | null;
+  /** Another hub operation runs. */
+  locked(): boolean;
+  setBusy(busy: boolean, label: string | null): void;
+}
+
 // "copy" brings another activity's macro over verbatim; it is not a "new" item (nothing to fill in).
 export type MacroTargetMode = "existing" | "new" | "copy";
 

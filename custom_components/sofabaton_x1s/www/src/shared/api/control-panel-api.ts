@@ -16,6 +16,7 @@ import type {
   SidebarPanelMode,
   IrEmissionsEvent,
   IrEmitterConsumersResponse,
+  IrEmitterStatusResponse,
   IrLearnEvent,
   IrPayloadConvertResponse,
   IrPayloadForeignFormat,
@@ -182,6 +183,16 @@ export class ControlPanelApi {
     return this.hass.callWS<IrEmitterConsumersResponse>({
       type: "sofabaton_x1s/ir_emitter/consumers",
       entry_id: entryId,
+    });
+  }
+
+  /** An X2's paired remotes and repeaters for the IR pill: `refresh` asks
+   *  the hub (a few seconds), otherwise the last read without asking. */
+  getIrEmitterStatus(entryId: string, refresh = false) {
+    return this.hass.callWS<IrEmitterStatusResponse>({
+      type: "sofabaton_x1s/ir_emitters/status",
+      entry_id: entryId,
+      refresh,
     });
   }
 

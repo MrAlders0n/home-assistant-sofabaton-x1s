@@ -1239,6 +1239,47 @@ def test_device_rename_step_writes_icon_and_color(monkeypatch):
     assert parse_device_record(cached["raw_body"], hub_version="X2").icon == 13
 
 
+def test_device_rename_step_writes_the_emitter_routing(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+        record_emitters,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(
+        name="Projector", device_id=3, icon=4, color_id=2, extra_a=0, extra_b=0, extra_c=0x07, extras_present=True
+    )
+    cached = {"raw_body": build_device_create_payload(original, hub_version="X2")[3:], "name": "Projector"}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X2"
+            self.state = SimpleNamespace(entities=lambda kind: {3: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+    monkeypatch.setattr(
+        pas, "run_create_sequence", lambda proxy, steps: captured.extend(steps) or SimpleNamespace(success=True)
+    )
+
+    assert RenameProxy()._sync_step_device_rename(
+        {"device_id": 3, "name": "Projector", "emitters": [0, 0, 0x08]}
+    ) is True
+    written = parse_device_record(bytes(captured[0].payload[3:]), hub_version="X2")
+    assert (written.extra_a, written.extra_b, written.extra_c, written.extras_present) == (0, 0, 0x08, True)
+    assert (written.name, written.icon, written.color_id) == ("Projector", 4, 2)
+    # Only the routing byte (and the checksum) moved.
+    before = build_device_create_payload(original, hub_version="X2")
+    changed = [i for i, (x, y) in enumerate(zip(before, captured[0].payload, strict=True)) if x != y]
+    assert len(changed) == 2 and changed[-1] == len(before) - 1
+    assert record_emitters(cached["raw_body"], hub_version="X2") == (0, 0, 0x08)
+
+
 def test_wifi_head_commit_keeps_icon_and_color(monkeypatch):
     """The Wifi Commands head rewrite rebuilds the callback head from
     scratch; the icon and the X2 color must come through it, or every

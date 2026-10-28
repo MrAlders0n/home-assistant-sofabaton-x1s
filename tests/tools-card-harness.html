@@ -1789,6 +1789,28 @@
               wsLog(type, "err");
               return Promise.reject({ code: "uc_hex_unsupported_protocol", message: `protocol ${text.split(";")[0].trim()}` });
             }
+            case "sofabaton_x1s/ir_emitters/status": {
+              // The IR pill's read (docs/internal/ir-emitter-pill-plan.md):
+              // scenarios set `irEmitters: { last, fresh, refreshError, delayMs }`.
+              // Without refresh: the kept read (no hub exchange); with it, the
+              // paired list after the hub's poll, kept for the next ask.
+              const ir = scenario.irEmitters;
+              if (!ir) return Promise.reject({ code: "not_supported", message: "Only an X2 hub routes IR to its remotes and ports" });
+              if (mock.irEmittersLast === undefined) {
+                mock.irEmittersLast = ir.last ? { available: true, paired: ir.last, read_at: Date.now() / 1000 - 600 } : { available: true, paired: null, read_at: null };
+              }
+              if (!message.refresh) return respond(type, mock.irEmittersLast);
+              return new Promise((resolve, reject) => setTimeout(() => {
+                if (ir.refreshError) {
+                  wsLog(type, "err");
+                  reject({ code: ir.refreshError, message: "The hub can't be read right now" });
+                  return;
+                }
+                mock.irEmittersLast = { available: true, paired: ir.fresh ?? ir.last ?? [], read_at: Date.now() / 1000 };
+                wsLog(type, "res");
+                resolve(clone(mock.irEmittersLast));
+              }, ir.delayMs ?? 600));
+            }
             case "sofabaton_x1s/ir_emitter/consumers":
               return respond(type, scenario.irEmitterConsumers ?? {
                 available: true,
@@ -2156,6 +2178,90 @@
 
     async function openActivityEditor(card, activityName) {
       return openLiveEditor(card, "Activities", activityName);
+    }
+
+    // ── The IR pill's fixtures (X2 only) ──────────────────────────────────────
+
+    const IR_REMOTE = { kind: "remote", number: 1, name: "X2 Remote", online: true, port_cable: null };
+    const IR_CABINET = { kind: "repeater", number: 1, name: "Cabinet", online: true, port_cable: true };
+    const IR_BEDROOM = { kind: "repeater", number: 2, name: "Bedroom", online: false, port_cable: null };
+    const STATES_X2 = {
+      "remote.living_room": {
+        ...STATES_CONNECTED["remote.living_room"],
+        attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
+      },
+    };
+
+    /** The Hub tab's rows with Television's routing bytes (the cache view's `emitters`). */
+    function irContents(extras) {
+      return {
+        ...BASE_CONTENTS,
+        hubs: [{
+          ...BASE_CONTENTS.hubs[0],
+          devices_list: BASE_CONTENTS.hubs[0].devices_list.map((row) => (
+            row.device_class === "ir" ? { ...row, emitters: row.id === 1 ? [extras.a, extras.b, extras.c] : [0, 0, 7] } : row
+          )),
+        }],
+      };
+    }
+
+    /** The X2 bundle with routing bytes on its IR devices (Television's as given). */
+    function irBundle(extras) {
+      const bundle = clone(EDIT_BACKUP_BUNDLE);
+      bundle.hub = { ...bundle.hub, version: "X2" };
+      bundle.devices = bundle.devices.map((entry) => ({
+        ...entry,
+        device: {
+          ...entry.device,
+          extras: entry.device.device_class === "ir" ? (entry.device.device_id === 1 ? { ...extras } : { a: 0, b: 0, c: 7 }) : null,
+        },
+      }));
+      return bundle;
+    }
+
+    /** Open the Television's IR pill and wait for the paired-list read. */
+    async function openIrPill(card) {
+      const editor = card.shadowRoot.querySelector("sofabaton-activities-tab");
+      const detail = editor?.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+      const pill = detail?.shadowRoot?.querySelector("button.ir-pill");
+      if (!pill) throw new Error("openIrPill: the IR pill is not in the header");
+      pill.click();
+      for (let attempt = 0; attempt < 80 && (detail._irPill.checking || !detail._irPill.open); attempt += 1) {
+        await new Promise(r => setTimeout(r, 25));
+      }
+      await detail.updateComplete;
+    }
+
+    /** One IR pill scenario: an X2 hub, the Television with `extras`, the
+     *  last read `last`; `baselineExtras` (when given) is what the hub has,
+     *  and `extras` is then a pick waiting for Sync. */
+    function irEditorScenario({ id, label, extras, baselineExtras, last = null, fresh, refreshError, open = false }) {
+      const onHub = baselineExtras ?? extras;
+      return {
+        id, label, group: "Activity Editor",
+        states: STATES_X2,
+        irEmitters: { last, fresh: fresh ?? last ?? [], refreshError },
+        contents: irContents(onHub),
+        handlers: {
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: irBundle(onHub), generation: 1 }),
+        },
+        async postLoad(card) {
+          await openLiveEditor(card, "Devices", "Television");
+          if (baselineExtras) {
+            const detail = card.shadowRoot.querySelector("sofabaton-activities-tab")?.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+            await detail?.updateComplete;
+            const bundle = detail?.bundle;
+            if (bundle) {
+              detail._commitEditBundleEdit({
+                ...bundle,
+                devices: bundle.devices.map((entry) => (entry.device?.device_id === 1 ? { ...entry, device: { ...entry.device, extras: { ...extras } } } : entry)),
+              });
+            }
+            await detail?.updateComplete;
+          }
+          if (open) await openIrPill(card);
+        },
+      };
     }
 
     // Click an ha-switch found near labelText inside the card's shadow root.
@@ -2629,6 +2735,54 @@
         },
         async postLoad(card) {
           await openLiveEditor(card, "Devices", "Home Assistant");
+        },
+      },
+      // The IR pill of an X2 IR device (docs/internal/ir-emitter-pill-plan.md, IR3):
+      // the mockup's scenarios, after the 2026-10-28 decisions (both ports
+      // always pickable, no cable state).
+      ...[
+        {
+          id: "device-editor-ir-hub", group: "Activity Editor", label: "Device editor — X2 IR device, IR pill: Hub, all ports (the default)",
+          extras: { a: 0, b: 0, c: 0x07 }, last: [IR_REMOTE],
+        },
+        {
+          id: "device-editor-ir-repeaters", group: "Activity Editor", label: "Device editor — X2 IR pill with two repeaters (Bedroom offline)",
+          extras: { a: 0, b: 0b11, c: 0x01 }, last: [IR_REMOTE, IR_CABINET, IR_BEDROOM],
+        },
+        {
+          id: "device-editor-ir-remote-only", group: "Activity Editor", label: "Device editor — X2 IR pill: only the remote sends (neutral note)",
+          extras: { a: 0, b: 0, c: 0x08 }, last: [IR_REMOTE],
+        },
+        {
+          id: "device-editor-ir-unpaired", group: "Activity Editor", label: "Device editor — X2 IR pill: routed to a remote that is no longer paired (amber)",
+          extras: { a: 0, b: 0, c: 0x07 | 0x10 }, last: [IR_REMOTE, IR_CABINET],
+        },
+        {
+          id: "device-editor-ir-custom", group: "Activity Editor", label: "Device editor — X2 IR pill: a hub mix the four choices cannot name",
+          extras: { a: 0, b: 0, c: 0x05 }, last: [IR_REMOTE],
+        },
+        {
+          id: "device-editor-ir-busy", group: "Activity Editor", label: "Device editor — X2 IR pill: the read is refused (hub busy)",
+          extras: { a: 0, b: 0, c: 0x07 }, last: [IR_REMOTE], refreshError: "busy",
+        },
+        {
+          id: "device-editor-ir-open", group: "Activity Editor", label: "Device editor — X2 IR pill open: a repeater offline, the pick pending",
+          extras: { a: 0, b: 0b1111, c: 0x07 }, baselineExtras: { a: 0, b: 0b11, c: 0x07 }, last: [IR_REMOTE, IR_CABINET, IR_BEDROOM], open: true,
+        },
+      ].map(irEditorScenario),
+      {
+        id: "hub-x2-ir-attention", group: "Hub Tab",
+        label: "Hub — an X2 IR device whose routing needs attention (read-only amber IR pill)",
+        states: STATES_X2,
+        irEmitters: { last: [IR_REMOTE, IR_CABINET, IR_BEDROOM] },
+        contents: irContents({ a: 0, b: 0b1100, c: 0x07 }),
+        postLoad: async (card) => {
+          await clickTab(card, "Hub");
+          await selectCacheSection(card, "devices");
+          for (let attempt = 0; attempt < 20 && !card.shadowRoot.querySelector(".ir-pill"); attempt += 1) {
+            await new Promise(r => setTimeout(r, 25));
+            await card.updateComplete;
+          }
         },
       },
       {

@@ -1,6 +1,6 @@
 {
   "pyright": "1.1.414",
-  "errors": 216,
+  "errors": 203,
   "entries": [
     {
       "file": "custom_components/sofabaton_x1s/lib/activity_sync.py",
@@ -403,18 +403,6 @@
       "rule": "reportArgumentType",
       "message": "Argument of type \"Unknown | Any | None\" cannot be assigned to parameter \"x\" of type \"ConvertibleToInt\" in function \"__new__\"",
       "count": 2
-    },
-    {
-      "file": "sofabaton-x-server/src/sofabaton_server/routes_hub_data.py",
-      "rule": "reportArgumentType",
-      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"get\"",
-      "count": 8
-    },
-    {
-      "file": "sofabaton-x-server/src/sofabaton_server/routes_hub_data.py",
-      "rule": "reportArgumentType",
-      "message": "Argument of type \"dict[int, dict[str, type[Problem]]]\" cannot be assigned to parameter \"responses\" of type \"dict[int | str, dict[str, Any]] | None\" in function \"post\"",
-      "count": 5
     },
     {
       "file": "sofabaton-x-server/src/sofabaton_server/routes_mqtt.py",

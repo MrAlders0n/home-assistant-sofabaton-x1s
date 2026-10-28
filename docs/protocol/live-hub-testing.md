@@ -2743,3 +2743,54 @@ place and replace. Both hubs passed 28/28.
 - **Nothing else changes.** Every other activity reads the same before and
   after (read stamps aside), nothing points at the old device id, and the
   old device is gone.
+
+## ◇ Validated: X2 IR emitter routing (X2, 2026-10-28)
+
+`bench_339_ir_emitter_gates.py` on the production X2, sandbox IR device only
+(created in the vendor app, deleted after, real catalog compared clean), HA
+entry off for the run and re-enabled after. The vendor app was attached
+through the proxy for every change, so each write below is the app's own.
+
+- **Routing bytes.** X2 device record tail[18] = `FC`, tail[19..21] the
+  routing. Last byte: bit 0 built-in, bit 1 port 1, bit 2 port 2, bit 3
+  remote 1 (bits 3-7 remotes 1-5). The production devices read `00 00 02`
+  (port 1 only), `00 00 04` (port 2 only), `00 00 01` (built-in only);
+  Bluetooth and RF devices `00 00 07`; Wifi records `00 00 00` or no block.
+- **App create (IR database).** `0xD507` create with id `FF`, answered
+  `0x0107 [new id]`, then a `0xD508` update with the assigned id. Both carry
+  `00 00 07` (hub, all emitters). Also brand and code id from the database,
+  color 1, `bt_mode` FF, `power_style` 2, `share_mode` 0, `tail_marker` 1.
+- **App routing change.** One `0xD508` record update in which only tail[21]
+  changes (07 -> 04 -> 08 on the bench), acked `0x0103 [00]`, read back as
+  written. The app sends **no remote-sync frame** after it (none after a
+  create or a rename either). On a change to remote-only routing the remote
+  ran a short sync without its sync screen, started by the hub.
+- **What the app reads on its emitter screen.** `0x0032` (hub-name reply,
+  family `0x31`) and the stored paired list `0x012E [00]`, each time the
+  screen opens.
+- **`0x0032`'s first two bytes are not reliable cable flags.** They read
+  `00 00` or `01 01` (always both the same), flipping every 10-35 s with both
+  cables plugged in and untouched (two watches, 3 s apart). The app does use
+  them: on `00 00` it would not let a single port be picked, on `01 01` it
+  did.
+- **Sent commands follow the routing.** A TCP send (`send_command`, what HA's
+  `remote.send_command` uses): hub all -> built-in and the port 2 cable both
+  fire; port 2 only -> only the port 2 cable fires; remote 1 only -> only the
+  remote fires (the hub and the cable stay dark; one flash seen for two
+  sends 5 s apart).
+- **`0x0F` plays ignore the routing.** A one-shot play fires from the hub's
+  emitters (built-in and the port 2 cable seen) whatever the device's
+  routing. The three bytes after the play body's page count (`00 00 00`)
+  are not a target: `00 00 04` and `00 00 01` there fired the same emitters.
+- Not run: the learn-flow create, built-in only, a repeater (none paired),
+  port 1 on camera (its cable sits in a ceiling box).
+- **Routing writes through the library and through HA (2026-10-28).**
+  `bench_340_ir_emitters.py` (facade, HA entry off, sandbox "J IR Route")
+  29/29 and `bench_341_ir_pill_ha.py` (HA's own WS, sandbox "J IR Pill")
+  16/16. A new IR device gets `00 00 07`; built-in, port 1, port 2 and
+  remote-1-only each land as one record write (about 7.5 s with read-back)
+  and read back exactly, name kept; a routing sync started about 2 s after
+  a remote-only sync finished is accepted (the hub's own remote update does
+  not refuse it); a routing with no emitter is refused before any write;
+  HA's `ir_emitters/status` lists Remote 1 on refresh and the cache rows
+  carry `emitters`. Both sandbox devices deleted, real catalog unchanged.

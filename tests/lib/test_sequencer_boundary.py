@@ -60,6 +60,7 @@ ALLOWED: set[tuple[str, str]] = {
     ("proxy_exchange.py", "_status_exchange"),
     ("proxy_hub_mqtt.py", "query_hub_mqtt_status"),
     ("proxy_hub_mqtt.py", "set_hub_mqtt_broker"),
+    ("proxy_x2_remotes.py", "read_x2_paired_devices"),
     ("proxy_ir_blob.py", "_send_family_play_frame"),
     ("proxy_ir_blob.py", "_send_ir_learn_toggle"),
     ("proxy_wifi_device.py", "_apply_wifi_input_configuration"),

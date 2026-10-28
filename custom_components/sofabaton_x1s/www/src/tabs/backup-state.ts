@@ -1053,6 +1053,40 @@ export function bundleDeviceBrand(
   return String(device?.device?.brand ?? "").trim();
 }
 
+/** A device's X2 IR emitter routing bytes (`device.extras`), or null when the
+ *  block carries none (off the X2, or a record without it). */
+export function bundleDeviceExtras(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): { a: number; b: number; c: number } | null {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const extras = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  )?.device?.extras;
+  if (!extras || typeof extras !== "object") return null;
+  const { a, b, c } = extras;
+  return [a, b, c].every((value) => Number.isInteger(value) && value >= 0 && value <= 0xff) ? { a, b, c } : null;
+}
+
+/** Set a device's IR emitter routing (`device.extras`, X2 only): the sync
+ *  writes it in the same record write as a rename. */
+export function setBundleDeviceExtras(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  extras: { a: number; b: number; c: number },
+): BackupBundlePayload {
+  const normalizedId = Number(deviceId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      const block = entry?.device;
+      if (!block || Number(block.device_id || 0) !== normalizedId) return entry;
+      return { ...entry, device: { ...block, extras: { a: extras.a, b: extras.b, c: extras.c } } };
+    }),
+  };
+}
+
 /** True when a brand string identifies a managed Wifi Commands device. */
 export function isManagedWifiBrand(brand: string): boolean {
   const text = String(brand ?? "").trim();

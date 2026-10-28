@@ -15,6 +15,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -23,6 +24,7 @@ from .const import (
     signal_ir_intercept,
 )
 from .hub import SofabatonHub
+from . import ir_emitters
 from . import ir_library
 from . import ir_uc_hex
 from .lib.commands import build_descriptive_ir_blob_body
@@ -365,6 +367,47 @@ async def _ws_ir_emitter_consumers(hass: HomeAssistant, connection, msg: dict[st
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
     connection.send_result(msg["id"], build_ir_emitter_consumers(hass, hub))
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/ir_emitters/status",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Optional("refresh", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def _ws_ir_emitters_status(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """The paired remotes and repeaters an X2 device's IR can be routed to
+    (the IR pill's dropdown). ``refresh`` reads the hub (a few seconds);
+    otherwise the last read, ``paired`` null when there was none. The
+    hub's own emitters and both IR ports are always available."""
+
+    hub = await runtime._async_resolve_hub_from_data(hass, runtime._ws_hub_selector(msg))
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    if not ir_emitters.is_x2(hub):
+        connection.send_error(msg["id"], "not_supported", "Only an X2 hub routes IR to its remotes and ports")
+        return
+    if not msg.get("refresh"):
+        connection.send_result(msg["id"], ir_emitters.last_status(hub))
+        return
+    if runtime._hub_is_busy(hass, hub):
+        connection.send_error(msg["id"], "busy", runtime._HUB_BUSY_MESSAGE)
+        return
+    if not hub._proxy.can_issue_commands():
+        connection.send_error(
+            msg["id"], "unavailable", "The hub can't be read right now (the Sofabaton app may be connected)"
+        )
+        return
+    async with runtime._hub_work(hub):
+        status = await ir_emitters.async_read_status(hass, hub)
+    if status is None:
+        connection.send_error(msg["id"], "no_answer", "The hub did not return its paired devices")
+        return
+    connection.send_result(msg["id"], status)
 
 
 @websocket_api.websocket_command(

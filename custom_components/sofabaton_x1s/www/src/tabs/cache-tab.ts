@@ -16,6 +16,8 @@ import { localizeBackendError } from "../shared/utils/backend-state-localization
 import { TOOLS_CARD_STRINGS } from "../strings";
 import { appearanceLabelsFrom, renderAppearanceToggle, type AppearanceToggleState } from "../../../../../remote-card/src/entity-icons/appearance-editor";
 import { entityTile, entityTileBadge, renderEntityTile } from "../../../../../remote-card/src/entity-icons/entity-tile";
+import { irEmitterRowAttention, type PairedEmitter } from "../../../../../remote-card/src/ir-emitters/emitter-rules";
+import { renderReadOnlyIrPill } from "../components/ir-emitter-pill";
 
 function badge(type: string, value: string | number) {
   return html`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
@@ -94,6 +96,10 @@ export function renderCacheTab(params: {
   // Both Add dialogs offer the icon (and on an X2 the color) up front.
   addAppearance: AddAppearanceDraft;
   onAddAppearanceChange: (next: AddAppearanceDraft) => void;
+  /** The X2's paired remotes and repeaters from the last IR pill read
+   *  (null before any): an IR device row whose routing needs attention
+   *  gets a read-only amber IR pill. */
+  irEmitterPaired?: readonly PairedEmitter[] | null;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -212,6 +218,7 @@ export function renderCacheTab(params: {
     color_id?: number;
     command_count?: number;
     device_class?: string;
+    emitters?: number[];
   }) => {
     const id = Number(device.id);
     const key = `dev-${id}`;
@@ -223,6 +230,10 @@ export function renderCacheTab(params: {
     const commands = deviceCommands(params.hub, id);
     const icon = deviceClassIcon(device.device_class);
     const deviceName = String(device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id));
+    // Most devices are IR: the pill shows only on a row that needs attention.
+    const irAttention = !reorder
+      && String(device.device_class ?? "").toLowerCase() === "ir"
+      && irEmitterRowAttention(device.emitters, params.irEmitterPaired ?? null);
     return html`
       <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-device-id=${id}>
         <div
@@ -244,6 +255,7 @@ export function renderCacheTab(params: {
             </span>
           </span>
           <span class="entity-meta">
+            ${irAttention ? renderReadOnlyIrPill({ labels: TOOLS_CARD_STRINGS.irEmitters, attention: true }) : nothing}
             ${badge(DEV_ID_BADGE, id)}
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditDevice(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" title=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(deviceName)} aria-label=${TOOLS_CARD_STRINGS.cache.refreshEntryAria(deviceName)} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>

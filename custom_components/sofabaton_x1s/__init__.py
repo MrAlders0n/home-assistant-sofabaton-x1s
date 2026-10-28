@@ -82,6 +82,7 @@ from .ws_ir import (  # noqa: F401
     _value_references_entity,
     build_ir_emitter_consumers,
     _ws_ir_emitter_consumers,
+    _ws_ir_emitters_status,
     _ws_ir_library_catalog,
     _ws_ir_library_commands,
     _ws_ir_payload_convert,
@@ -235,6 +236,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_ir_learn_subscribe)
     websocket_api.async_register_command(hass, _ws_ir_emissions_subscribe)
     websocket_api.async_register_command(hass, _ws_ir_emitter_consumers)
+    websocket_api.async_register_command(hass, _ws_ir_emitters_status)
     websocket_api.async_register_command(hass, _ws_ir_library_catalog)
     websocket_api.async_register_command(hass, _ws_ir_library_commands)
     websocket_api.async_register_command(hass, _ws_ir_payload_convert)

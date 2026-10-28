@@ -815,4 +815,193 @@ test.describe("tools-card browser harness", () => {
     expect(tile.text).not.toContain("Basement X2");
     expect(tile.text).toContain("Change");
   });
+  // The IR pill of an X2 IR device (docs/internal/ir-emitter-pill-plan.md, IR3).
+  const irDetail = "sofabaton-activities-tab sofabaton-edit-detail-view";
+  const irPill = (page) => page.locator(`${irDetail} button.ir-pill`);
+  const irPop = (page) => page.locator(`${irDetail} .ir-pop`);
+  const irRow = (page, key) => irPop(page).locator(`.ir-row[data-row="${key}"]`);
+  const irReads = (page) => page.evaluate(() => window.__toolsCardHarness.getCalls()
+    .filter((call) => call.message?.type === "sofabaton_x1s/ir_emitters/status")
+    .map((call) => Boolean(call.message.refresh)));
+  const irSync = (page) => page.locator(`${irDetail} .detail-sync-btn`);
+  const irBox = (locator) => locator.evaluate((el) => {
+    const b = el.getBoundingClientRect();
+    return { left: b.left, right: b.right, top: b.top, bottom: b.bottom, width: b.width };
+  });
+  const irFocused = (page) => page.evaluate(() => {
+    let el = document.activeElement;
+    while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+    return { cls: String(el?.className ?? ""), row: el?.closest?.(".ir-row")?.dataset?.row ?? null, choice: el?.dataset?.choice ?? null };
+  });
+
+  test("the IR pill reads the paired list when it opens; a pick waits for Sync and Undo takes it back", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-repeaters"));
+    await expect(irPill(page)).toBeVisible();
+    await expect(irPill(page)).toHaveText("IR");
+    await expect(irPill(page)).not.toHaveClass(/attention|pending/);
+    // At rest only Home Assistant's kept read: no hub exchange.
+    await expect.poll(() => irReads(page)).toEqual([false]);
+    await irPill(page).click();
+    await expect(irPop(page)).toContainText("Checking the paired remotes and repeaters…");
+    await expect(irPop(page).locator('[data-status="checking"]')).toHaveCount(0);
+    expect(await irReads(page)).toEqual([false, true]);
+    await expect(irRow(page, "repeater:1")).toContainText("Cabinet");
+    await expect(irRow(page, "repeater:1")).toContainText("Repeater 1 · online");
+    await expect(irRow(page, "repeater:2")).toContainText("Repeater 2 · offline");
+    await expect(irRow(page, "remote:1")).toContainText("X2 Remote");
+    await expect(irPop(page)).toContainText("Two emitters that both reach the device send each command twice.");
+    await expect(irPop(page)).toContainText("Test plays and the Home Assistant Infrared entity always fire from the hub.");
+    // Both ports are always pickable: no cable state anywhere.
+    await expect(irRow(page, "hub").locator('[data-choice="builtin"]')).toHaveAttribute("aria-checked", "true");
+    await expect(irRow(page, "hub").locator('[data-choice="port1"]')).toBeEnabled();
+    await expect(irRow(page, "hub").locator('[data-choice="port2"]')).toBeEnabled();
+    await expect(irPop(page)).not.toContainText("cable");
+    // Tick Bedroom (offline): amber pill and line, a pending edit for Sync.
+    await irRow(page, "repeater:2").locator(".ir-row-head").click();
+    await expect(irPill(page)).toHaveClass(/attention/);
+    await expect(irPill(page)).toHaveClass(/pending/);
+    await expect(irPop(page).locator(".ir-status.warn")).toContainText("Bedroom is offline");
+    await expect(irSync(page)).toHaveClass(/sync-btn-primary/);
+    await irPop(page).locator(".ir-undo").click();
+    await expect(irPill(page)).not.toHaveClass(/attention|pending/);
+    await expect(irSync(page)).not.toHaveClass(/sync-btn-primary/);
+    await expect(irPop(page).locator(".ir-status.warn")).toHaveCount(0);
+    // A hub choice goes out with the device sync, as device.extras.
+    await irRow(page, "hub").locator('[data-choice="port2"]').click();
+    await expect(irPill(page)).toHaveClass(/pending/);
+    await expect(irPop(page)).toContainText("Changes on the next Sync.");
+    await page.keyboard.press("Escape");
+    await expect(irPop(page)).toHaveCount(0);
+    await irSync(page).click();
+    await expect.poll(() => page.evaluate(() => {
+      const call = window.__toolsCardHarness.getCalls().find((item) => item.message?.type === "sofabaton_x1s/device/sync");
+      const extras = (bundle) => bundle?.devices?.find((entry) => entry.device?.device_id === 1)?.device?.extras ?? null;
+      return call ? { baseline: extras(call.message.baseline), edited: extras(call.message.edited) } : null;
+    })).toEqual({ baseline: { a: 0, b: 3, c: 1 }, edited: { a: 0, b: 3, c: 4 } });
+    // Nothing went through a service call (Home Assistant's toast).
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    expect(calls.some((call) => call.channel === "service")).toBe(false);
+  });
+
+  test("the IR pill works from the keyboard and returns focus on Escape", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-hub"));
+    await irPill(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(irPop(page)).toBeVisible();
+    await expect(irPill(page)).toHaveAttribute("aria-expanded", "true");
+    await expect(irPop(page).locator('[data-status="checking"]')).toHaveCount(0);
+    // Tab reaches the hub row first; it is the only pick, so it stays.
+    await page.keyboard.press("Tab");
+    expect(await irFocused(page)).toMatchObject({ row: "hub" });
+    await expect(irRow(page, "hub").locator(".ir-row-head")).toHaveAttribute("aria-disabled", "true");
+    await page.keyboard.press("Space");
+    await expect(irRow(page, "hub").locator(".ir-row-head")).toHaveAttribute("aria-checked", "true");
+    await expect(irPop(page)).toContainText("At least one emitter stays picked.");
+    // Into the choices: the arrow keys walk them and pick.
+    await page.keyboard.press("Tab");
+    expect(await irFocused(page)).toMatchObject({ row: "hub", choice: "all" });
+    await page.keyboard.press("ArrowRight");
+    expect(await irFocused(page)).toMatchObject({ choice: "builtin" });
+    await expect(irRow(page, "hub").locator('[data-choice="builtin"]')).toHaveAttribute("aria-checked", "true");
+    await expect(irPill(page)).toHaveClass(/pending/);
+    // On to the remote row: Space ticks it (a second pick: the duplicate hint).
+    for (let i = 0; i < 4 && (await irFocused(page)).row !== "remote:1"; i += 1) await page.keyboard.press("Tab");
+    expect(await irFocused(page)).toMatchObject({ row: "remote:1" });
+    await page.keyboard.press("Space");
+    await expect(irRow(page, "remote:1").locator(".ir-row-head")).toHaveAttribute("aria-checked", "true");
+    await expect(irPop(page)).toContainText("The hub passes this device's commands to the remote");
+    await expect(irPop(page)).toContainText("Two emitters that both reach the device send each command twice.");
+    await page.keyboard.press("Escape");
+    await expect(irPop(page)).toHaveCount(0);
+    await expect(irPill(page)).toHaveAttribute("aria-expanded", "false");
+    await expect.poll(async () => (await irFocused(page)).cls).toContain("ir-pill");
+  });
+
+  test("a routing to an emitter that is no longer paired is amber at rest; the device list row says so too", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-unpaired"));
+    await expect(irPill(page)).toHaveClass(/attention/);
+    await expect(irPill(page)).toHaveAttribute("aria-label", "IR emitters. An emitter needs attention.");
+    await irPill(page).click();
+    await expect(irPop(page).locator(".ir-status.warn")).toContainText("Remote 2 is no longer paired");
+    await expect(irRow(page, "remote:2")).toContainText("Remote 2 · no longer paired");
+    // Untick it: the hub alone, no longer amber (still a pending edit).
+    await irRow(page, "remote:2").locator(".ir-row-head").click();
+    await expect(irPill(page)).not.toHaveClass(/attention/);
+    await expect(irPill(page)).toHaveClass(/pending/);
+
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("hub-x2-ir-attention"));
+    const rowPill = page.locator("sofabaton-control-panel .entity-block[data-device-id='1'] .ir-pill");
+    await expect(rowPill).toHaveClass(/attention/);
+    await expect(rowPill).toHaveAttribute("title", "An emitter of this device needs attention.");
+    // Healthy IR rows carry no pill at all.
+    await expect(page.locator("sofabaton-control-panel .entity-block[data-device-id='2'] .ir-pill")).toHaveCount(0);
+    await expect(page.locator("sofabaton-control-panel .ir-pill")).toHaveCount(1);
+  });
+
+  test("remote only is a neutral note; a custom hub mix shows as it is; a refused read says why inside the dropdown", async ({ page }) => {
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-remote-only"));
+    await expect(irPill(page)).not.toHaveClass(/attention/);
+    await irPill(page).click();
+    await expect(irPop(page).locator('[data-note="remote_only"]')).toContainText("Commands sent to this device fire from the remote only.");
+    await expect(irPop(page).locator('[role="alert"]')).toHaveCount(0);
+    await expect(irRow(page, "hub").locator(".ir-row-head")).toHaveAttribute("aria-checked", "false");
+
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-custom"));
+    await irPill(page).click();
+    await expect(irRow(page, "hub")).toContainText("Now: built-in emitter and IR port 2");
+    await expect(irRow(page, "hub").locator('[role="radio"][aria-checked="true"]')).toHaveCount(0);
+    await expect(irPill(page)).not.toHaveClass(/pending/);
+    await irRow(page, "hub").locator('[data-choice="all"]').click();
+    await expect(irPill(page)).toHaveClass(/pending/);
+    await expect(irRow(page, "hub")).not.toContainText("Now:");
+
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor-ir-busy"));
+    await irPill(page).click();
+    await expect(irPop(page).locator('[data-status="error"]')).toContainText("The hub is busy, so the paired remotes and repeaters weren't checked.");
+    await expect(irPop(page).locator('[data-status="error"]')).toContainText("The rows show the last check.");
+    await expect(irPop(page).locator(".ir-retry")).toHaveText("Check again");
+    await expect(irRow(page, "remote:1")).toContainText("X2 Remote");
+    const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());
+    expect(calls.some((call) => call.channel === "service")).toBe(false);
+  });
+
+  test("the IR dropdown fits a phone-width card and follows a right-to-left page", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.goto("/tests/tools-card-harness.html?scenario=device-editor-ir-repeaters&width=360");
+    await irPill(page).click();
+    await expect(irPop(page).locator('[data-status="checking"]')).toHaveCount(0);
+    const pop = await irBox(irPop(page));
+    expect(pop.left).toBeGreaterThanOrEqual(0);
+    expect(pop.right).toBeLessThanOrEqual(360);
+    // Four hub choices side by side, each still showing its whole label.
+    const fits = await irRow(page, "hub").locator(".ir-option").evaluateAll((buttons) => buttons.every((b) => b.scrollWidth <= b.clientWidth + 1));
+    expect(fits).toBe(true);
+    await page.keyboard.press("Escape");
+
+    await page.setViewportSize({ width: 900, height: 900 });
+    await page.goto("/tests/tools-card-harness.html?scenario=device-editor-ir-repeaters");
+    await expect(irPill(page)).toBeVisible();
+    await page.evaluate(() => {
+      document.documentElement.dir = "rtl";
+      document.documentElement.style.setProperty("--scale-direction", "-1");
+    });
+    await irPill(page).click();
+    await expect(irPop(page).locator('[data-status="checking"]')).toHaveCount(0);
+    const rtlPop = await irBox(irPop(page));
+    expect(rtlPop.left).toBeGreaterThanOrEqual(0);
+    expect(rtlPop.right).toBeLessThanOrEqual(900);
+    // The tick box leads on the right; the choices indent from the right.
+    const hub = irRow(page, "hub");
+    const [box, name, choices, row] = await Promise.all([irBox(hub.locator(".ir-box")), irBox(hub.locator(".ir-name")), irBox(hub.locator(".ir-choice")), irBox(hub)]);
+    expect(box.left).toBeGreaterThan(name.left);
+    expect(row.right - choices.right).toBeGreaterThan(choices.left - row.left);
+  });
+
 });

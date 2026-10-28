@@ -15,7 +15,8 @@ the checksum stripped:
     depends on p[12]), p[5] battery %, p[6] hardware code,
     p[7:11] production batch, p[11] firmware code, p[12] row type,
     p[13] online flag, p[14:21] type-specific (a remote: p[14] RF band,
-    p[15:21] its MAC), p[21:] name (null-padded)
+    p[15:21] its MAC; a repeater: p[14] a cable in its IR port, not benched
+    yet), p[21:] name (null-padded)
 
 Row types: 0 a remote, 1 a repeater, 2 a single-button RF device.
 
@@ -31,14 +32,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from .emitter_routing import remote_number, repeater_number
 from .hub_versions import HUB_VERSION_X2
 from .protocol_const import OP_ACTIVITY_ASSIGN_COMMIT, OP_X2_REMOTE_SYNC
 
 #: Activity ids start here; devices sit below.
 ACTIVITY_ID_BASE = 0x65
 
-#: Row type of a paired remote in the X2 paired-device list.
+#: Row types of the X2 paired-device list.
 X2_ROW_TYPE_REMOTE = 0
+X2_ROW_TYPE_REPEATER = 1
 
 #: Payload byte that holds the device's bit, and the target byte that carries
 #: it, per row type (2: single-button RF, 1: repeater). Types not listed use
@@ -86,6 +89,8 @@ class X2PairedDevice:
     mac: str
     name: str
     raw: bytes
+    #: A repeater's IR port has a cable in it; None for other row types.
+    port_cable: bool | None = None
 
     @property
     def target(self) -> bytes:
@@ -96,6 +101,21 @@ class X2PairedDevice:
     @property
     def is_remote(self) -> bool:
         return self.row_type == X2_ROW_TYPE_REMOTE
+
+    @property
+    def is_repeater(self) -> bool:
+        return self.row_type == X2_ROW_TYPE_REPEATER
+
+    @property
+    def number(self) -> int | None:
+        """Remote 1-5 or repeater 1-4, from the row's bit; None for other
+        row types or a bit outside them."""
+
+        if self.is_remote:
+            return remote_number(self.slot)
+        if self.is_repeater:
+            return repeater_number(self.slot)
+        return None
 
 
 def parse_x2_paired_row(payload: bytes) -> X2PairedDevice | None:
@@ -124,6 +144,7 @@ def parse_x2_paired_row(payload: bytes) -> X2PairedDevice | None:
         mac=p[15:21].hex() if len(p) >= 21 else "",
         name=name,
         raw=p,
+        port_cable=(at(14) == 1) if row_type == X2_ROW_TYPE_REPEATER and len(p) > 14 else None,
     )
 
 
