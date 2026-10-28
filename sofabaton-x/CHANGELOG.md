@@ -11,6 +11,15 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
 
 ## Unreleased
 
+## 0.2.6 (2026-10-28)
+
+Changes since `sofabaton-x-v0.2.5`. Backward-compatible additions and
+fixes; applications can use `sofabaton-x>=0.2.6,<0.3`. Every write now
+ends with the cheapest remote sync that reaches the remotes, activities
+and devices read and write their icon (and X2 color), and X2 devices
+gain IR emitter routing. Wifi Devices can test that presses reach the
+consumer, and X2 Wifi commands can be URL records.
+
 ### Changed
 
 - Every write now ends with the cheapest remote sync that brings it to the
@@ -112,6 +121,28 @@ Preserve previous entries. Tags trigger PyPI publication, not GitHub Releases. -
   asks the hub for its paired-device list after it polls its devices (a
   few seconds); `refresh=False` returns the last read without asking.
   `None` on the X1 and X1S.
+- `probe_wifi_delivery(deployment, arrived=, timeout=10.0)` presses slot 1
+  (`WIFI_PROBE_COMMAND_ID`) of a deployed Wifi Device over the hub
+  session and waits for `arrived`, an awaitable the consumer completes
+  when its own listener, webhook or MQTT subscription sees that press.
+  It returns a `WifiDeliveryProbe` (`sent`, `delivered`, `latency_s`). A
+  press that was sent but never arrived means the hub cannot reach the
+  consumer: a firewall, a VLAN, a wrong address or port, or a broker the
+  consumer does not share. Inside `batch_writes()` it runs before the
+  batch's remote sync.
+- `hub_mqtt_status()` and `set_hub_mqtt_broker(host=, port=, username=,
+  password=)` (X2): whether the hub reports a connected MQTT broker
+  (`None` when it does not answer), and pointing it at a broker, which
+  returns whether the hub connected. The hub cannot report which broker
+  it uses, so a broker set here replaces the old one for good. The
+  password is never logged.
+- `NetworkCommand.url(url=, method=, headers=, body=)` and
+  `NetworkCommand.is_url` (X2): a `wifi_ip` command stored as a URL
+  record (code type 0x21), the way the Sofabaton app writes X2 Wifi
+  commands. The hub requests the URL itself, `http` or `https` (it checks
+  no certificate), with GET, POST or PUT, ordered header pairs and a
+  body. A `wifi_ip` command read from the hub decodes either kind; a
+  `url` field names a URL record.
 
 ### Fixed
 
