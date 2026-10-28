@@ -972,6 +972,46 @@ test.describe("tools-card browser harness", () => {
     expect(calls.some((call) => call.channel === "service")).toBe(false);
   });
 
+  test("IR translations fit at phone width and explain recovery from the only selected unpaired emitter", async ({ page }) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width: 360, height: 900 });
+    await page.goto("/tests/tools-card-harness.html?width=360");
+    const cases = [
+      ["en", "IR emitters", "Select another emitter before deselecting this one"],
+      ["en-gb", "IR emitters", "Select another emitter before deselecting this one"],
+      ["de", "Infrarotsender", "Wähle einen anderen Sender aus, bevor du diesen abwählst"],
+      ["es", "Emisores de infrarrojos", "Selecciona otro emisor antes de desmarcar este"],
+      ["fr", "Émetteurs infrarouges", "Sélectionnez un autre émetteur avant de décocher celui-ci"],
+      ["nl", "Infraroodzenders", "Selecteer een andere zender voordat je deze uitvinkt"],
+      ["zh-hans", "红外发射器", "请先选择其他发射器，再取消选择此发射器"],
+    ];
+    for (const [language, label, recovery] of cases) {
+      await page.evaluate(async (language) => {
+        await window.__toolsCardHarness.setLanguage(language);
+        await window.__toolsCardHarness.loadScenario("device-editor-ir-unpaired");
+      }, language);
+      await expect(irPill(page)).toHaveAttribute("aria-label", new RegExp(`^${label}`));
+      await irPill(page).click();
+      await expect(irPop(page).locator('[data-status="checking"]')).toHaveCount(0);
+      // Leave the unpaired remote as the only selection. Its checkbox is
+      // locked; the translated warning tells the user how to replace it.
+      await irRow(page, "hub").locator(".ir-row-head").click();
+      await expect(irRow(page, "remote:2").locator(".ir-row-head")).toHaveAttribute("aria-disabled", "true");
+      await expect(irPop(page).locator(".ir-status.warn")).toContainText(recovery);
+      await irRow(page, "hub").locator(".ir-row-head").click();
+      await irRow(page, "remote:2").locator(".ir-row-head").click();
+      await expect(irPop(page).locator(".ir-status.warn")).toHaveCount(0);
+      await irRow(page, "repeater:1").locator(".ir-row-head").click();
+      const clipped = await irPop(page).locator(".ir-option, .ir-link-btn").evaluateAll((elements) =>
+        elements.filter((el) => el.scrollWidth > el.clientWidth + 1).map((el) => el.textContent.trim()),
+      );
+      expect(clipped, language).toEqual([]);
+      const pop = await irBox(irPop(page));
+      expect(pop.left).toBeGreaterThanOrEqual(0);
+      expect(pop.right).toBeLessThanOrEqual(360);
+    }
+  });
+
   test("the IR dropdown fits a phone-width card and follows a right-to-left page", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 900 });
     await page.goto("/tests/tools-card-harness.html?scenario=device-editor-ir-repeaters&width=360");

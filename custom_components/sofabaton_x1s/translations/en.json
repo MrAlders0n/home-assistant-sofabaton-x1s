@@ -305,7 +305,7 @@
     },
     "create_device": {
       "name": "Create device",
-      "description": "Creates an empty device of the chosen class on the selected hub and returns its device ID. Add commands afterwards: with the set HTTP command action on a Generic HTTP (wifi_ip) device, with the save IR blob action on an IR device.",
+      "description": "Creates a device of the chosen type with no commands on the selected hub and returns its device ID. Add commands afterwards: with the set HTTP command action on a Generic HTTP (wifi_ip) device, with the save IR blob action on an IR device.",
       "fields": {
         "device": {
           "name": "Sofabaton hub",
@@ -316,7 +316,7 @@
           "description": "Name of the new device, at most 30 characters."
         },
         "device_class": {
-          "name": "Device class",
+          "name": "Device type",
           "description": "Kind of device: ir, wifi_ip (Generic HTTP, X1S and X2), wifi_roku, wifi_hue, wifi_sonos, or wifi_mqtt (X2 only)."
         },
         "icon": {
@@ -633,7 +633,7 @@
         },
         "method": {
           "name": "Method",
-          "description": "HTTP method; GET when empty. https URLs and host names take GET, POST or PUT."
+          "description": "HTTP method; GET when empty. HTTPS URLs, host names, and existing X2 commands stored in URL format (including commands created in the Sofabaton app) support only GET, POST or PUT. Existing URL-format commands keep this restriction even with an HTTP URL and an IPv4 address."
         },
         "headers": {
           "name": "Headers",

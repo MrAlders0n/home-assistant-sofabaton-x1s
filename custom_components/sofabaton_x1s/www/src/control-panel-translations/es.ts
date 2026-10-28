@@ -556,6 +556,59 @@ export const TOOLS_CARD_STRINGS_ES = {
     brokerCredentialsTooLong: "El nombre de usuario y la contraseña juntos son demasiado largos para el hub. Usa credenciales más cortas.",
     brokerDone: "Listo",
   },
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "Emisores de infrarrojos",
+    pillAttention: "Un emisor requiere atención.",
+    pillPending: "Los cambios se aplicarán en la próxima sincronización.",
+    rowAttention: "Un emisor de este dispositivo requiere atención.",
+    title: "De dónde salen las señales IR para este dispositivo",
+    intro: "Selecciona los emisores que envían los comandos de este dispositivo.",
+    scope: "Esto se aplica a los comandos enviados a este dispositivo. Las pruebas de comandos y la entidad Infrared de Home Assistant siempre emiten desde el hub.",
+    checking: "Comprobando los mandos y repetidores emparejados…",
+    readBusy: "El hub está ocupado, por lo que no se han comprobado los mandos y repetidores emparejados.",
+    readUnavailable: "La aplicación Sofabaton está conectada al hub, por lo que no se han comprobado los mandos y repetidores emparejados.",
+    readNoAnswer: "El hub no ha devuelto la lista de mandos y repetidores emparejados.",
+    readFailed: "No se han podido comprobar los mandos y repetidores emparejados.",
+    readKept: "Las filas muestran el resultado de la última comprobación.",
+    checkAgain: "Comprobar de nuevo",
+    sendFrom: "Emitir IR desde",
+    hub: "Hub",
+    hubSub: "Emisor integrado y puertos IR 1 y 2",
+    hubChoices: "Emisores del hub",
+    all: "Todos",
+    builtin: "Integrado",
+    port1: "Puerto 1",
+    port2: "Puerto 2",
+    port: "Puerto",
+    hubCustom: (mix: "builtin_port1" | "builtin_port2" | "ports") =>
+      mix === "ports" ? "Actual: puertos IR 1 y 2"
+        : mix === "builtin_port1" ? "Actual: emisor integrado y puerto IR 1"
+          : "Actual: emisor integrado y puerto IR 2",
+    hubCustomNote: "Se mantiene esta combinación hasta que selecciones una de las opciones.",
+    repeaterNumber: (number: number) => `Repetidor ${number}`,
+    remoteNumber: (number: number) => `Mando ${number}`,
+    repeaterChoices: (name: string) => `Emisores de ${name}`,
+    online: "conectado",
+    offline: "desconectado",
+    notPaired: "ya no está emparejado",
+    remoteOnNote: "El hub pasa los comandos de este dispositivo al mando, que los envía desde su propio emisor.",
+    repeaterOffline: (name: string) => `${name} está desconectado`,
+    repeaterOfflineHint: "Los comandos enviados a través de este repetidor no llegarán al dispositivo hasta que vuelva a conectarse. Comprueba su alimentación y su distancia al hub.",
+    notPairedTitle: (name: string) => `${name} ya no está emparejado`,
+    notPairedHint: "Los comandos enviados a través de este emisor no pueden llegar al dispositivo. Selecciona otro emisor antes de desmarcar este, o vuelve a emparejarlo en la aplicación Sofabaton.",
+    remoteOnly: (count: number) => count === 1
+      ? "Los comandos de este dispositivo se emiten solo desde el mando."
+      : "Los comandos de este dispositivo se emiten solo desde los mandos.",
+    repeaterOnly: (count: number) => count === 1
+      ? "Los comandos de este dispositivo se emiten solo desde el repetidor."
+      : "Los comandos de este dispositivo se emiten solo desde los repetidores.",
+    noHub: "Los comandos de este dispositivo se emiten solo desde los mandos y repetidores seleccionados.",
+    noHubHint: "Los emisores del hub no envían comandos a este dispositivo.",
+    duplicateHint: "Selecciona solo los emisores que necesites. Si dos emisores alcanzan el dispositivo, cada comando se envía dos veces.",
+    lastOneHint: "Debe quedar seleccionado al menos un emisor.",
+    undo: "Deshacer",
+  },
 } satisfies CompleteToolsCardTranslation;
 
 export default TOOLS_CARD_STRINGS_ES;

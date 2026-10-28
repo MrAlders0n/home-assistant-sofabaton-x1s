@@ -567,6 +567,59 @@ export const TOOLS_CARD_STRINGS_DE = {
     brokerCredentialsTooLong: "Benutzername und Passwort sind zusammen für den Hub zu lang. Verwende kürzere Zugangsdaten.",
     brokerDone: "Fertig",
   },
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "Infrarotsender",
+    pillAttention: "Ein Sender benötigt Aufmerksamkeit.",
+    pillPending: "Änderungen werden bei der nächsten Synchronisierung übernommen.",
+    rowAttention: "Ein Sender für dieses Gerät benötigt Aufmerksamkeit.",
+    title: "Woher die IR-Signale für dieses Gerät kommen",
+    intro: "Wähle die Sender aus, die die Befehle für dieses Gerät senden.",
+    scope: "Dies gilt für Befehle an dieses Gerät. Befehlstests und die Home Assistant-Entität „Infrared“ senden immer über den Hub.",
+    checking: "Gekoppelte Fernbedienungen und Repeater werden geprüft…",
+    readBusy: "Der Hub ist beschäftigt. Die gekoppelten Fernbedienungen und Repeater wurden nicht geprüft.",
+    readUnavailable: "Die Sofabaton-App ist mit dem Hub verbunden. Die gekoppelten Fernbedienungen und Repeater wurden nicht geprüft.",
+    readNoAnswer: "Der Hub hat keine Liste seiner gekoppelten Fernbedienungen und Repeater zurückgegeben.",
+    readFailed: "Die gekoppelten Fernbedienungen und Repeater konnten nicht geprüft werden.",
+    readKept: "Die Zeilen zeigen den Stand der letzten Prüfung.",
+    checkAgain: "Erneut prüfen",
+    sendFrom: "IR senden über",
+    hub: "Hub",
+    hubSub: "Eingebauter Sender und IR-Anschlüsse 1 und 2",
+    hubChoices: "Sender des Hubs",
+    all: "Alle",
+    builtin: "Eingebaut",
+    port1: "Port 1",
+    port2: "Port 2",
+    port: "Port",
+    hubCustom: (mix: "builtin_port1" | "builtin_port2" | "ports") =>
+      mix === "ports" ? "Aktuell: IR-Anschlüsse 1 und 2"
+        : mix === "builtin_port1" ? "Aktuell: eingebauter Sender und IR-Anschluss 1"
+          : "Aktuell: eingebauter Sender und IR-Anschluss 2",
+    hubCustomNote: "Bleibt unverändert, bis du eine der Optionen auswählst.",
+    repeaterNumber: (number: number) => `Repeater ${number}`,
+    remoteNumber: (number: number) => `Fernbedienung ${number}`,
+    repeaterChoices: (name: string) => `Sender von ${name}`,
+    online: "online",
+    offline: "offline",
+    notPaired: "nicht mehr gekoppelt",
+    remoteOnNote: "Der Hub leitet die Befehle für dieses Gerät an die Fernbedienung weiter. Diese sendet sie über ihren eigenen Sender.",
+    repeaterOffline: (name: string) => `${name} ist offline`,
+    repeaterOfflineHint: "Über diesen Repeater gesendete Befehle erreichen das Gerät erst wieder, wenn er online ist. Prüfe seine Stromversorgung und seinen Abstand zum Hub.",
+    notPairedTitle: (name: string) => `${name} ist nicht mehr gekoppelt`,
+    notPairedHint: "Über diesen Sender können Befehle das Gerät nicht erreichen. Wähle einen anderen Sender aus, bevor du diesen abwählst, oder kopple ihn erneut in der Sofabaton-App.",
+    remoteOnly: (count: number) => count === 1
+      ? "Befehle an dieses Gerät werden nur von der Fernbedienung gesendet."
+      : "Befehle an dieses Gerät werden nur von den Fernbedienungen gesendet.",
+    repeaterOnly: (count: number) => count === 1
+      ? "Befehle an dieses Gerät werden nur vom Repeater gesendet."
+      : "Befehle an dieses Gerät werden nur von den Repeatern gesendet.",
+    noHub: "Befehle an dieses Gerät werden nur von den ausgewählten Fernbedienungen und Repeatern gesendet.",
+    noHubHint: "Die eigenen Sender des Hubs senden keine Befehle für dieses Gerät.",
+    duplicateHint: "Wähle nur die benötigten Sender aus. Wenn zwei Sender das Gerät erreichen, wird jeder Befehl zweimal gesendet.",
+    lastOneHint: "Mindestens ein Sender muss ausgewählt bleiben.",
+    undo: "Rückgängig",
+  },
 } satisfies CompleteToolsCardTranslation;
 
 export default TOOLS_CARD_STRINGS_DE;

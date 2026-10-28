@@ -556,6 +556,59 @@ export const TOOLS_CARD_STRINGS_FR = {
     brokerCredentialsTooLong: "Le nom d’utilisateur et le mot de passe sont trop longs pour le hub lorsqu’ils sont combinés. Utilisez des identifiants de connexion plus courts.",
     brokerDone: "Terminé",
   },
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "Émetteurs infrarouges",
+    pillAttention: "Un émetteur demande votre attention.",
+    pillPending: "Les modifications seront appliquées à la prochaine synchronisation.",
+    rowAttention: "Un émetteur de cet appareil demande votre attention.",
+    title: "D’où viennent les signaux IR pour cet appareil",
+    intro: "Sélectionnez les émetteurs qui envoient les commandes de cet appareil.",
+    scope: "Cela s’applique aux commandes envoyées à cet appareil. Les tests de commandes et l’entité Infrared de Home Assistant émettent toujours depuis le hub.",
+    checking: "Vérification des télécommandes et répéteurs appairés…",
+    readBusy: "Le hub est occupé. Les télécommandes et répéteurs appairés n’ont pas été vérifiés.",
+    readUnavailable: "L’application Sofabaton est connectée au hub. Les télécommandes et répéteurs appairés n’ont pas été vérifiés.",
+    readNoAnswer: "Le hub n’a pas renvoyé la liste de ses télécommandes et répéteurs appairés.",
+    readFailed: "Les télécommandes et répéteurs appairés n’ont pas pu être vérifiés.",
+    readKept: "Les lignes affichent le résultat de la dernière vérification.",
+    checkAgain: "Vérifier à nouveau",
+    sendFrom: "Émettre les signaux IR depuis",
+    hub: "Hub",
+    hubSub: "Émetteur intégré et ports IR 1 et 2",
+    hubChoices: "Émetteurs du hub",
+    all: "Tous",
+    builtin: "Intégré",
+    port1: "Port 1",
+    port2: "Port 2",
+    port: "Port",
+    hubCustom: (mix: "builtin_port1" | "builtin_port2" | "ports") =>
+      mix === "ports" ? "Actuellement : ports IR 1 et 2"
+        : mix === "builtin_port1" ? "Actuellement : émetteur intégré et port IR 1"
+          : "Actuellement : émetteur intégré et port IR 2",
+    hubCustomNote: "Cette combinaison est conservée jusqu’à ce que vous choisissiez une des options.",
+    repeaterNumber: (number: number) => `Répéteur ${number}`,
+    remoteNumber: (number: number) => `Télécommande ${number}`,
+    repeaterChoices: (name: string) => `Émetteurs de ${name}`,
+    online: "en ligne",
+    offline: "hors ligne",
+    notPaired: "appairage perdu",
+    remoteOnNote: "Le hub transmet les commandes de cet appareil à la télécommande, qui les envoie depuis son propre émetteur.",
+    repeaterOffline: (name: string) => `${name} est hors ligne`,
+    repeaterOfflineHint: "Les commandes envoyées par ce répéteur ne parviendront pas à l’appareil tant qu’il sera hors ligne. Vérifiez son alimentation et sa distance au hub.",
+    notPairedTitle: (name: string) => `Appairage perdu : ${name}`,
+    notPairedHint: "Les commandes envoyées par cet émetteur ne peuvent pas atteindre l’appareil. Sélectionnez un autre émetteur avant de décocher celui-ci, ou appairez-le à nouveau dans l’application Sofabaton.",
+    remoteOnly: (count: number) => count === 1
+      ? "Les commandes de cet appareil sont émises uniquement par la télécommande."
+      : "Les commandes de cet appareil sont émises uniquement par les télécommandes.",
+    repeaterOnly: (count: number) => count === 1
+      ? "Les commandes de cet appareil sont émises uniquement par le répéteur."
+      : "Les commandes de cet appareil sont émises uniquement par les répéteurs.",
+    noHub: "Les commandes de cet appareil sont émises uniquement par les télécommandes et répéteurs sélectionnés.",
+    noHubHint: "Les émetteurs du hub n’envoient pas de commandes à cet appareil.",
+    duplicateHint: "Sélectionnez uniquement les émetteurs nécessaires. Si deux émetteurs atteignent l’appareil, chaque commande est envoyée deux fois.",
+    lastOneHint: "Au moins un émetteur doit rester sélectionné.",
+    undo: "Annuler",
+  },
 } satisfies CompleteToolsCardTranslation;
 
 export default TOOLS_CARD_STRINGS_FR;

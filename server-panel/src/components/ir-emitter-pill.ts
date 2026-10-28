@@ -98,7 +98,13 @@ export function irEmitterReadProblem(response: ApiResponse): string {
   return S.readFailed;
 }
 
-/** The header's pill and its dropdown, with the card's wording. */
+/** The header's pill and its dropdown, with scope guidance for the server. */
 export function renderPanelIrPill(params: Omit<IrEmitterPillParams, "labels">): TemplateResult {
-  return renderIrEmitterPill({ ...params, labels: TOOLS_CARD_STRINGS.irEmitters });
+  return renderIrEmitterPill({
+    ...params,
+    labels: {
+      ...TOOLS_CARD_STRINGS.irEmitters,
+      scope: "This applies to commands sent to this device. Command tests and raw IR playback always use the hub's emitters.",
+    },
+  });
 }

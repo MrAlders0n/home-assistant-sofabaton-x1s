@@ -1377,7 +1377,7 @@ export const TOOLS_CARD_STRINGS_EN = {
     repeaterOffline: (name: string) => `${name} is offline`,
     repeaterOfflineHint: "Commands sent through it don't reach the device until it's back. Check its power and its distance to the hub.",
     notPairedTitle: (name: string) => `${name} is no longer paired`,
-    notPairedHint: "Commands routed to it go nowhere. Untick it here, or pair it again in the Sofabaton app.",
+    notPairedHint: "Commands routed to it cannot reach the device. Select another emitter before deselecting this one, or pair it again in the Sofabaton app.",
     remoteOnly: (count: number) => count === 1
       ? "Commands sent to this device fire from the remote only."
       : "Commands sent to this device fire from the remotes only.",
@@ -1393,11 +1393,6 @@ export const TOOLS_CARD_STRINGS_EN = {
 } as const;
 
 export type ToolsCardStrings = typeof TOOLS_CARD_STRINGS_EN;
-
-/** Sections whose translations are still to come: a complete translation
- *  may leave them out, and they show in English meanwhile (the IR pill,
- *  2026-10-28). Move a section out of here once every catalogue has it. */
-type UntranslatedSections = "irEmitters";
 
 type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends (...args: infer Args) => any
@@ -1428,8 +1423,7 @@ type DeepTranslation<T> = {
 };
 
 export type ToolsCardTranslation = DeepPartial<ToolsCardStrings>;
-export type CompleteToolsCardTranslation =
-  DeepTranslation<Omit<ToolsCardStrings, UntranslatedSections>> & DeepPartial<Pick<ToolsCardStrings, UntranslatedSections>>;
+export type CompleteToolsCardTranslation = DeepTranslation<ToolsCardStrings>;
 
 const TRANSLATIONS: Record<string, ToolsCardTranslation> = {};
 let currentLanguage = "en";

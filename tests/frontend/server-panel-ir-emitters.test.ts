@@ -133,6 +133,11 @@ test("the device editor shows the IR pill on an X2 IR device only, and its pick 
   const text = templateText(editor._renderIrPill());
   assert.match(text, /id="[^"]*-ir-pill"/);
   assert.ok(text.includes(S.pill));
+  editor._irOpen = true;
+  const open = templateText(editor._renderIrPill());
+  assert.match(open, /Command tests and raw IR playback/);
+  assert.doesNotMatch(open, /Home Assistant/);
+  editor._irOpen = false;
   await new Promise((resolve) => setTimeout(resolve, 0));
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(calls, ["GET /hubs/h/ir-emitters?refresh=false"]);

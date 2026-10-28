@@ -3754,7 +3754,7 @@ var TOOLS_CARD_STRINGS_EN = {
     repeaterOffline: (name) => `${name} is offline`,
     repeaterOfflineHint: "Commands sent through it don't reach the device until it's back. Check its power and its distance to the hub.",
     notPairedTitle: (name) => `${name} is no longer paired`,
-    notPairedHint: "Commands routed to it go nowhere. Untick it here, or pair it again in the Sofabaton app.",
+    notPairedHint: "Commands routed to it cannot reach the device. Select another emitter before deselecting this one, or pair it again in the Sofabaton app.",
     remoteOnly: (count) => count === 1 ? "Commands sent to this device fire from the remote only." : "Commands sent to this device fire from the remotes only.",
     repeaterOnly: (count) => count === 1 ? "Commands sent to this device fire from the repeater only." : "Commands sent to this device fire from the repeaters only.",
     noHub: "Commands sent to this device fire from the picked remotes and repeaters only.",

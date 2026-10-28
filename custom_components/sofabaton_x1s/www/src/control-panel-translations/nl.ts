@@ -618,6 +618,59 @@ export const TOOLS_CARD_STRINGS_NL = {
     brokerCredentialsTooLong: "De gebruikersnaam en het wachtwoord zijn samen te lang voor de hub. Gebruik kortere inloggegevens.",
     brokerDone: "Klaar",
   },
+  irEmitters: {
+    pill: "IR",
+    pillLabel: "Infraroodzenders",
+    pillAttention: "Een zender heeft aandacht nodig.",
+    pillPending: "Wijzigingen worden bij de volgende synchronisatie toegepast.",
+    rowAttention: "Een zender voor dit apparaat heeft aandacht nodig.",
+    title: "Waar de IR-signalen voor dit apparaat vandaan komen",
+    intro: "Selecteer de zenders die de commando’s voor dit apparaat versturen.",
+    scope: "Dit geldt voor commando’s die naar dit apparaat worden gestuurd. Commandotests en de Infrared-entiteit van Home Assistant zenden altijd via de hub.",
+    checking: "Gekoppelde afstandsbedieningen en repeaters controleren…",
+    readBusy: "De hub is bezig. De gekoppelde afstandsbedieningen en repeaters zijn niet gecontroleerd.",
+    readUnavailable: "De Sofabaton-app is verbonden met de hub. De gekoppelde afstandsbedieningen en repeaters zijn niet gecontroleerd.",
+    readNoAnswer: "De hub heeft geen lijst met gekoppelde afstandsbedieningen en repeaters teruggestuurd.",
+    readFailed: "De gekoppelde afstandsbedieningen en repeaters konden niet worden gecontroleerd.",
+    readKept: "De rijen tonen het resultaat van de laatste controle.",
+    checkAgain: "Opnieuw controleren",
+    sendFrom: "IR verzenden via",
+    hub: "Hub",
+    hubSub: "Ingebouwde zender en IR-poorten 1 en 2",
+    hubChoices: "Zenders van de hub",
+    all: "Alle",
+    builtin: "Intern",
+    port1: "Poort 1",
+    port2: "Poort 2",
+    port: "Poort",
+    hubCustom: (mix: "builtin_port1" | "builtin_port2" | "ports") =>
+      mix === "ports" ? "Nu: IR-poorten 1 en 2"
+        : mix === "builtin_port1" ? "Nu: ingebouwde zender en IR-poort 1"
+          : "Nu: ingebouwde zender en IR-poort 2",
+    hubCustomNote: "Deze combinatie blijft behouden totdat je een van de opties kiest.",
+    repeaterNumber: (number: number) => `Repeater ${number}`,
+    remoteNumber: (number: number) => `Afstandsbediening ${number}`,
+    repeaterChoices: (name: string) => `Zenders van ${name}`,
+    online: "online",
+    offline: "offline",
+    notPaired: "niet meer gekoppeld",
+    remoteOnNote: "De hub geeft de commando’s voor dit apparaat door aan de afstandsbediening, die ze via de eigen zender verstuurt.",
+    repeaterOffline: (name: string) => `${name} is offline`,
+    repeaterOfflineHint: "Commando’s via deze repeater bereiken het apparaat pas weer als de repeater online is. Controleer de voeding en de afstand tot de hub.",
+    notPairedTitle: (name: string) => `${name} is niet meer gekoppeld`,
+    notPairedHint: "Commando’s via deze zender kunnen het apparaat niet bereiken. Selecteer een andere zender voordat je deze uitvinkt, of koppel deze opnieuw in de Sofabaton-app.",
+    remoteOnly: (count: number) => count === 1
+      ? "Commando’s voor dit apparaat worden alleen via de afstandsbediening verzonden."
+      : "Commando’s voor dit apparaat worden alleen via de afstandsbedieningen verzonden.",
+    repeaterOnly: (count: number) => count === 1
+      ? "Commando’s voor dit apparaat worden alleen via de repeater verzonden."
+      : "Commando’s voor dit apparaat worden alleen via de repeaters verzonden.",
+    noHub: "Commando’s voor dit apparaat worden alleen via de geselecteerde afstandsbedieningen en repeaters verzonden.",
+    noHubHint: "De eigen zenders van de hub sturen geen commando’s naar dit apparaat.",
+    duplicateHint: "Selecteer alleen de zenders die je nodig hebt. Als twee zenders het apparaat bereiken, wordt elk commando twee keer verzonden.",
+    lastOneHint: "Er moet minstens één zender geselecteerd blijven.",
+    undo: "Ongedaan maken",
+  },
 } satisfies CompleteToolsCardTranslation;
 
 export default TOOLS_CARD_STRINGS_NL;
