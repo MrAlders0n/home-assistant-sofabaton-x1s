@@ -8,7 +8,7 @@ import test from "node:test";
 import { sidebarHoldKind, SIDEBAR_REPEAT_KEYS } from "../../remote-card/src/sidebar/sidebar-hold";
 import { sidebarBusyState } from "../../remote-card/src/sidebar/sidebar-busy";
 import { resolveSidebarTheme } from "../../remote-card/src/sidebar/sidebar-remote-theme";
-import { entityForHub, pathForView, pickHub, viewForPath } from "../../remote-card/src/sidebar/sidebar-panel-element";
+import { backStepsBack, entityForHub, pathForView, pickHub, viewForPath } from "../../remote-card/src/sidebar/sidebar-panel-element";
 import { REMOTE_CARD_STRINGS_EN, setRemoteCardLanguage, str } from "../../remote-card/src/remote-card-strings";
 import "../../remote-card/src/remote-card-translations/ar";
 import "../../remote-card/src/remote-card-translations/de";
@@ -249,4 +249,30 @@ test("layout: the landscape split only when the portrait wheel would be too smal
   assert.equal(wantsLandscape(edge, false), false);
   assert.equal(wantsLandscape(edge, true), true);
   assert.equal(wantsLandscape({ ...edge, height: edge.height + 30 }, true), false);
+});
+
+// The back arrow (#320): HA 2026.9 started tagging the entries it pushes with
+// `from`; before that its goBack() stepped back whenever the tab had history.
+
+test("back steps back when HA tagged the entry with where it came from", () => {
+  assert.equal(backStepsBack({ from: "/lovelace/rec-room" }, 5, "2026.10.1"), true);
+  assert.equal(backStepsBack({ from: "/lovelace/rec-room" }, 5, "2026.8.3"), true);
+});
+
+test("on HA 2026.9 and later an untagged entry goes to the default dashboard", () => {
+  assert.equal(backStepsBack(null, 5, "2026.9.0"), false);
+  assert.equal(backStepsBack({ root: true }, 1, "2026.10.1"), false);
+  assert.equal(backStepsBack(null, 5, "2026.9.0.dev20260820"), false);
+});
+
+test("before HA 2026.9 back steps back whenever there is history, as HA's goBack did", () => {
+  assert.equal(backStepsBack(null, 5, "2026.8.3"), true);
+  assert.equal(backStepsBack(null, 3, "2025.12.4"), true);
+  // the tab's first entry: nothing to go back to
+  assert.equal(backStepsBack({ root: true }, 1, "2026.8.3"), false);
+});
+
+test("an unknown HA version keeps the from-only rule", () => {
+  assert.equal(backStepsBack(null, 5, undefined), false);
+  assert.equal(backStepsBack(null, 5, "unknown"), false);
 });

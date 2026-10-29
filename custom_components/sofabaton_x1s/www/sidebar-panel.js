@@ -5403,6 +5403,13 @@ function entityForHub(hass, entryId) {
   }
   return null;
 }
+function backStepsBack(state, historyLength, haVersion) {
+  if (state?.from !== void 0) return true;
+  const [year, month] = String(haVersion ?? "").split(".").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return false;
+  const tagsFrom = year > 2026 || year === 2026 && month >= 9;
+  return !tagsFrom && historyLength > 1;
+}
 var PANEL_URL_PATH = "/sofabaton-x";
 var VIEW_PATHS = { remote: "/virtual-remote", panel: "/control-panel" };
 function viewForPath(path) {
@@ -5633,13 +5640,13 @@ var SofabatonXPanel = class extends i4 {
     if (this._controlPanel) this._view = "panel";
     this.requestUpdate();
   }
-  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): HA pushes a
-     history entry with `{ from: <previous path> }` and marks the app's first
-     entry `{ root: true }`; its goBack() steps back only when `from` is set
-     and otherwise replaces the entry with the default dashboard. The
-     companion apps (Android's back button, iOS) ride on that same history,
-     so the panel keeps to the same state shape and the same
-     `location-changed` event instead of inventing its own. */
+  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): since 2026.9
+     HA pushes a history entry with `{ from: <previous path> }` and marks the
+     app's first entry `{ root: true }`; its goBack() steps back only when
+     `from` is set and otherwise replaces the entry with the default dashboard
+     (older HA: see backStepsBack). The companion apps (Android's back button,
+     iOS) ride on that same history, so the panel keeps to the same state shape
+     and the same `location-changed` event instead of inventing its own. */
   _replacePath(view) {
     const path = `${PANEL_URL_PATH}${pathForView(view)}`;
     if (typeof window === "undefined" || window.location.pathname === path) return;
@@ -5654,12 +5661,12 @@ var SofabatonXPanel = class extends i4 {
     window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: true } }));
   }
   /** The subview's back arrow, as HA's goBack(): one step back when HA
-   *  navigated here (the entry carries `from`), else the default dashboard
+   *  navigated here (see backStepsBack), else the default dashboard
    *  replaces this entry (a fresh tab, a deep link from outside). */
   _back() {
     if (typeof window === "undefined") return;
     const current = window.history.state ?? {};
-    if (current.from !== void 0) {
+    if (backStepsBack(current, window.history.length, this._hass?.config?.version)) {
       window.history.back();
       return;
     }

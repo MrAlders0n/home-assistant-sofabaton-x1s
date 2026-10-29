@@ -55,6 +55,19 @@ export function entityForHub(hass: HassLike | null, entryId: string | null): str
   return null;
 }
 
+/** Whether the back arrow steps back (else the default dashboard replaces the
+ *  entry), as HA's own goBack() decides. HA 2026.9 started tagging the entries it
+ *  pushes with `from` and steps back only to those; before that it pushed bare
+ *  entries and stepped back whenever the tab had history. An unknown version
+ *  keeps the `from` rule. */
+export function backStepsBack(state: unknown, historyLength: number, haVersion: string | undefined): boolean {
+  if ((state as { from?: string } | null)?.from !== undefined) return true;
+  const [year, month] = String(haVersion ?? "").split(".").map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) return false;
+  const tagsFrom = year > 2026 || (year === 2026 && month >= 9);
+  return !tagsFrom && historyLength > 1;
+}
+
 /** The hub to show: the remembered one if it still exists, else the first. */
 /** The panel's URL path (sidebar_panel.py registers it). */
 export const PANEL_URL_PATH = "/sofabaton-x";
@@ -429,13 +442,13 @@ export class SofabatonXPanel extends LitElement {
     this.requestUpdate();
   }
 
-  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): HA pushes a
-     history entry with `{ from: <previous path> }` and marks the app's first
-     entry `{ root: true }`; its goBack() steps back only when `from` is set
-     and otherwise replaces the entry with the default dashboard. The
-     companion apps (Android's back button, iOS) ride on that same history,
-     so the panel keeps to the same state shape and the same
-     `location-changed` event instead of inventing its own. */
+  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): since 2026.9
+     HA pushes a history entry with `{ from: <previous path> }` and marks the
+     app's first entry `{ root: true }`; its goBack() steps back only when
+     `from` is set and otherwise replaces the entry with the default dashboard
+     (older HA: see backStepsBack). The companion apps (Android's back button,
+     iOS) ride on that same history, so the panel keeps to the same state shape
+     and the same `location-changed` event instead of inventing its own. */
 
   private _replacePath(view: "remote" | "panel"): void {
     const path = `${PANEL_URL_PATH}${pathForView(view)}`;
@@ -452,12 +465,12 @@ export class SofabatonXPanel extends LitElement {
   }
 
   /** The subview's back arrow, as HA's goBack(): one step back when HA
-   *  navigated here (the entry carries `from`), else the default dashboard
+   *  navigated here (see backStepsBack), else the default dashboard
    *  replaces this entry (a fresh tab, a deep link from outside). */
   private _back(): void {
     if (typeof window === "undefined") return;
     const current = (window.history.state ?? {}) as { root?: boolean; from?: string };
-    if (current.from !== undefined) {
+    if (backStepsBack(current, window.history.length, this._hass?.config?.version)) {
       window.history.back();
       return;
     }
