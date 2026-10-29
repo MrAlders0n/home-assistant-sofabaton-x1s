@@ -55,11 +55,8 @@ export function entityForHub(hass: HassLike | null, entryId: string | null): str
   return null;
 }
 
-/** Whether the back arrow steps back (else the default dashboard replaces the
- *  entry), as HA's own goBack() decides. HA 2026.9 started tagging the entries it
- *  pushes with `from` and steps back only to those; before that it pushed bare
- *  entries and stepped back whenever the tab had history. An unknown version
- *  keeps the `from` rule. */
+/** HA only adds `from` to history entries since 2026.9. Before that its
+ *  goBack() stepped back whenever there was history, so do the same there. */
 export function backStepsBack(state: unknown, historyLength: number, haVersion: string | undefined): boolean {
   if ((state as { from?: string } | null)?.from !== undefined) return true;
   const [year, month] = String(haVersion ?? "").split(".").map(Number);
@@ -442,13 +439,13 @@ export class SofabatonXPanel extends LitElement {
     this.requestUpdate();
   }
 
-  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): since 2026.9
-     HA pushes a history entry with `{ from: <previous path> }` and marks the
-     app's first entry `{ root: true }`; its goBack() steps back only when
-     `from` is set and otherwise replaces the entry with the default dashboard
-     (older HA: see backStepsBack). The companion apps (Android's back button,
-     iOS) ride on that same history, so the panel keeps to the same state shape
-     and the same `location-changed` event instead of inventing its own. */
+  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): HA pushes a
+     history entry with `{ from: <previous path> }` and marks the app's first
+     entry `{ root: true }`; its goBack() steps back only when `from` is set
+     and otherwise replaces the entry with the default dashboard. The
+     companion apps (Android's back button, iOS) ride on that same history,
+     so the panel keeps to the same state shape and the same
+     `location-changed` event instead of inventing its own. */
 
   private _replacePath(view: "remote" | "panel"): void {
     const path = `${PANEL_URL_PATH}${pathForView(view)}`;

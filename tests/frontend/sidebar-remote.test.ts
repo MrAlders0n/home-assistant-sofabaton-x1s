@@ -251,28 +251,27 @@ test("layout: the landscape split only when the portrait wheel would be too smal
   assert.equal(wantsLandscape({ ...edge, height: edge.height + 30 }, true), false);
 });
 
-// The back arrow (#320): HA 2026.9 started tagging the entries it pushes with
-// `from`; before that its goBack() stepped back whenever the tab had history.
+// Back arrow (#320). HA only adds `from` since 2026.9.
 
-test("back steps back when HA tagged the entry with where it came from", () => {
+test("back: steps back when the entry has from", () => {
   assert.equal(backStepsBack({ from: "/lovelace/rec-room" }, 5, "2026.10.1"), true);
   assert.equal(backStepsBack({ from: "/lovelace/rec-room" }, 5, "2026.8.3"), true);
 });
 
-test("on HA 2026.9 and later an untagged entry goes to the default dashboard", () => {
+test("back: 2026.9+ without from goes home", () => {
   assert.equal(backStepsBack(null, 5, "2026.9.0"), false);
   assert.equal(backStepsBack({ root: true }, 1, "2026.10.1"), false);
   assert.equal(backStepsBack(null, 5, "2026.9.0.dev20260820"), false);
 });
 
-test("before HA 2026.9 back steps back whenever there is history, as HA's goBack did", () => {
+test("back: older HA steps back when there is history", () => {
   assert.equal(backStepsBack(null, 5, "2026.8.3"), true);
   assert.equal(backStepsBack(null, 3, "2025.12.4"), true);
-  // the tab's first entry: nothing to go back to
+  // first entry, nothing to go back to
   assert.equal(backStepsBack({ root: true }, 1, "2026.8.3"), false);
 });
 
-test("an unknown HA version keeps the from-only rule", () => {
+test("back: unknown version without from goes home", () => {
   assert.equal(backStepsBack(null, 5, undefined), false);
   assert.equal(backStepsBack(null, 5, "unknown"), false);
 });

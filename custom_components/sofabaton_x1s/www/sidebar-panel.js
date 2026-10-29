@@ -5640,13 +5640,13 @@ var SofabatonXPanel = class extends i4 {
     if (this._controlPanel) this._view = "panel";
     this.requestUpdate();
   }
-  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): since 2026.9
-     HA pushes a history entry with `{ from: <previous path> }` and marks the
-     app's first entry `{ root: true }`; its goBack() steps back only when
-     `from` is set and otherwise replaces the entry with the default dashboard
-     (older HA: see backStepsBack). The companion apps (Android's back button,
-     iOS) ride on that same history, so the panel keeps to the same state shape
-     and the same `location-changed` event instead of inventing its own. */
+  /* Navigation mirrors HA's own helpers (src/common/navigate.ts): HA pushes a
+     history entry with `{ from: <previous path> }` and marks the app's first
+     entry `{ root: true }`; its goBack() steps back only when `from` is set
+     and otherwise replaces the entry with the default dashboard. The
+     companion apps (Android's back button, iOS) ride on that same history,
+     so the panel keeps to the same state shape and the same
+     `location-changed` event instead of inventing its own. */
   _replacePath(view) {
     const path = `${PANEL_URL_PATH}${pathForView(view)}`;
     if (typeof window === "undefined" || window.location.pathname === path) return;

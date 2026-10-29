@@ -28,7 +28,7 @@ export interface HassLike {
   themes?: HassThemesLike;
   /** The signed-in user; the sidebar panel shows its admin toggle on `is_admin`. */
   user?: { is_admin?: boolean } | null;
-  /** Core config; the sidebar panel's back arrow reads `version` (history entries carry `from` since 2026.9). */
+  /** The sidebar back arrow reads `version`. */
   config?: { version?: string };
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService?(
